@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
         }
         val saved = prefs.getString("playlist_url", null)
         if (!saved.isNullOrBlank()) loadFromUrl(saved, false)
-        if (prefs.getBoolean("auto_update_check", true)) {
+        if (prefs.getBoolean("auto_update_check", false)) {
             Handler(Looper.getMainLooper()).postDelayed({ checkForAppUpdate(false) }, 1800)
         }
     }
@@ -417,7 +417,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().remove("playlist_url").apply(); toast("Saved playlist URL cleared")
         }
         box.addView(text("APP UPDATES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsToggleCard(box, "Automatic update check", "Check for a new SANY IPTV release when the app opens", "auto_update_check", true)
+        settingsToggleCard(box, "Automatic update check", "Check for a new SANY IPTV release when the app opens", "auto_update_check", false)
         settingsCard(box, "Check for updates", "Look for the latest version and download it") { checkForAppUpdate(true) }
         box.addView(text("ABOUT", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
@@ -477,8 +477,16 @@ class MainActivity : AppCompatActivity() {
                 }.orEmpty()
                 if (tag.isBlank() || apkUrl.isBlank()) throw IllegalStateException("Release APK পাওয়া যায়নি")
                 val newer = compareVersions(tag, current) > 0
+                val lastPrompted = prefs.getString("last_prompted_update_version", "")
                 runOnUiThread {
-                    if (newer) {
+                    if (!newer) {
+                        // Once the installed app reaches the release version, clear the reminder.
+                        prefs.edit().remove("last_prompted_update_version").apply()
+                    }
+                    // Automatic checks show a given release only once. Manual checks can still
+                    // display the available update whenever the user explicitly asks.
+                    if (newer && (showUpToDate || lastPrompted != tag)) {
+                        prefs.edit().putString("last_prompted_update_version", tag).apply()
                         val notes = release.optString("body").take(1200)
                         AlertDialog.Builder(this)
                             .setTitle("SANY IPTV update available")
@@ -486,10 +494,13 @@ class MainActivity : AppCompatActivity() {
                             .setPositiveButton("DOWNLOAD & INSTALL") { _, _ -> downloadAndInstallUpdate(apkUrl, tag) }
                             .setNegativeButton("LATER", null)
                             .show()
-                    } else if (showUpToDate) {
+                    } else if (showUpToDate && !newer) {
                         AlertDialog.Builder(this).setTitle("You're up to date")
                             .setMessage("বর্তমান ভার্সন: " + current)
                             .setPositiveButton("OK", null).show()
+                    } else if (showUpToDate && newer) {
+                        // The same release reminder was already shown automatically.
+                        toast("এই আপডেটটি আগে দেখানো হয়েছে: " + tag)
                     }
                 }
             } catch (e: Exception) {
