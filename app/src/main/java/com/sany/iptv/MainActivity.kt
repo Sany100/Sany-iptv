@@ -546,7 +546,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        closePlayer()
+        // Keep the current landscape lock while replacing the channel player.
+        closePlayer(keepOrientation = true)
         currentChannel = channel
 
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -594,7 +595,7 @@ class MainActivity : AppCompatActivity() {
             player = p
             // Crop slightly when needed so the video fills the entire landscape display.
             // The PlayerView and its shutter remain black, never showing the home screen behind it.
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)
             setShutterBackgroundColor(Color.BLACK)
             setControllerShowTimeoutMs(2500)
@@ -732,17 +733,22 @@ class MainActivity : AppCompatActivity() {
         } else View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
-    private fun closePlayer() {
-        if (isPlayerFullscreen) setPlayerFullscreen(false)
+    private fun closePlayer(keepOrientation: Boolean = false) {
+        // When changing channels, do not briefly unlock orientation: Android may
+        // rotate the Activity to portrait before the next fullscreen player is ready.
+        if (!keepOrientation) {
+            if (isPlayerFullscreen) setPlayerFullscreen(false)
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            applySystemBars()
+        }
         playerHeader = null
         playerFullscreenButton = null
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        applySystemBars()
         player?.stop()
         playerView?.player = null
         playerView = null
         playerScreen?.let { root.removeView(it) }
         playerScreen = null
+        if (!keepOrientation) isPlayerFullscreen = false
     }
 
     @Deprecated("Deprecated in Android API")
