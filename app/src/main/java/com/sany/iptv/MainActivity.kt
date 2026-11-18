@@ -93,8 +93,11 @@ class MainActivity : AppCompatActivity() {
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         playlistUrls.addAll(readPlaylistUrls())
         val savedPlaylist = prefs.getString("playlist_url", null)
-        val cachedPlaylist = savedPlaylist?.let { prefs.getString(playlistCacheKey(it), null) }
-        if (!cachedPlaylist.isNullOrBlank()) channels = M3uParser.parse(cachedPlaylist)
+        if (playlistUrls.isEmpty() && !savedPlaylist.isNullOrBlank()) playlistUrls.add(savedPlaylist)
+        val cachedPlaylist = savedPlaylist?.let { playlistCacheFile(it) }
+        if (cachedPlaylist?.exists() == true) {
+            try { channels = M3uParser.parse(cachedPlaylist.readText()) } catch (_: Exception) { channels = emptyList() }
+        }
         applySystemBars()
         buildShell()
         home.alpha = 0f
@@ -730,7 +733,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun playlistCacheKey(url: String) = "playlist_cache_" + url.hashCode()
+    private fun playlistCacheFile(url: String) = java.io.File(filesDir, "playlist_" + url.hashCode() + ".m3u")
 
     private fun readPlaylistUrls(): List<String> {
         return try {
@@ -808,7 +811,7 @@ class MainActivity : AppCompatActivity() {
                         savePlaylistUrl(url)
                         // Store the M3U text locally so a recreated Activity can restore
                         // channels immediately without waiting for a network request.
-                        prefs.edit().putString(playlistCacheKey(url), content).apply()
+                        try { playlistCacheFile(url).writeText(content) } catch (_: Exception) { /* Keep the live playlist usable if caching fails. */ }
                         selectedGroup = "All"; searchQuery = ""
                         renderHome()
                         toast("Loaded " + channels.size + " items")
