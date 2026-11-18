@@ -97,6 +97,9 @@ class MainActivity : AppCompatActivity() {
         }
         val saved = prefs.getString("playlist_url", null)
         if (!saved.isNullOrBlank()) loadFromUrl(saved, false)
+        if (prefs.getBoolean("auto_update_check", true)) {
+            Handler(Looper.getMainLooper()).postDelayed({ checkForAppUpdate(false) }, 1800)
+        }
     }
 
     private fun applySystemBars() {
@@ -413,6 +416,9 @@ class MainActivity : AppCompatActivity() {
         settingsCard(box, "Clear playlist URL", "Forget the saved playlist address") {
             prefs.edit().remove("playlist_url").apply(); toast("Saved playlist URL cleared")
         }
+        box.addView(text("APP UPDATES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        settingsToggleCard(box, "Automatic update check", "Check for a new SANY IPTV release when the app opens", "auto_update_check", true)
+        settingsCard(box, "Check for updates", "Look for the latest version and download it") { checkForAppUpdate(true) }
         box.addView(text("ABOUT", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
             setPadding(dp(15), dp(16), dp(15), dp(16)); background = rounded(panel, 12)
@@ -441,6 +447,114 @@ class MainActivity : AppCompatActivity() {
             })
         })
         contentArea.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun checkForAppUpdate(showUpToDate: Boolean) {
+        thread {
+            try {
+                val connection = URL("https://api.github.com/repos/Sany100/Sany-iptv/releases/latest")
+                    .openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+                connection.setRequestProperty("Accept", "application/vnd.github+json")
+                connection.setRequestProperty("User-Agent", "SANY-IPTV-Android")
+                val code = connection.responseCode
+                if (code == 404) {
+                    runOnUiThread { if (showUpToDate) toast("এখনো কোনো update release প্রকাশ করা হয়নি") }
+                    connection.disconnect()
+                    return@thread
+                }
+                if (code !in 200..299) throw IllegalStateException("GitHub HTTP " + code)
+                val json = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val release = org.json.JSONObject(json)
+                val tag = release.optString("tag_name").removePrefix("v").removePrefix("V")
+                val current = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+                val apkUrl = release.optJSONArray("assets")?.let { assets ->
+                    (0 until assets.length()).map { assets.optJSONObject(it) }
+                        .firstOrNull { it?.optString("name")?.endsWith(".apk", true) == true }
+                        ?.optString("browser_download_url")
+                }.orEmpty()
+                if (tag.isBlank() || apkUrl.isBlank()) throw IllegalStateException("Release APK পাওয়া যায়নি")
+                val newer = compareVersions(tag, current) > 0
+                runOnUiThread {
+                    if (newer) {
+                        val notes = release.optString("body").take(1200)
+                        AlertDialog.Builder(this)
+                            .setTitle("SANY IPTV update available")
+                            .setMessage("Installed: " + current + "\nLatest: " + tag + "\n\n" + notes.ifBlank { "নতুন সংস্করণ পাওয়া গেছে।" })
+                            .setPositiveButton("DOWNLOAD & INSTALL") { _, _ -> downloadAndInstallUpdate(apkUrl, tag) }
+                            .setNegativeButton("LATER", null)
+                            .show()
+                    } else if (showUpToDate) {
+                        AlertDialog.Builder(this).setTitle("You're up to date")
+                            .setMessage("বর্তমান ভার্সন: " + current)
+                            .setPositiveButton("OK", null).show()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { if (showUpToDate) toast("Update check failed: " + (e.message ?: "network error")) }
+            }
+        }
+    }
+
+    private fun compareVersions(first: String, second: String): Int {
+        val a = first.split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
+        val b = second.split(".", "-", "+").map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(a.size, b.size)) {
+            val diff = (a.getOrElse(i) { 0 }).compareTo(b.getOrElse(i) { 0 })
+            if (diff != 0) return diff
+        }
+        return 0
+    }
+
+    private fun downloadAndInstallUpdate(url: String, version: String) {
+        try {
+            val request = android.app.DownloadManager.Request(Uri.parse(url))
+                .setTitle("SANY IPTV " + version)
+                .setDescription("Downloading app update…")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "SANY-IPTV-" + version + ".apk")
+            val manager = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+            val downloadId = manager.enqueue(request)
+            val receiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context?, intent: Intent?) {
+                    if (intent?.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
+                    try {
+                        unregisterReceiver(this)
+                        val apkUri = manager.getUriForDownloadedFile(downloadId)
+                        if (apkUri == null) {
+                            toast("APK download failed")
+                            return
+                        }
+                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(apkUri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            startActivity(installIntent)
+                        } catch (_: Exception) {
+                            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:" + packageName)))
+                            toast("অনুমতি দিন, তারপর Downloads থেকে SANY IPTV APK খুলুন")
+                        }
+                    } catch (e: Exception) {
+                        toast("Install open failed: " + (e.message ?: "unknown error"))
+                    }
+                }
+            }
+            val filter = android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(receiver, filter, android.content.Context.RECEIVER_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(receiver, filter)
+            }
+            toast("APK ডাউনলোড শুরু হয়েছে")
+        } catch (e: Exception) {
+            toast("Download failed: " + (e.message ?: "unknown error"))
+        }
     }
 
     private fun settingsToggleCard(
