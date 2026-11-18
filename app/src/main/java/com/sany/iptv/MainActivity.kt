@@ -74,7 +74,6 @@ class MainActivity : AppCompatActivity() {
     private val pickFile = 41
     private var channels = listOf<Channel>()
     private val playlistUrls = mutableListOf<String>()
-    private var favorites = mutableSetOf<String>()
     private var selectedGroup = "All"
     private var section = "Live TV"
     private var searchQuery = ""
@@ -101,7 +100,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         // Keep automatic update checks enabled for every installation; there is no user-facing switch.
         prefs.edit().putBoolean("auto_update_check", true).apply()
-        favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         // Restore the user's existing playlist manager; discard only the three rejected demo sources.
         val rejectedSources = setOf(
             "https://iptv-org.github.io/iptv/categories/animation.m3u",
@@ -307,7 +305,6 @@ class MainActivity : AppCompatActivity() {
         categoryRow.removeAllViews()
         val groups = listOf("All") + channels.asSequence().map { it.group }.distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
         val options = when (section) {
-            "Favorites" -> listOf("All", "★ Favorites")
             "Movies" -> listOf("All") + movieCategories + groups.drop(1).filterNot { it in movieCategories }
             "Series" -> listOf("All", "Anime") + groups.drop(1).filterNot { it.equals("Anime", true) }
             else -> groups
@@ -398,16 +395,9 @@ class MainActivity : AppCompatActivity() {
             details.addView(text(channel.name, 14, white, true))
             details.addView(text(channel.group.ifBlank { "Other" }, 11, muted).apply { setPadding(0, dp(4), 0, 0) })
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-            val star = text(if (channel.url in favorites) "★" else "☆", 21, if (channel.url in favorites) accent else muted).apply {
-                isFocusable = true
-                gravity = Gravity.CENTER
-                setOnClickListener { toggleFavorite(channel) }
-            }
-            row.addView(star, LinearLayout.LayoutParams(dp(38), dp(44)))
             row.setOnClickListener {
                 row.animate().alpha(0.68f).scaleX(0.985f).scaleY(0.985f).setDuration(75).withEndAction { play(channel) }.start()
             }
-            row.setOnLongClickListener { toggleFavorite(channel); true }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
         }
         if (filtered.size > displayedLimit) {
@@ -423,12 +413,10 @@ class MainActivity : AppCompatActivity() {
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
-                "Favorites" -> c.url in favorites
                 else -> !isMovie(c) && !isSeries(c)
             }
             val groupMatch = when {
                 selectedGroup == "All" -> true
-                selectedGroup == "★ Favorites" -> c.url in favorites
                 section == "Series" && selectedGroup == "Anime" -> isAnime(c)
                 section == "Movies" && selectedGroup in movieCategories -> matchesMovieCategory(c, selectedGroup)
                 else -> c.group.equals(selectedGroup, true)
@@ -480,7 +468,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderBottomNav() {
         bottomNav.removeAllViews()
-        listOf("Live TV" to "▣", "Movies" to "▤", "Series" to "▥", "Favorites" to "☆", "Settings" to "⚙").forEach { (name, symbol) ->
+        listOf("Live TV" to "▣", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
                 isFocusable = true
@@ -536,9 +524,6 @@ class MainActivity : AppCompatActivity() {
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             val url = prefs.getString("playlist_url", null)
             if (url.isNullOrBlank()) showPlaylistDialog() else loadFromUrl(url)
-        }
-        settingsCard(box, "Clear favorites", "Remove all saved favorite items") {
-            favorites.clear(); prefs.edit().remove("favorites").apply(); toast("Favorites cleared"); renderHome()
         }
         settingsCard(box, "Clear playlist URL", "Forget the saved playlist address") {
             prefs.edit().remove("playlist_url").apply(); toast("Saved playlist URL cleared")
@@ -912,12 +897,6 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { toast("Playlist load failed: ${e.message ?: "network error"}") }
             }
         }
-    }
-
-    private fun toggleFavorite(channel: Channel) {
-        if (!favorites.add(channel.url)) favorites.remove(channel.url)
-        prefs.edit().putStringSet("favorites", favorites.toSet()).apply()
-        if (section == "Favorites") renderListOnly() else renderListOnly()
     }
 
     private fun showChannelNumberDialog() {
