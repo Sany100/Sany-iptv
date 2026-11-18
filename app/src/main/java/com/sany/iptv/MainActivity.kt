@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.content.res.Configuration
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -22,12 +23,18 @@ import java.net.URL
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
-    private val bg = Color.rgb(8, 12, 21)
-    private val panel = Color.rgb(18, 25, 39)
-    private val panel2 = Color.rgb(25, 34, 51)
-    private val accent = Color.rgb(0, 210, 160)
-    private val muted = Color.rgb(148, 160, 180)
-    private val white = Color.WHITE
+    private val isLight: Boolean
+        get() = when (prefs.getString("app_theme", "dark")) {
+            "light" -> true
+            "system" -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            else -> false
+        }
+    private val bg get() = if (isLight) Color.rgb(246, 248, 251) else Color.rgb(8, 12, 21)
+    private val panel get() = if (isLight) Color.WHITE else Color.rgb(18, 25, 39)
+    private val panel2 get() = if (isLight) Color.rgb(232, 237, 244) else Color.rgb(25, 34, 51)
+    private val accent = Color.rgb(0, 170, 130)
+    private val muted get() = if (isLight) Color.rgb(90, 101, 118) else Color.rgb(148, 160, 180)
+    private val white get() = if (isLight) Color.rgb(20, 27, 38) else Color.WHITE
     private val prefs by lazy { getSharedPreferences("sany_iptv", MODE_PRIVATE) }
     private val pickFile = 41
     private var channels = listOf<Channel>()
@@ -47,13 +54,27 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNav: LinearLayout
     private lateinit var listContainer: LinearLayout
     private var playerScreen: FrameLayout? = null
+    private var displayedLimit = 120
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
+        applySystemBars()
         buildShell()
         val saved = prefs.getString("playlist_url", null)
         if (!saved.isNullOrBlank()) loadFromUrl(saved, false)
+    }
+
+    private fun applySystemBars() {
+        window.statusBarColor = bg
+        window.navigationBarColor = bg
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = if (isLight) {
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+                    (if (android.os.Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
+            } else 0
+        }
     }
 
     private fun buildShell() {
@@ -129,7 +150,7 @@ class MainActivity : AppCompatActivity() {
             setText(searchQuery)
         }
         contentArea.addView(search, LinearLayout.LayoutParams(-1, dp(48)))
-        search.addTextChangedListener(SimpleTextWatcher { searchQuery = it; renderListOnly() })
+        search.addTextChangedListener(SimpleTextWatcher { searchQuery = it; displayedLimit = 120; renderListOnly() })
 
         val categoriesScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -148,7 +169,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCategories() {
         categoryRow.removeAllViews()
-        val groups = listOf("All") + channels.map { it.group }.distinct().filter { it.isNotBlank() }.sorted()
+        val groups = listOf("All") + channels.asSequence().map { it.group }.distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
         val options = when (section) {
             "Favorites" -> listOf("All", "★ Favorites")
             "Movies" -> listOf("All") + groups.drop(1)
@@ -182,7 +203,7 @@ class MainActivity : AppCompatActivity() {
             container.addView(text("No items found", 15, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
             return
         }
-        filtered.forEachIndexed { index, channel ->
+        filtered.take(displayedLimit).forEachIndexed { index, channel ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -206,6 +227,12 @@ class MainActivity : AppCompatActivity() {
             row.setOnClickListener { play(channel) }
             row.setOnLongClickListener { toggleFavorite(channel); true }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
+        }
+        if (filtered.size > displayedLimit) {
+            container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
+                displayedLimit += 120
+                renderChannelRows(container)
+            }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8); bottomMargin = dp(12) })
         }
     }
 
@@ -249,7 +276,20 @@ class MainActivity : AppCompatActivity() {
         val scroll = ScrollView(this)
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(box)
-        box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(10), 0, dp(12)) })
+        box.addView(text("APPEARANCE", 11, accent, true).apply { setPadding(0, dp(10), 0, dp(12)) })
+        settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
+            val modes = arrayOf("Day mode", "Night mode", "System default")
+            val values = arrayOf("light", "dark", "system")
+            val current = prefs.getString("app_theme", "dark")
+            AlertDialog.Builder(this).setTitle("Choose app theme")
+                .setSingleChoiceItems(modes, values.indexOf(current).coerceAtLeast(0)) { dialog, which ->
+                    prefs.edit().putString("app_theme", values[which]).apply()
+                    dialog.dismiss()
+                    applySystemBars()
+                    renderHome()
+                }.setNegativeButton("CANCEL", null).show()
+        }
+        box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Add a playlist URL or import an M3U file") { showPlaylistDialog() }
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             val url = prefs.getString("playlist_url", null)
@@ -340,6 +380,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun play(channel: Channel) {
         currentChannel = channel
+        if (channel.url.isBlank()) { toast("This item has no stream URL"); return }
         if (playerView != null) closePlayer()
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15000, 50000, 1000, 2500)
