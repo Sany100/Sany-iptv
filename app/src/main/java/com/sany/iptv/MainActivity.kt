@@ -13,6 +13,9 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import java.net.URL
@@ -42,6 +45,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var countLabel: TextView
     private lateinit var categoryRow: LinearLayout
     private lateinit var bottomNav: LinearLayout
+    private lateinit var listContainer: LinearLayout
+    private var playerScreen: FrameLayout? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -135,7 +140,7 @@ class MainActivity : AppCompatActivity() {
         countLabel = text("", 12, muted).apply { setPadding(dp(2), dp(4), 0, dp(8)) }
         contentArea.addView(countLabel)
         val listScroll = ScrollView(this).apply { isFillViewport = true }
-        val listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listScroll.addView(listContainer)
         contentArea.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         renderChannelRows(listContainer)
@@ -164,10 +169,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderListOnly() {
         if (!::contentArea.isInitialized || section == "Settings" || channels.isEmpty()) return
-        val scroll = contentArea.getChildAt(3) as? ScrollView ?: return
-        val list = scroll.getChildAt(0) as? LinearLayout ?: return
+        if (!::listContainer.isInitialized) return
         renderCategories()
-        renderChannelRows(list)
+        renderChannelRows(listContainer)
     }
 
     private fun renderChannelRows(container: LinearLayout) {
@@ -336,8 +340,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun play(channel: Channel) {
         currentChannel = channel
-        val p = player ?: ExoPlayer.Builder(this).build().also { player = it }
+        if (playerView != null) closePlayer()
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(15000, 50000, 1000, 2500)
+            .build()
+        val p = player ?: ExoPlayer.Builder(this)
+            .setLoadControl(loadControl)
+            .build().also { created ->
+                created.addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        runOnUiThread { toast("Playback failed: ${error.errorCodeName}") }
+                    }
+                })
+                player = created
+            }
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        playerScreen = screen
         val view = PlayerView(this).apply {
             useController = true
             player = p
@@ -355,7 +373,9 @@ class MainActivity : AppCompatActivity() {
         header.addView(text(channel.name, 16, white, true), LinearLayout.LayoutParams(0, -2, 1f))
         screen.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
-        p.setMediaItem(MediaItem.fromUri(channel.url)); p.prepare(); p.play()
+        p.setMediaItem(MediaItem.fromUri(channel.url))
+        p.prepare()
+        p.playWhenReady = true
         prefs.edit().putString("last_channel", channel.url).apply()
     }
 
@@ -363,7 +383,8 @@ class MainActivity : AppCompatActivity() {
         player?.pause()
         playerView?.player = null
         playerView = null
-        root.removeViewAt(root.childCount - 1)
+        playerScreen?.let { root.removeView(it) }
+        playerScreen = null
     }
 
     @Deprecated("Deprecated in Android API")
@@ -371,14 +392,21 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == pickFile && resultCode == Activity.RESULT_OK) {
             data?.data?.let { uri ->
-                try {
-                    val raw = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
-                    val parsed = M3uParser.parse(raw)
-                    if (parsed.isEmpty()) toast("No channels found in file") else {
-                        channels = parsed; selectedGroup = "All"; searchQuery = ""; renderHome()
-                        toast("Imported ${channels.size} items")
+                toast("Importing playlist…")
+                thread {
+                    try {
+                        val raw = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                        val parsed = M3uParser.parse(raw)
+                        runOnUiThread {
+                            if (parsed.isEmpty()) toast("No channels found in file") else {
+                                channels = parsed; selectedGroup = "All"; searchQuery = ""; renderHome()
+                                toast("Imported ${channels.size} items")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread { toast("File error: ${e.message ?: "could not read file"}") }
                     }
-                } catch (e: Exception) { toast("File error: ${e.message}") }
+                }
             }
         }
     }
