@@ -526,12 +526,17 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setOnClickListener {
-                    animate().scaleX(0.94f).scaleY(0.94f).setDuration(65).withEndAction {
-                        section = name; selectedGroup = "All"; searchQuery = ""
-                        renderHome()
-                        home.alpha = 0.72f; home.scaleX = 0.985f; home.scaleY = 0.985f
-                        home.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(190).start()
-                    }.start()
+                    if (section == name) return@setOnClickListener
+                    // Switch immediately; keep the transition animation lightweight.
+                    section = name
+                    selectedGroup = "All"
+                    searchQuery = ""
+                    renderHome()
+                    home.alpha = 0.88f
+                    home.translationY = dp(5).toFloat()
+                    home.animate().alpha(1f).translationY(0f)
+                        .setDuration(130).setInterpolator(DecelerateInterpolator())
+                        .start()
                 }
             }
             item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
@@ -1356,7 +1361,15 @@ class MainActivity : AppCompatActivity() {
         isFocusable = true
         isFocusableInTouchMode = false
         text = label; textSize = if (isTvDevice) 28f else 22f; setTextColor(white); gravity = Gravity.CENTER
-        background = glass(12); elevation = dp(2).toFloat(); setOnClickListener { action() }
+        background = glass(12); elevation = dp(2).toFloat()
+        setOnClickListener {
+            // Run the requested action on the same tap; animation is only visual feedback.
+            action()
+            animate().cancel()
+            scaleX = 0.94f; scaleY = 0.94f
+            animate().scaleX(1f).scaleY(1f).setDuration(110)
+                .setInterpolator(DecelerateInterpolator()).start()
+        }
         layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply { leftMargin = dp(8) }
     }
     private fun pill(label: String, color: Int) = TextView(this).apply {
