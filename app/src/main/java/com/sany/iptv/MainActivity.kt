@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences("sany_iptv", MODE_PRIVATE) }
     private val pickFile = 41
     private var channels = listOf<Channel>()
+    private val playlistUrls = mutableListOf<String>()
     private var favorites = mutableSetOf<String>()
     private var selectedGroup = "All"
     private var section = "Live TV"
@@ -90,6 +91,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
+        playlistUrls.addAll(readPlaylistUrls())
+        val savedPlaylist = prefs.getString("playlist_url", null)
+        val cachedPlaylist = savedPlaylist?.let { prefs.getString(playlistCacheKey(it), null) }
+        if (!cachedPlaylist.isNullOrBlank()) channels = M3uParser.parse(cachedPlaylist)
         applySystemBars()
         buildShell()
         home.alpha = 0f
@@ -101,7 +106,7 @@ class MainActivity : AppCompatActivity() {
                 .setDuration(420).start()
         }
         val saved = prefs.getString("playlist_url", null)
-        if (!saved.isNullOrBlank()) loadFromUrl(saved, false)
+        if (channels.isEmpty() && !saved.isNullOrBlank()) loadFromUrl(saved, false)
         if (prefs.getBoolean("auto_update_check", false)) {
             Handler(Looper.getMainLooper()).postDelayed({ checkForAppUpdate(false) }, 1800)
         }
@@ -462,7 +467,7 @@ class MainActivity : AppCompatActivity() {
                 }.setNegativeButton("CANCEL", null).show()
         }
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Playlist manager", "Add a playlist URL or import an M3U file") { showPlaylistDialog() }
+        settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         box.addView(text("MULTI-SERVER", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Live TV server", "Separate live channels playlist") { editServer("server_live_url", "Live TV server") }
         settingsCard(box, "Series / Anime server", "Dedicated series and anime playlist") { editServer("server_series_url", "Series / Anime server") }
@@ -725,26 +730,59 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun playlistCacheKey(url: String) = "playlist_cache_" + url.hashCode()
+
+    private fun readPlaylistUrls(): List<String> {
+        return try {
+            val json = org.json.JSONArray(prefs.getString("playlist_urls", "[]"))
+            (0 until json.length()).map { json.optString(it) }.filter { it.isNotBlank() }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun savePlaylistUrl(url: String) {
+        if (url !in playlistUrls) playlistUrls.add(url)
+        val json = org.json.JSONArray()
+        playlistUrls.forEach { json.put(it) }
+        prefs.edit().putString("playlist_urls", json.toString()).putString("playlist_url", url).apply()
+    }
+
     private fun showPlaylistDialog() {
+        val labels = playlistUrls.mapIndexed { index, url -> (index + 1).toString() + ". " + url }.toTypedArray()
+        val builder = AlertDialog.Builder(this).setTitle("Playlist manager")
+        if (labels.isNotEmpty()) builder.setItems(labels) { _, which -> loadFromUrl(playlistUrls[which]) }
+        else builder.setMessage("এখনো কোনো playlist যোগ করা হয়নি।")
+        builder.setNeutralButton("＋ ADD PLAYLIST") { _, _ -> showAddPlaylistDialog() }
+            .setPositiveButton("IMPORT FILE") { _, _ -> openFilePicker() }
+            .setNegativeButton("CLOSE", null)
+            .show()
+    }
+
+    private fun showAddPlaylistDialog() {
         val input = EditText(this).apply {
             hint = "https://example.com/playlist.m3u"
-            setText(prefs.getString("playlist_url", ""))
-            setTextColor(white); setHintTextColor(muted)
+            setTextColor(white); setHintTextColor(muted); setSingleLine(true)
         }
-        val wrap = LinearLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(input, LinearLayout.LayoutParams(-1, dp(52))) }
+        val wrap = LinearLayout(this).apply {
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(input, LinearLayout.LayoutParams(-1, dp(52)))
+        }
         AlertDialog.Builder(this).setTitle("Add playlist URL").setView(wrap)
-            .setPositiveButton("LOAD") { _, _ -> loadFromUrl(input.text.toString().trim()) }
-            .setNeutralButton("IMPORT FILE") { _, _ -> openFilePicker() }
+            .setPositiveButton("ADD & LOAD") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.startsWith("http://", true) || url.startsWith("https://", true)) loadFromUrl(url)
+                else toast("সঠিক HTTP/HTTPS playlist URL দিন")
+            }
             .setNegativeButton("CANCEL", null).show()
     }
 
     private fun showQuickMenu() {
-        AlertDialog.Builder(this).setItems(arrayOf("Add playlist URL", "Import M3U file", "Reload playlist", "Settings")) { _, which ->
+        AlertDialog.Builder(this).setItems(arrayOf("Playlist manager / Switch playlist", "Add playlist URL", "Import M3U file", "Reload active playlist", "Settings")) { _, which ->
             when (which) {
                 0 -> showPlaylistDialog()
-                1 -> openFilePicker()
-                2 -> prefs.getString("playlist_url", null)?.let { loadFromUrl(it) } ?: showPlaylistDialog()
-                3 -> { section = "Settings"; renderHome() }
+                1 -> showAddPlaylistDialog()
+                2 -> openFilePicker()
+                3 -> prefs.getString("playlist_url", null)?.let { loadFromUrl(it) } ?: showPlaylistDialog()
+                4 -> { section = "Settings"; renderHome() }
             }
         }.show()
     }
@@ -767,10 +805,13 @@ class MainActivity : AppCompatActivity() {
                     if (parsed.isEmpty()) toast("No playable entries found in this playlist")
                     else {
                         channels = parsed
-                        prefs.edit().putString("playlist_url", url).apply()
+                        savePlaylistUrl(url)
+                        // Store the M3U text locally so a recreated Activity can restore
+                        // channels immediately without waiting for a network request.
+                        prefs.edit().putString(playlistCacheKey(url), content).apply()
                         selectedGroup = "All"; searchQuery = ""
                         renderHome()
-                        toast("Loaded ${channels.size} items")
+                        toast("Loaded " + channels.size + " items")
                     }
                 }
             } catch (e: Exception) {
