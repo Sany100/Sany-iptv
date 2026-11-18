@@ -338,7 +338,7 @@ class MainActivity : AppCompatActivity() {
         dialog.setOnDismissListener { webView.stopLoading(); webView.destroy() }
         dialog.show()
         dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.96f).toInt(), (resources.displayMetrics.heightPixels * 0.88f).toInt())
-        webView.loadUrl("http://new.circleftp.net/category/20")
+        webView.loadUrl("http://new.circleftp.net/")
     }
     private fun renderCategories() {
         categoryRow.removeAllViews()
