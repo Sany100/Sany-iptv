@@ -118,7 +118,7 @@ class MainActivity : AppCompatActivity() {
         search = EditText(this).apply {
             hint = "⌕   Search channels, movies, series..."
             setTextColor(white); setHintTextColor(muted); textSize = 14f
-            singleLine = true
+            isSingleLine = true
             setPadding(dp(14), 0, dp(14), 0)
             background = rounded(panel2, 12)
             setText(searchQuery)
