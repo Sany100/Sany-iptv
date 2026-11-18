@@ -655,18 +655,17 @@ class MainActivity : AppCompatActivity() {
         screen.addView(fullscreenButton, FrameLayout.LayoutParams(-2, dp(46), Gravity.TOP or Gravity.END).apply {
             topMargin = dp(244); rightMargin = dp(16)
         })
-        // Keep the fullscreen toggle visible at all times, even after Media3 controls auto-hide.
-        // Only the channel header follows the controller visibility.
+        // Hide the custom fullscreen button together with Media3 controls.
+        // It reappears when the user taps the video to show the controls again.
         view.setControllerVisibilityListener { visibility ->
             val controlsVisible = visibility == View.VISIBLE
-            playerFullscreenButton?.visibility = View.VISIBLE
+            playerFullscreenButton?.visibility = if (controlsVisible) View.VISIBLE else View.GONE
             playerHeader?.visibility = if (isPlayerFullscreen && controlsVisible) View.VISIBLE
                 else if (isPlayerFullscreen) View.GONE else View.VISIBLE
         }
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
         // Start every selected channel in immersive landscape fullscreen.
         setPlayerFullscreen(true)
-        playerFullscreenButton?.bringToFront()
         view.showController()
 
         val lowerUrl = streamUrl.substringBefore("?").lowercase()
