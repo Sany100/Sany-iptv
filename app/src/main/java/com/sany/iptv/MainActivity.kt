@@ -1,6 +1,7 @@
 package com.sany.iptv
 
 import android.app.Activity
+import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
 import android.content.Intent
@@ -141,8 +142,12 @@ class MainActivity : AppCompatActivity() {
             letterSpacing = 0.20f
             setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(170, 0, 220, 175))
             alpha = 0f
-            scaleX = 0.72f
-            scaleY = 0.72f
+            scaleX = 0.68f
+            scaleY = 0.68f
+            rotationY = -78f
+            rotationX = 24f
+            cameraDistance = 9000f * resources.displayMetrics.density
+            translationZ = dp(22).toFloat()
         }
         center.addView(logo)
         center.addView(text("IPTV", 15, Color.WHITE, true).apply {
@@ -158,10 +163,17 @@ class MainActivity : AppCompatActivity() {
         })
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
         root.addView(splash, FrameLayout.LayoutParams(-1, -1))
-        logo.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(520).start()
-        center.getChildAt(1).animate().alpha(1f).setStartDelay(220).setDuration(420).start()
-        center.getChildAt(2).animate().alpha(1f).setStartDelay(360).setDuration(420).start()
-        splash.animate().alpha(0f).setStartDelay(1050).setDuration(350).withEndAction {
+        // A 3D entrance: the SANY wordmark rotates on its Y axis
+        // while tilting back into place, with depth and a teal glow.
+        logo.animate()
+            .alpha(1f).scaleX(1f).scaleY(1f)
+            .rotationY(360f).rotationX(0f)
+            .setDuration(1350)
+            .setInterpolator(DecelerateInterpolator(1.6f))
+            .start()
+        center.getChildAt(1).animate().alpha(1f).setStartDelay(420).setDuration(500).start()
+        center.getChildAt(2).animate().alpha(1f).setStartDelay(620).setDuration(500).start()
+        splash.animate().alpha(0f).setStartDelay(1550).setDuration(400).withEndAction {
             root.removeView(splash)
         }.start()
     }
