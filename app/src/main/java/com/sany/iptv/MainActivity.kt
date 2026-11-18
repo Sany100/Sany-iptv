@@ -1,6 +1,7 @@
 package com.sany.iptv
 
 import android.app.Activity
+import android.animation.ValueAnimator
 import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
@@ -261,6 +262,10 @@ class MainActivity : AppCompatActivity() {
             renderSettings()
             return
         }
+        if (section == "Series") {
+            renderSeriesComingSoon()
+            return
+        }
         if (channels.isEmpty()) {
             val empty = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -299,6 +304,51 @@ class MainActivity : AppCompatActivity() {
         listScroll.addView(listContainer)
         contentArea.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         renderChannelRows(listContainer)
+    }
+
+    private fun renderSeriesComingSoon() {
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(20), dp(24), dp(20), dp(24))
+        }
+        val emblem = text("▥", 58, accent, true).apply {
+            gravity = Gravity.CENTER
+            setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(115, 0, 220, 180))
+        }
+        page.addView(emblem, LinearLayout.LayoutParams(-1, dp(82)))
+        val title = text("COMING SOON", 36, accent, true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.07f
+            setShadowLayer(dp(16).toFloat(), 0f, 0f, Color.argb(125, 0, 220, 180))
+        }
+        page.addView(title, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(16)
+        })
+        page.addView(text("SERIES LIBRARY IS UNDER DEVELOPMENT", 11, muted, true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.08f
+            setPadding(0, dp(12), 0, 0)
+        })
+        contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
+
+        val pulse = ValueAnimator.ofFloat(0.82f, 1.04f).apply {
+            duration = 1050
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            addUpdateListener { animator ->
+                val scale = animator.animatedValue as Float
+                title.scaleX = scale
+                title.scaleY = scale
+                title.alpha = 0.78f + (scale - 0.82f) * 1.15f
+                emblem.scaleX = 0.94f + (scale - 0.82f) * 0.35f
+                emblem.scaleY = emblem.scaleX
+            }
+        }
+        title.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) { pulse.start() }
+            override fun onViewDetachedFromWindow(view: View) { pulse.cancel() }
+        })
     }
 
     private fun renderCategories() {
