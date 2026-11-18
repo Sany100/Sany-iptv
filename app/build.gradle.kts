@@ -7,12 +7,36 @@ android {
     namespace = "com.sany.iptv"
     compileSdk = 35
 
+    val releaseStoreFile = System.getenv("SANY_KEYSTORE_PATH")
+    val releaseStorePassword = System.getenv("SANY_KEYSTORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("SANY_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("SANY_KEY_PASSWORD")
+
+    signingConfigs {
+        create("release") {
+            if (!releaseStoreFile.isNullOrBlank()) {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
     defaultConfig {
         applicationId = "com.sany.iptv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("1").get().toInt()
+        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.0").get()
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (!releaseStoreFile.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     compileOptions {
