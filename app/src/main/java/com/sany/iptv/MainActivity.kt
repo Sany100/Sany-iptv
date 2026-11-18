@@ -14,10 +14,13 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import java.net.URL
 import kotlin.concurrent.thread
@@ -379,49 +382,92 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun play(channel: Channel) {
+        if (channel.url.isBlank()) {
+            toast("এই চ্যানেলের stream link নেই")
+            return
+        }
+        val streamUrl = channel.url.trim()
+        if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
+            toast("Unsupported stream URL")
+            return
+        }
+
+        closePlayer()
         currentChannel = channel
-        if (channel.url.isBlank()) { toast("This item has no stream URL"); return }
-        if (playerView != null) closePlayer()
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15000, 50000, 1000, 2500)
-            .build()
-        val p = player ?: ExoPlayer.Builder(this)
-            .setLoadControl(loadControl)
+
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("SANY IPTV/1.0 (Android)")
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(20000)
+            .setAllowCrossProtocolRedirects(true)
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(this)
+            .setDataSourceFactory(httpFactory)
+
+        val p = player ?: ExoPlayer.Builder(this, mediaSourceFactory)
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(8000, 30000, 1000, 2000)
+                    .build()
+            )
             .build().also { created ->
                 created.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
-                        runOnUiThread { toast("Playback failed: ${error.errorCodeName}") }
+                        runOnUiThread {
+                            toast("প্লে হচ্ছে না: ${error.errorCodeName}")
+                        }
+                    }
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_READY) {
+                            runOnUiThread { /* first frame can now start */ }
+                        }
                     }
                 })
                 player = created
             }
+
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         playerScreen = screen
         val view = PlayerView(this).apply {
             useController = true
             player = p
-            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
         screen.addView(view, FrameLayout.LayoutParams(-1, -1))
+
         val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xCC000000.toInt(), Color.TRANSPARENT))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xCC000000.toInt(), Color.TRANSPARENT)
+            )
         }
-        val back = text("‹", 34, white, true).apply { gravity = Gravity.CENTER; setOnClickListener { closePlayer() } }
+        val back = text("‹", 34, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            setOnClickListener { closePlayer() }
+        }
         header.addView(back, LinearLayout.LayoutParams(dp(42), dp(48)))
-        header.addView(text(channel.name, 16, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(text(channel.name, 16, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f))
         screen.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
-        p.setMediaItem(MediaItem.fromUri(channel.url))
+
+        val lowerUrl = streamUrl.substringBefore("?").lowercase()
+        val itemBuilder = MediaItem.Builder().setUri(streamUrl)
+        when {
+            lowerUrl.endsWith(".m3u8") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            lowerUrl.endsWith(".mpd") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+        }
+        p.setMediaItem(itemBuilder.build())
         p.prepare()
         p.playWhenReady = true
-        prefs.edit().putString("last_channel", channel.url).apply()
+        prefs.edit().putString("last_channel", streamUrl).apply()
     }
 
     private fun closePlayer() {
-        player?.pause()
+        player?.stop()
         playerView?.player = null
         playerView = null
         playerScreen?.let { root.removeView(it) }
