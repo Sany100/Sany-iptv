@@ -64,7 +64,7 @@ class MainActivity : AppCompatActivity() {
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(12))
-            background = rounded(panel, 0, 0, 22, 22)
+            background = rounded(panel, 22)
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val brand = text("SANY", 25, accent, true)
