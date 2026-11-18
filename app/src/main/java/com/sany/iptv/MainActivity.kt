@@ -695,6 +695,7 @@ class MainActivity : AppCompatActivity() {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerFullscreenButton?.text = if (enabled) "⤢  EXIT" else "⛶  FULL"
+        if (!enabled) playerFullscreenButton?.visibility = View.VISIBLE
         playerView?.layoutParams = FrameLayout.LayoutParams(
             -1, if (enabled) -1 else dp(230), if (enabled) Gravity.CENTER else Gravity.TOP
         )
