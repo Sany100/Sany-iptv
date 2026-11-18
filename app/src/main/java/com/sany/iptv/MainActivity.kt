@@ -23,6 +23,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -40,7 +41,13 @@ class MainActivity : AppCompatActivity() {
     private val bg get() = if (isLight) Color.rgb(246, 248, 251) else Color.rgb(8, 12, 21)
     private val panel get() = if (isLight) Color.WHITE else Color.rgb(18, 25, 39)
     private val panel2 get() = if (isLight) Color.rgb(232, 237, 244) else Color.rgb(25, 34, 51)
-    private val accent = Color.rgb(0, 170, 130)
+    private val accent: Int
+        get() = when (prefs.getString("accent_color", "teal")) {
+            "blue" -> Color.rgb(55, 145, 255)
+            "purple" -> Color.rgb(165, 105, 255)
+            "orange" -> Color.rgb(255, 145, 55)
+            else -> Color.rgb(0, 190, 150)
+        }
     private val muted get() = if (isLight) Color.rgb(90, 101, 118) else Color.rgb(148, 160, 180)
     private val white get() = if (isLight) Color.rgb(20, 27, 38) else Color.WHITE
     private val prefs by lazy { getSharedPreferences("sany_iptv", MODE_PRIVATE) }
@@ -227,6 +234,12 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(10), dp(9), dp(10), dp(9))
                 background = glass(12)
             }
+            val number = text((index + 1).toString().padStart(2, '0'), 12, accent, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(2), 0, dp(8), 0)
+                minWidth = dp(28)
+            }
+            row.addView(number, LinearLayout.LayoutParams(dp(30), dp(46)))
             val fallbackLogo = text(channel.name.take(1).uppercase(), 18, accent, true).apply {
                 gravity = Gravity.CENTER
                 isClickable = false
@@ -339,6 +352,21 @@ class MainActivity : AppCompatActivity() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(box)
         box.addView(text("APPEARANCE", 11, accent, true).apply { setPadding(0, dp(10), 0, dp(12)) })
+        settingsCard(box, "Customize accent color", "Change the app highlight color") {
+            val labels = arrayOf("Teal", "Blue", "Purple", "Orange")
+            val values = arrayOf("teal", "blue", "purple", "orange")
+            AlertDialog.Builder(this).setTitle("Accent color")
+                .setSingleChoiceItems(labels, values.indexOf(prefs.getString("accent_color", "teal")).coerceAtLeast(0)) { dialog, which ->
+                    prefs.edit().putString("accent_color", values[which]).apply()
+                    dialog.dismiss()
+                    renderHome()
+                }.setNegativeButton("CANCEL", null).show()
+        }
+        settingsCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data") {
+            val enabled = prefs.getBoolean("low_data_mode", false)
+            prefs.edit().putBoolean("low_data_mode", !enabled).apply()
+            toast(if (!enabled) "Low internet mode ON" else "Low internet mode OFF")
+        }
         settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
             val modes = arrayOf("Day mode", "Night mode", "System default")
             val values = arrayOf("light", "dark", "system")
@@ -503,7 +531,7 @@ class MainActivity : AppCompatActivity() {
         }
         val streamUrl = channel.url.trim()
         if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
-            toast("Unsupported stream URL")
+            toast("Unsupported stream URL — FTP needs server credentials and setup")
             return
         }
 
@@ -520,9 +548,14 @@ class MainActivity : AppCompatActivity() {
             .setDataSourceFactory(httpFactory)
 
         val p = player ?: ExoPlayer.Builder(this, mediaSourceFactory)
+            .setTrackSelector(DefaultTrackSelector(this).apply {
+                if (prefs.getBoolean("low_data_mode", false)) {
+                    setParameters(buildUponParameters().setMaxVideoBitrate(650_000))
+                }
+            })
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(1500, 12000, 250, 500)
+                    .setBufferDurationsMs(1000, 10000, 300, 500)
                     .build()
             )
             .build().also { created ->
