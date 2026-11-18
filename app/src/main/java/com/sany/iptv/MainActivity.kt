@@ -62,6 +62,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var listContainer: LinearLayout
     private var playerScreen: FrameLayout? = null
     private var displayedLimit = 120
+    private var playerHeader: LinearLayout? = null
+    private var isPlayerFullscreen = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,14 +99,14 @@ class MainActivity : AppCompatActivity() {
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(12))
-            background = rounded(panel, 22)
+            background = glass(22)
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val brand = text("SANY", 25, accent, true)
+        val brand = text("SANY", 32, accent, true).apply { letterSpacing = 0.12f; setShadowLayer(dp(10).toFloat(), 0f, 0f, Color.argb(75, 0, 220, 180)) }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
-        top.addView(text("IPTV PLAYER", 10, muted, true).apply { letterSpacing = 0.18f; setPadding(0, dp(2), 0, dp(14)) })
+        top.addView(text("✦  PREMIUM IPTV EXPERIENCE", 10, muted, true).apply { letterSpacing = 0.16f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         titleRow.addView(text(section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
         titleRow.addView(iconButton("＋") { showPlaylistDialog() })
@@ -121,7 +123,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(8), dp(5), dp(8))
-            setBackgroundColor(panel)
+            background = glass(18)
         }
         home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(66)))
         renderSection()
@@ -153,7 +155,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(white); setHintTextColor(muted); textSize = 14f
             isSingleLine = true
             setPadding(dp(14), 0, dp(14), 0)
-            background = rounded(panel2, 12)
+            background = glass(12)
             setText(searchQuery)
         }
         contentArea.addView(search, LinearLayout.LayoutParams(-1, dp(48)))
@@ -215,7 +217,7 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(9), dp(10), dp(9))
-                background = rounded(panel, 12)
+                background = glass(12)
             }
             val fallbackLogo = text(channel.name.take(1).uppercase(), 18, accent, true).apply {
                 gravity = Gravity.CENTER
@@ -223,7 +225,7 @@ class MainActivity : AppCompatActivity() {
             }
             val logo = ImageView(this).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                background = rounded(panel2, 10)
+                background = glass(10)
                 setPadding(dp(4), dp(4), dp(4), dp(4))
                 contentDescription = "${channel.name} logo"
             }
@@ -346,7 +348,7 @@ class MainActivity : AppCompatActivity() {
     private fun settingsCard(parent: LinearLayout, title: String, subtitle: String, action: () -> Unit) {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(15), dp(14), dp(15), dp(14))
-            background = rounded(panel, 12); setOnClickListener { action() }
+            background = glass(12); setOnClickListener { action() }
         }
         card.addView(text(title, 15, white, true))
         card.addView(text(subtitle, 12, muted).apply { setPadding(0, dp(5), 0, 0) })
@@ -460,6 +462,8 @@ class MainActivity : AppCompatActivity() {
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         playerScreen = screen
+        isPlayerFullscreen = false
+        playerHeader = null
         val view = PlayerView(this).apply {
             useController = true
             player = p
@@ -504,7 +508,21 @@ class MainActivity : AppCompatActivity() {
         }
         header.addView(back, LinearLayout.LayoutParams(dp(42), dp(48)))
         header.addView(text(channel.name, 16, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f))
+        playerHeader = header
         screen.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        val fullscreenButton = text("⛶", 27, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(0x99000000.toInt())
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), 0x66FFFFFF)
+            }
+            setOnClickListener { setPlayerFullscreen(!isPlayerFullscreen) }
+            contentDescription = "Toggle fullscreen"
+        }
+        screen.addView(fullscreenButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(12); rightMargin = dp(12)
+        })
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
 
         val lowerUrl = streamUrl.substringBefore("?").lowercase()
@@ -531,7 +549,19 @@ class MainActivity : AppCompatActivity() {
         toast("Playing: ${channels[nextIndex].name}")
     }
 
+    private fun setPlayerFullscreen(enabled: Boolean) {
+        isPlayerFullscreen = enabled
+        playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
+        window.decorView.systemUiVisibility = if (enabled) {
+            (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
+        } else 0
+    }
+
     private fun closePlayer() {
+        if (isPlayerFullscreen) setPlayerFullscreen(false)
+        playerHeader = null
         player?.stop()
         playerView?.player = null
         playerView = null
@@ -594,6 +624,14 @@ class MainActivity : AppCompatActivity() {
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
         text = value; textSize = size.toFloat(); setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
+    }
+    private fun glass(radius: Int) = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        if (isLight) intArrayOf(Color.argb(238, 255, 255, 255), Color.argb(218, 235, 243, 250))
+        else intArrayOf(Color.argb(225, 30, 43, 64), Color.argb(205, 17, 27, 44))
+    ).apply {
+        cornerRadius = dp(radius).toFloat()
+        setStroke(dp(1), if (isLight) Color.argb(150, 255, 255, 255) else Color.argb(75, 210, 235, 255))
     }
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
