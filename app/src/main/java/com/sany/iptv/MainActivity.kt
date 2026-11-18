@@ -524,8 +524,9 @@ class MainActivity : AppCompatActivity() {
         val fullscreenButton = text("⛶  FULL", 13, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
             setPadding(dp(13), 0, dp(13), 0)
-            background = glass(14).mutate().apply {
+            background = GradientDrawable().apply {
                 setColor(0xCC101A28.toInt())
+                cornerRadius = dp(14).toFloat()
                 setStroke(dp(1), 0x99FFFFFF.toInt())
             }
             elevation = dp(8).toFloat()
@@ -632,17 +633,22 @@ class MainActivity : AppCompatActivity() {
     private fun actionButton(label: String, action: () -> Unit) = TextView(this).apply {
         text = label; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
         setTextColor(bg); gravity = Gravity.CENTER
-        background = rounded(accent, 12); setOnClickListener { action() }
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.argb(235, 0, 190, 150), Color.argb(205, 0, 115, 115))
+        ).apply { cornerRadius = dp(12).toFloat(); setStroke(dp(1), Color.argb(150, 200, 255, 240)) }
+        elevation = dp(2).toFloat()
+        setOnClickListener { action() }
     }
     private fun iconButton(label: String, action: () -> Unit) = TextView(this).apply {
         text = label; textSize = 22f; setTextColor(white); gravity = Gravity.CENTER
-        background = rounded(panel2, 12); setOnClickListener { action() }
+        background = glass(12); elevation = dp(2).toFloat(); setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply { leftMargin = dp(8) }
     }
     private fun pill(label: String, color: Int) = TextView(this).apply {
         text = label; textSize = 9f; typeface = Typeface.DEFAULT_BOLD
         setTextColor(color); setPadding(dp(10), dp(7), dp(10), dp(7))
-        background = rounded(panel2, 30)
+        background = glass(30)
     }
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
         text = value; textSize = size.toFloat(); setTextColor(color)
