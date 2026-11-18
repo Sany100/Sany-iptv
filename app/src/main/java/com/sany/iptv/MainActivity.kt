@@ -471,7 +471,7 @@ class MainActivity : AppCompatActivity() {
                 val tagVersion = release.optString("tag_name").trim().removePrefix("v").removePrefix("V")
                 // Some releases have a title like "SANY IPTV v1.2" while the tag is still V1.1.
                 // Prefer the explicit version in the release title when it is newer than the tag.
-                val titleVersion = Regex("(?i)\\\\bv?([0-9]+(?:\\\\.[0-9]+){1,3})\\\\b")
+                val titleVersion = Regex("(?i)\\bv?([0-9]+(?:\\.[0-9]+){1,3})\\b")
                     .find(release.optString("name"))?.groupValues?.getOrNull(1).orEmpty()
                 val tag = if (titleVersion.isNotBlank() && compareVersions(titleVersion, tagVersion) > 0)
                     titleVersion else tagVersion
