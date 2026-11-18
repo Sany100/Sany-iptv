@@ -1,7 +1,9 @@
 package com.sany.iptv
 
 import android.app.Activity
+import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
+import android.app.PictureInPictureParams
 import android.content.Intent
 import android.net.Uri
 import android.content.pm.ActivityInfo
@@ -15,6 +17,8 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
+import android.util.Rational
 import android.content.res.Configuration
 import android.view.Gravity
 import android.view.View
@@ -68,6 +72,7 @@ class MainActivity : AppCompatActivity() {
     private var player: ExoPlayer? = null
     private var playerView: PlayerView? = null
     private var currentChannel: Channel? = null
+    private var previousChannel: Channel? = null
     private lateinit var root: FrameLayout
     private lateinit var home: LinearLayout
     private lateinit var contentArea: LinearLayout
@@ -120,6 +125,57 @@ class MainActivity : AppCompatActivity() {
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         renderHome()
+        showStartupAnimation()
+    }
+
+    private fun showStartupAnimation() {
+        val splash = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(7, 12, 22))
+            elevation = dp(30).toFloat()
+        }
+        val center = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+        val logo = text("SANY", 46, Color.rgb(0, 220, 175), true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.20f
+            setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(170, 0, 220, 175))
+            alpha = 0f
+            scaleX = 0.68f
+            scaleY = 0.68f
+            rotationY = -78f
+            rotationX = 24f
+            cameraDistance = 9000f * resources.displayMetrics.density
+            translationZ = dp(22).toFloat()
+        }
+        center.addView(logo)
+        center.addView(text("IPTV", 15, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.42f
+            alpha = 0f
+        })
+        center.addView(text("YOUR ENTERTAINMENT. YOUR WAY.", 9, Color.rgb(145, 160, 180), true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.12f
+            setPadding(0, dp(12), 0, 0)
+            alpha = 0f
+        })
+        splash.addView(center, FrameLayout.LayoutParams(-1, -1))
+        root.addView(splash, FrameLayout.LayoutParams(-1, -1))
+        // A 3D entrance: the SANY wordmark rotates on its Y axis
+        // while tilting back into place, with depth and a teal glow.
+        logo.animate()
+            .alpha(1f).scaleX(1f).scaleY(1f)
+            .rotationY(360f).rotationX(0f)
+            .setDuration(1350)
+            .setInterpolator(DecelerateInterpolator(1.6f))
+            .start()
+        center.getChildAt(1).animate().alpha(1f).setStartDelay(420).setDuration(500).start()
+        center.getChildAt(2).animate().alpha(1f).setStartDelay(620).setDuration(500).start()
+        splash.animate().alpha(0f).setStartDelay(1550).setDuration(400).withEndAction {
+            root.removeView(splash)
+        }.start()
     }
 
     private fun renderHome() {
@@ -134,9 +190,14 @@ class MainActivity : AppCompatActivity() {
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
-        top.addView(text("✦  PREMIUM IPTV EXPERIENCE", 10, muted, true).apply { letterSpacing = 0.16f; setPadding(0, dp(1), 0, dp(14)) })
+        top.addView(text("✦  PREMIUM IPTV EXPERIENCE  •  WELCOME TO SANY", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         titleRow.addView(text(section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+        titleRow.addView(iconButton("#") { showChannelNumberDialog() })
+        titleRow.addView(iconButton("↶") {
+            val previous = previousChannel
+            if (previous == null) toast("আগের কোনো চ্যানেল নেই") else play(previous)
+        })
         titleRow.addView(iconButton("＋") { showPlaylistDialog() })
         titleRow.addView(iconButton("⋮") { showQuickMenu() })
         top.addView(titleRow)
@@ -724,6 +785,31 @@ class MainActivity : AppCompatActivity() {
         if (section == "Favorites") renderListOnly() else renderListOnly()
     }
 
+    private fun showChannelNumberDialog() {
+        if (channels.isEmpty()) {
+            toast("আগে একটি playlist যোগ করুন")
+            return
+        }
+        val input = EditText(this).apply {
+            hint = "Channel number (1-${channels.size})"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setSingleLine(true)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Jump to channel")
+            .setMessage("চ্যানেলের নম্বর লিখে সরাসরি চালু করুন")
+            .setView(input)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("PLAY") { _, _ ->
+                val number = input.text.toString().toIntOrNull()
+                val target = number?.let { channels.getOrNull(it - 1) }
+                if (target == null) toast("সঠিক channel number দিন") else play(target)
+            }
+            .show()
+        input.requestFocus()
+    }
+
     private fun play(channel: Channel) {
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
@@ -739,6 +825,8 @@ class MainActivity : AppCompatActivity() {
         // First playback opens fullscreen; a switch from portrait stays portrait.
         val wasAlreadyPlaying = playerView != null
         val keepFullscreenMode = if (wasAlreadyPlaying) isPlayerFullscreen else true
+        val oldChannel = currentChannel
+        if (oldChannel != null && oldChannel.url != channel.url) previousChannel = oldChannel
         closePlayer(keepOrientation = true)
         currentChannel = channel
 
@@ -986,6 +1074,27 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && playerView != null && player?.isPlaying == true) {
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+                .build()
+            enterPictureInPictureMode(params)
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) {
+            playerHeader?.visibility = View.GONE
+            playerFullscreenButton?.visibility = View.GONE
+        } else if (playerView != null) {
+            playerHeader?.visibility = View.VISIBLE
+            playerFullscreenButton?.visibility = View.VISIBLE
         }
     }
 
