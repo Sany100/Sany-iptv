@@ -194,7 +194,12 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(15), 0, dp(15), 0)
                 background = if (active) rounded(Color.argb(220, 0, 170, 130), 30, Color.argb(160, 160, 255, 230), 1)
                     else glass(30)
-                setOnClickListener { selectedGroup = item; renderListOnly() }
+                setOnClickListener {
+                    animate().scaleX(0.92f).scaleY(0.92f).setDuration(65).withEndAction {
+                        animate().scaleX(1f).scaleY(1f).setDuration(130).start()
+                        selectedGroup = item; renderListOnly()
+                    }.start()
+                }
             }
             categoryRow.addView(chip, LinearLayout.LayoutParams(-2, dp(34)).apply { rightMargin = dp(7) })
         }
@@ -264,7 +269,9 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { toggleFavorite(channel) }
             }
             row.addView(star, LinearLayout.LayoutParams(dp(38), dp(44)))
-            row.setOnClickListener { play(channel) }
+            row.setOnClickListener {
+                row.animate().alpha(0.68f).scaleX(0.985f).scaleY(0.985f).setDuration(75).withEndAction { play(channel) }.start()
+            }
             row.setOnLongClickListener { toggleFavorite(channel); true }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
         }
@@ -312,7 +319,14 @@ class MainActivity : AppCompatActivity() {
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setOnClickListener { section = name; selectedGroup = "All"; searchQuery = ""; renderHome() }
+                setOnClickListener {
+                    animate().scaleX(0.94f).scaleY(0.94f).setDuration(65).withEndAction {
+                        section = name; selectedGroup = "All"; searchQuery = ""
+                        renderHome()
+                        home.alpha = 0.72f; home.scaleX = 0.985f; home.scaleY = 0.985f
+                        home.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(190).start()
+                    }.start()
+                }
             }
             item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
             item.addView(text(name, 10, if (active) accent else muted, active).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
@@ -339,6 +353,10 @@ class MainActivity : AppCompatActivity() {
         }
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Add a playlist URL or import an M3U file") { showPlaylistDialog() }
+        box.addView(text("MULTI-SERVER", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        settingsCard(box, "Live TV server", "Separate live channels playlist") { editServer("server_live_url", "Live TV server") }
+        settingsCard(box, "Series / Anime server", "Dedicated series and anime playlist") { editServer("server_series_url", "Series / Anime server") }
+        settingsCard(box, "Extra / VOD server", "Another playlist for movies and other video") { editServer("server_extra_url", "Extra / VOD server") }
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             val url = prefs.getString("playlist_url", null)
             if (url.isNullOrBlank()) showPlaylistDialog() else loadFromUrl(url)
@@ -364,6 +382,58 @@ class MainActivity : AppCompatActivity() {
         card.addView(text(title, 15, white, true))
         card.addView(text(subtitle, 12, muted).apply { setPadding(0, dp(5), 0, 0) })
         parent.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
+    }
+
+    private fun editServer(prefKey: String, title: String) {
+        val input = EditText(this).apply {
+            hint = "https://your-provider.example/playlist.m3u"
+            setSingleLine(true); setText(prefs.getString(prefKey, ""))
+            setTextColor(white); setHintTextColor(muted)
+        }
+        val wrap = LinearLayout(this).apply {
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(input, LinearLayout.LayoutParams(-1, dp(52)))
+        }
+        AlertDialog.Builder(this).setTitle(title).setView(wrap)
+            .setPositiveButton("CONNECT") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.isBlank()) toast("Server URL দিন") else loadServerPlaylist(prefKey, url)
+            }
+            .setNeutralButton("REMOVE") { _, _ -> prefs.edit().remove(prefKey).apply(); toast("$title removed") }
+            .setNegativeButton("CANCEL", null).show()
+    }
+
+    private fun loadServerPlaylist(prefKey: String, url: String) {
+        if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) {
+            toast("সঠিক HTTP/HTTPS playlist URL দিন"); return
+        }
+        toast("Connecting server…")
+        thread {
+            try {
+                val content = URL(url).openConnection().apply {
+                    connectTimeout = 9000; readTimeout = 12000
+                }.getInputStream().bufferedReader().use { it.readText() }
+                val parsed = M3uParser.parse(content)
+                val prefix = when (prefKey) {
+                    "server_live_url" -> "Live • "
+                    "server_series_url" -> "Series • "
+                    else -> "VOD • "
+                }
+                val tagged = parsed.map { it.copy(group = prefix + it.group) }
+                runOnUiThread {
+                    if (tagged.isEmpty()) toast("এই সার্ভারে কোনো playable item নেই")
+                    else {
+                        val urls = tagged.map { it.url }.toSet()
+                        channels = (channels.filterNot { it.url in urls } + tagged).distinctBy { it.url }
+                        prefs.edit().putString(prefKey, url).apply()
+                        selectedGroup = "All"; renderHome()
+                        toast("Server connected: " + tagged.size + " items")
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { toast("Server connection failed: " + (e.message ?: "network error")) }
+            }
+        }
     }
 
     private fun showPlaylistDialog() {
@@ -442,8 +512,8 @@ class MainActivity : AppCompatActivity() {
 
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("SANY IPTV/1.0 (Android)")
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(20000)
+            .setConnectTimeoutMs(8000)
+            .setReadTimeoutMs(12000)
             .setAllowCrossProtocolRedirects(true)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -452,7 +522,7 @@ class MainActivity : AppCompatActivity() {
         val p = player ?: ExoPlayer.Builder(this, mediaSourceFactory)
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(8000, 30000, 1000, 2000)
+                    .setBufferDurationsMs(1500, 12000, 250, 500)
                     .build()
             )
             .build().also { created ->
@@ -569,14 +639,12 @@ class MainActivity : AppCompatActivity() {
         playerFullscreenButton?.text = if (enabled) "⤢  EXIT" else "⛶  FULL"
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        if (!enabled) { applySystemBars(); return }
         window.decorView.systemUiVisibility = if (enabled) {
             (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
-        } else {
-            applySystemBars()
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        }
+        } else View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     private fun closePlayer() {
