@@ -3,6 +3,7 @@ package com.sany.iptv
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.BitmapFactory
 import android.view.GestureDetector
@@ -64,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private var displayedLimit = 120
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
+    private var playerFullscreenButton: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -182,7 +184,7 @@ class MainActivity : AppCompatActivity() {
         val options = when (section) {
             "Favorites" -> listOf("All", "★ Favorites")
             "Movies" -> listOf("All") + groups.drop(1)
-            "Series" -> listOf("All") + groups.drop(1)
+            "Series" -> listOf("All", "Anime") + groups.drop(1).filterNot { it.equals("Anime", true) }
             else -> groups
         }
         options.forEach { item ->
@@ -190,7 +192,8 @@ class MainActivity : AppCompatActivity() {
             val chip = text(item, 12, if (active) bg else muted, true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(15), 0, dp(15), 0)
-                background = rounded(if (active) accent else panel2, 30)
+                background = if (active) rounded(Color.argb(220, 0, 170, 130), 30, Color.argb(160, 160, 255, 230), 1)
+                    else glass(30)
                 setOnClickListener { selectedGroup = item; renderListOnly() }
             }
             categoryRow.addView(chip, LinearLayout.LayoutParams(-2, dp(34)).apply { rightMargin = dp(7) })
@@ -281,7 +284,12 @@ class MainActivity : AppCompatActivity() {
                 "Favorites" -> c.url in favorites
                 else -> !isMovie(c) && !isSeries(c)
             }
-            val groupMatch = selectedGroup == "All" || (selectedGroup == "★ Favorites" && c.url in favorites) || c.group == selectedGroup
+            val groupMatch = when {
+                selectedGroup == "All" -> true
+                selectedGroup == "★ Favorites" -> c.url in favorites
+                section == "Series" && selectedGroup == "Anime" -> isAnime(c)
+                else -> c.group.equals(selectedGroup, true)
+            }
             val q = searchQuery.trim().lowercase()
             typeMatch && groupMatch && (q.isBlank() || c.name.lowercase().contains(q) || c.group.lowercase().contains(q))
         }
@@ -290,8 +298,11 @@ class MainActivity : AppCompatActivity() {
     private fun isMovie(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
         listOf("movie", "movies", "vod", "film", "4k film").any(it::contains) || c.url.substringBefore("?").lowercase().matches(Regex(".*\\.(mp4|mkv|avi|mov)$"))
     }
-    private fun isSeries(c: Channel) = (c.group + " " + c.name).lowercase().let {
-        listOf("series", "season", "episode", "tv show", "tvshows").any(it::contains)
+    private fun isAnime(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
+        listOf("anime", "animation", "animé").any(it::contains)
+    }
+    private fun isSeries(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
+        isAnime(c) || listOf("series", "season", "episode", "tv show", "tvshows").any(it::contains)
     }
 
     private fun renderBottomNav() {
@@ -510,18 +521,20 @@ class MainActivity : AppCompatActivity() {
         header.addView(text(channel.name, 16, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f))
         playerHeader = header
         screen.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
-        val fullscreenButton = text("⛶", 27, Color.WHITE, true).apply {
+        val fullscreenButton = text("⛶  FULL", 13, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                setColor(0x99000000.toInt())
-                cornerRadius = dp(14).toFloat()
-                setStroke(dp(1), 0x66FFFFFF)
+            setPadding(dp(13), 0, dp(13), 0)
+            background = glass(14).mutate().apply {
+                setColor(0xCC101A28.toInt())
+                setStroke(dp(1), 0x99FFFFFF.toInt())
             }
+            elevation = dp(8).toFloat()
             setOnClickListener { setPlayerFullscreen(!isPlayerFullscreen) }
             contentDescription = "Toggle fullscreen"
         }
-        screen.addView(fullscreenButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.END).apply {
-            topMargin = dp(12); rightMargin = dp(12)
+        playerFullscreenButton = fullscreenButton
+        screen.addView(fullscreenButton, FrameLayout.LayoutParams(-2, dp(46), Gravity.BOTTOM or Gravity.END).apply {
+            bottomMargin = dp(24); rightMargin = dp(16)
         })
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
 
@@ -552,16 +565,25 @@ class MainActivity : AppCompatActivity() {
     private fun setPlayerFullscreen(enabled: Boolean) {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
+        playerFullscreenButton?.text = if (enabled) "⤢  EXIT" else "⛶  FULL"
+        requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         window.decorView.systemUiVisibility = if (enabled) {
             (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
-        } else 0
+        } else {
+            applySystemBars()
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        }
     }
 
     private fun closePlayer() {
         if (isPlayerFullscreen) setPlayerFullscreen(false)
         playerHeader = null
+        playerFullscreenButton = null
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        applySystemBars()
         player?.stop()
         playerView?.player = null
         playerView = null
@@ -595,7 +617,8 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (playerView != null) closePlayer() else if (section != "Live TV") {
+        if (playerView != null && isPlayerFullscreen) setPlayerFullscreen(false)
+        else if (playerView != null) closePlayer() else if (section != "Live TV") {
             section = "Live TV"; selectedGroup = "All"; searchQuery = ""; renderHome()
         } else super.onBackPressed()
     }
