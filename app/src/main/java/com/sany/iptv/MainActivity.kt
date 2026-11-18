@@ -315,20 +315,80 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openCircleFtpSeries() {
+        val pageUrl = "http://new.circleftp.net/"
+        val status = text("ওয়েবসাইট লোড হচ্ছে…", 11, muted)
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = false
+            max = 100
+            progress = 0
+        }
         val webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.databaseEnabled = true
             settings.loadsImagesAutomatically = true
             settings.useWideViewPort = true
             settings.loadWithOverviewMode = true
-            webViewClient = WebViewClient()
-            webChromeClient = WebChromeClient()
-            setBackgroundColor(bg)
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.setSupportMultipleWindows(false)
+            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+            settings.userAgentString = "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+            CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+            webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                    status.text = "ওয়েবসাইট লোড হচ্ছে…"
+                    progress.visibility = View.VISIBLE
+                    progress.progress = 0
+                }
+                override fun onPageFinished(view: WebView, url: String?) {
+                    status.text = url ?: "লোড সম্পন্ন"
+                    progress.visibility = View.GONE
+                }
+                override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
+                    if (request.isForMainFrame) {
+                        status.text = "লোড হয়নি: ${error.description}"
+                        progress.visibility = View.GONE
+                    }
+                }
+                override fun onReceivedHttpError(view: WebView, request: android.webkit.WebResourceRequest, response: android.webkit.WebResourceResponse) {
+                    if (request.isForMainFrame) {
+                        status.text = "সার্ভার Error: HTTP ${response.statusCode}"
+                        progress.visibility = View.GONE
+                    }
+                }
+                override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                    val url = request.url.toString()
+                    return if (url.startsWith("http://") || url.startsWith("https://")) {
+                        view.loadUrl(url)
+                        true
+                    } else true
+                }
+            }
+            webChromeClient = object : WebChromeClient() {
+                override fun onProgressChanged(view: WebView, newProgress: Int) {
+                    progress.progress = newProgress
+                    progress.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
+                }
+            }
+            setBackgroundColor(Color.WHITE)
         }
         val wrapper = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(8), dp(10), dp(8))
-            addView(text("Circle FTP • Series", 16, white, true).apply { setPadding(dp(4), dp(6), dp(4), dp(10)) })
+            val header = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(text("Circle FTP • Series", 16, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+                addView(iconButton("↻") { webView.reload() })
+                addView(iconButton("↗") {
+                    try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(pageUrl))) }
+                    catch (_: Exception) { toast("ব্রাউজার পাওয়া যায়নি") }
+                })
+            }
+            addView(header, LinearLayout.LayoutParams(-1, -2))
+            addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); bottomMargin = dp(4) })
+            addView(progress, LinearLayout.LayoutParams(-1, dp(3)))
             addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
         }
         val dialog = AlertDialog.Builder(this).setView(wrapper).setNegativeButton("CLOSE", null).create()
@@ -338,7 +398,7 @@ class MainActivity : AppCompatActivity() {
         dialog.setOnDismissListener { webView.stopLoading(); webView.destroy() }
         dialog.show()
         dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.96f).toInt(), (resources.displayMetrics.heightPixels * 0.88f).toInt())
-        webView.loadUrl("http://new.circleftp.net/")
+        webView.loadUrl(pageUrl)
     }
     private fun renderCategories() {
         categoryRow.removeAllViews()
