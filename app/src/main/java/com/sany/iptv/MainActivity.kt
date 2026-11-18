@@ -308,7 +308,7 @@ class MainActivity : AppCompatActivity() {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val input = EditText(this).apply {
             hint = "Search series..."; setTextColor(white); setHintTextColor(muted)
-            textSize = 14f; singleLine = true; setPadding(dp(13), 0, dp(10), 0)
+            textSize = 14f; isSingleLine = true; setPadding(dp(13), 0, dp(10), 0)
             background = glass(12); setText(onlineSeriesQuery)
         }
         row.addView(input, LinearLayout.LayoutParams(0, dp(46), 1f))
