@@ -42,6 +42,9 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import java.net.URL
+import java.net.HttpURLConnection
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
@@ -92,6 +95,9 @@ class MainActivity : AppCompatActivity() {
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
     private var pausedForBackground = false
+    private var onlineSeriesShows = JSONArray()
+    private var onlineSeriesLoading = false
+    private var onlineSeriesQuery = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -253,6 +259,10 @@ class MainActivity : AppCompatActivity() {
             renderSettings()
             return
         }
+        if (section == "Series") {
+            renderOnlineSeriesCatalog()
+            return
+        }
         if (channels.isEmpty()) {
             val empty = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -291,6 +301,119 @@ class MainActivity : AppCompatActivity() {
         listScroll.addView(listContainer)
         contentArea.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         renderChannelRows(listContainer)
+    }
+
+    private fun renderOnlineSeriesCatalog() {
+        contentArea.addView(text("DISCOVER TV SERIES", 12, accent, true))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val input = EditText(this).apply {
+            hint = "Search series..."; setTextColor(white); setHintTextColor(muted)
+            textSize = 14f; singleLine = true; setPadding(dp(13), 0, dp(10), 0)
+            background = glass(12); setText(onlineSeriesQuery)
+        }
+        row.addView(input, LinearLayout.LayoutParams(0, dp(46), 1f))
+        row.addView(actionButton("SEARCH") {
+            onlineSeriesQuery = input.text.toString().trim()
+            fetchOnlineSeries(onlineSeriesQuery)
+        }, LinearLayout.LayoutParams(dp(94), dp(46)).apply { leftMargin = dp(8) })
+        contentArea.addView(row, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(9) })
+        contentArea.addView(text(if (onlineSeriesLoading) "Loading series..." else "TVmaze • Online series catalogue", 11, muted).apply { setPadding(0, dp(8), 0, dp(8)) })
+        val scroll = ScrollView(this)
+        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(list)
+        contentArea.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        if (onlineSeriesShows.length() == 0 && !onlineSeriesLoading) {
+            list.addView(text("Load popular series or search by name.", 14, muted).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(28)) })
+            list.addView(actionButton("LOAD POPULAR SERIES") { fetchOnlineSeries("") }, LinearLayout.LayoutParams(-1, dp(48)))
+        }
+        for (i in 0 until onlineSeriesShows.length()) {
+            val show = onlineSeriesShows.optJSONObject(i) ?: continue
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                background = glass(12); setPadding(dp(9), dp(9), dp(9), dp(9)); isFocusable = true
+            }
+            val poster = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; background = rounded(panel2, 8) }
+            val imageUrl = show.optJSONObject("image")?.optString("medium").orEmpty()
+            if (imageUrl.startsWith("http")) {
+                poster.tag = imageUrl
+                thread {
+                    try {
+                        val bitmap = URL(imageUrl).openConnection().getInputStream().use { BitmapFactory.decodeStream(it) }
+                        if (bitmap != null) runOnUiThread { if (poster.tag == imageUrl) poster.setImageBitmap(bitmap) }
+                    } catch (_: Exception) { }
+                }
+            }
+            card.addView(poster, LinearLayout.LayoutParams(dp(82), dp(116)))
+            val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(4), 0) }
+            info.addView(text(show.optString("name", "Untitled"), 15, white, true))
+            val genres = show.optJSONArray("genres")
+            val genreText = if (genres == null) "" else (0 until genres.length()).joinToString(" • ") { genres.optString(it) }
+            info.addView(text(genreText.ifBlank { show.optString("status", "TV Series") }, 11, muted).apply { setPadding(0, dp(5), 0, dp(7)) })
+            val rating = show.optJSONObject("rating")?.optDouble("average", 0.0) ?: 0.0
+            info.addView(text(if (rating > 0) "★ " + rating else show.optString("premiered", "").take(4), 11, accent))
+            info.addView(text("VIEW DETAILS  ›", 10, accent, true).apply { setPadding(0, dp(9), 0, 0) })
+            card.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
+            card.setOnClickListener { showOnlineSeriesDetails(show) }
+            list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        }
+    }
+
+    private fun fetchOnlineSeries(query: String) {
+        onlineSeriesLoading = true
+        renderSection()
+        thread {
+            try {
+                val endpoint = if (query.isBlank()) "https://api.tvmaze.com/shows?page=0"
+                    else "https://api.tvmaze.com/search/shows?q=" + java.net.URLEncoder.encode(query, "UTF-8")
+                val connection = URL(endpoint).openConnection() as HttpURLConnection
+                connection.connectTimeout = 10000; connection.readTimeout = 12000
+                val parsed = JSONArray(connection.inputStream.bufferedReader().use { it.readText() })
+                connection.disconnect()
+                val results = JSONArray()
+                for (i in 0 until parsed.length()) {
+                    val item = parsed.optJSONObject(i) ?: continue
+                    val result = if (query.isBlank()) item else item.optJSONObject("show")
+                    if (result != null) results.put(result)
+                    if (results.length() >= 60) break
+                }
+                runOnUiThread {
+                    onlineSeriesShows = results; onlineSeriesLoading = false; renderSection()
+                    if (results.length() == 0) toast("কোনো সিরিজ পাওয়া যায়নি")
+                }
+            } catch (_: Exception) {
+                runOnUiThread { onlineSeriesLoading = false; renderSection(); toast("Series load হয়নি। ইন্টারনেট পরীক্ষা করো।") }
+            }
+        }
+    }
+
+    private fun showOnlineSeriesDetails(show: JSONObject) {
+        val name = show.optString("name", "Series")
+        val summary = android.text.Html.fromHtml(show.optString("summary", "No description available"), android.text.Html.FROM_HTML_MODE_LEGACY).toString().ifBlank { "No description available" }
+        val genres = show.optJSONArray("genres")?.let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } } ?: "N/A"
+        val info = "Genres: " + genres + "\nStatus: " + show.optString("status") + "\nPremiered: " + show.optString("premiered") + "\n\n" + summary
+        AlertDialog.Builder(this).setTitle(name).setMessage(info)
+            .setPositiveButton("SHOW EPISODES") { _, _ -> fetchOnlineEpisodes(show.optInt("id"), name) }
+            .setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun fetchOnlineEpisodes(showId: Int, showName: String) {
+        thread {
+            try {
+                val connection = URL("https://api.tvmaze.com/shows/" + showId + "/episodes").openConnection() as HttpURLConnection
+                connection.connectTimeout = 10000; connection.readTimeout = 12000
+                val episodes = JSONArray(connection.inputStream.bufferedReader().use { it.readText() })
+                connection.disconnect()
+                val lines = (0 until episodes.length()).mapNotNull { i ->
+                    val ep = episodes.optJSONObject(i) ?: return@mapNotNull null
+                    "S" + ep.optInt("season").toString().padStart(2, '0') + " E" + ep.optInt("number").toString().padStart(2, '0') + " • " + ep.optString("name", "Episode")
+                }
+                runOnUiThread {
+                    AlertDialog.Builder(this).setTitle(showName + " • Episodes")
+                        .setMessage(if (lines.isEmpty()) "No episode data available." else lines.take(150).joinToString("\n"))
+                        .setPositiveButton("OK", null).show()
+                }
+            } catch (_: Exception) { runOnUiThread { toast("Episode তথ্য লোড করা যায়নি") } }
+        }
     }
 
     private fun renderCategories() {
