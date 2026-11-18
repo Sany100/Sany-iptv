@@ -849,10 +849,10 @@ class MainActivity : AppCompatActivity() {
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsToggleCard(box, "Background video playback", "Keep video playing in a floating window when you leave the app", "background_playback", true)
-        box.addView(text("MULTI-SERVER", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Live TV server", "Separate live channels playlist") { editServer("server_live_url", "Live TV server") }
-        settingsCard(box, "Series / Anime server", "Dedicated series and anime playlist") { editServer("server_series_url", "Series / Anime server") }
-        settingsCard(box, "Extra / VOD server", "Another playlist for movies and other video") { editServer("server_extra_url", "Extra / VOD server") }
+        box.addView(text("BUILT-IN SERIES / ANIME PLAYLISTS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        settingsCard(box, "Animation playlist", defaultSeriesPlaylists[0]) { loadFromUrl(defaultSeriesPlaylists[0]) }
+        settingsCard(box, "Series playlist", defaultSeriesPlaylists[1]) { loadFromUrl(defaultSeriesPlaylists[1]) }
+        settingsCard(box, "Anime playlist", defaultSeriesPlaylists[2]) { loadFromUrl(defaultSeriesPlaylists[2]) }
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             val url = prefs.getString("playlist_url", null)
             if (url.isNullOrBlank()) showPlaylistDialog() else loadFromUrl(url)
@@ -1628,11 +1628,11 @@ class MainActivity : AppCompatActivity() {
     }
     private fun glass(radius: Int) = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
-        if (isLight) intArrayOf(Color.argb(238, 255, 255, 255), Color.argb(218, 235, 243, 250))
+        if (isLight) intArrayOf(Color.WHITE, Color.WHITE)
         else intArrayOf(Color.argb(225, 30, 43, 64), Color.argb(205, 17, 27, 44))
     ).apply {
         cornerRadius = dp(radius).toFloat()
-        setStroke(dp(1), if (isLight) Color.argb(150, 255, 255, 255) else Color.argb(75, 210, 235, 255))
+        setStroke(dp(1), if (isLight) Color.rgb(232, 236, 242) else Color.argb(75, 210, 235, 255))
     }
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
