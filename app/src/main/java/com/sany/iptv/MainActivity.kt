@@ -804,14 +804,15 @@ class MainActivity : AppCompatActivity() {
                 val content = URL(url).openConnection().apply { connectTimeout = 15000; readTimeout = 25000 }
                     .getInputStream().bufferedReader().use { it.readText() }
                 val parsed = M3uParser.parse(content)
+                if (parsed.isNotEmpty()) {
+                    // Write the cache on the worker thread, not the UI thread.
+                    try { playlistCacheFile(url).writeText(content) } catch (_: Exception) { /* Keep the live playlist usable if caching fails. */ }
+                }
                 runOnUiThread {
                     if (parsed.isEmpty()) toast("No playable entries found in this playlist")
                     else {
                         channels = parsed
                         savePlaylistUrl(url)
-                        // Store the M3U text locally so a recreated Activity can restore
-                        // channels immediately without waiting for a network request.
-                        try { playlistCacheFile(url).writeText(content) } catch (_: Exception) { /* Keep the live playlist usable if caching fails. */ }
                         selectedGroup = "All"; searchQuery = ""
                         renderHome()
                         toast("Loaded " + channels.size + " items")
