@@ -3,6 +3,7 @@ package com.sany.iptv
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.BitmapFactory
@@ -374,11 +375,7 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data") {
-            val enabled = prefs.getBoolean("low_data_mode", false)
-            prefs.edit().putBoolean("low_data_mode", !enabled).apply()
-            toast(if (!enabled) "Low internet mode ON" else "Low internet mode OFF")
-        }
+        settingsToggleCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data", "low_data_mode", false)
         settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
             val modes = arrayOf("Day mode", "Night mode", "System default")
             val values = arrayOf("light", "dark", "system")
@@ -411,7 +408,58 @@ class MainActivity : AppCompatActivity() {
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
             setPadding(dp(15), dp(16), dp(15), dp(16)); background = rounded(panel, 12)
         })
+        box.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(22), dp(12), dp(24))
+            addView(text("This App Made By Sany Sarfaraz", 14, white, true))
+            addView(text("f", 25, Color.WHITE, true).apply {
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.rgb(24, 119, 242))
+                }
+                elevation = dp(3).toFloat()
+                setOnClickListener {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.facebook.com/share/1A6x5C9HTM/")))
+                    } catch (_: Exception) {
+                        toast("Facebook link খুলতে সমস্যা হয়েছে")
+                    }
+                }
+                contentDescription = "Open Sany Sarfaraz Facebook profile"
+                layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply { topMargin = dp(12) }
+            })
+        })
         contentArea.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun settingsToggleCard(
+        parent: LinearLayout,
+        title: String,
+        subtitle: String,
+        prefKey: String,
+        defaultValue: Boolean
+    ) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(15), dp(12), dp(12), dp(12))
+            background = glass(12)
+        }
+        val labels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        labels.addView(text(title, 15, white, true))
+        labels.addView(text(subtitle, 12, muted).apply { setPadding(0, dp(5), 0, 0) })
+        row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
+        val toggle = Switch(this).apply {
+            isChecked = prefs.getBoolean(prefKey, defaultValue)
+            setOnCheckedChangeListener { _, enabled ->
+                prefs.edit().putBoolean(prefKey, enabled).apply()
+                toast(if (enabled) "$title ON" else "$title OFF")
+            }
+        }
+        row.addView(toggle, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        parent.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(9) })
     }
 
     private fun settingsCard(parent: LinearLayout, title: String, subtitle: String, action: () -> Unit) {
