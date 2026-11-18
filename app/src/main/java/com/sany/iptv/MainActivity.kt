@@ -30,6 +30,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import java.net.URL
 import kotlin.concurrent.thread
 
@@ -584,13 +585,18 @@ class MainActivity : AppCompatActivity() {
                 player = created
             }
 
-        val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         playerScreen = screen
         isPlayerFullscreen = false
         playerHeader = null
         val view = PlayerView(this).apply {
             useController = true
             player = p
+            // Crop slightly when needed so the video fills the entire landscape display.
+            // The PlayerView and its shutter remain black, never showing the home screen behind it.
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            setBackgroundColor(Color.BLACK)
+            setShutterBackgroundColor(Color.BLACK)
             setControllerShowTimeoutMs(2500)
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
         }
