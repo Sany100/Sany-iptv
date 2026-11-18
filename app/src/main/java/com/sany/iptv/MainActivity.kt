@@ -94,22 +94,35 @@ class MainActivity : AppCompatActivity() {
         playlistUrls.addAll(readPlaylistUrls())
         val savedPlaylist = prefs.getString("playlist_url", null)
         if (playlistUrls.isEmpty() && !savedPlaylist.isNullOrBlank()) playlistUrls.add(savedPlaylist)
+        val restoringBackground = savedInstanceState != null || prefs.getBoolean("resume_without_splash", false)
+        section = savedInstanceState?.getString("ui_section") ?: prefs.getString("ui_section", "Live TV") ?: "Live TV"
+        selectedGroup = savedInstanceState?.getString("ui_group") ?: prefs.getString("ui_group", "All") ?: "All"
+        searchQuery = savedInstanceState?.getString("ui_search") ?: prefs.getString("ui_search", "") ?: ""
+        val resumeStream = if (restoringBackground) prefs.getString("resume_stream", null) else null
+        prefs.edit().putBoolean("resume_without_splash", false).apply()
         val cachedPlaylist = savedPlaylist?.let { playlistCacheFile(it) }
         if (cachedPlaylist?.exists() == true) {
             try { channels = M3uParser.parse(cachedPlaylist.readText()) } catch (_: Exception) { channels = emptyList() }
         }
         applySystemBars()
-        buildShell()
-        home.alpha = 0f
-        home.translationY = dp(14).toFloat()
-        home.scaleX = 0.985f
-        home.scaleY = 0.985f
-        home.post {
-            home.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
-                .setDuration(420).start()
+        buildShell(showSplash = !restoringBackground)
+        if (!restoringBackground) {
+            home.alpha = 0f
+            home.translationY = dp(14).toFloat()
+            home.scaleX = 0.985f
+            home.scaleY = 0.985f
+            home.post {
+                home.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                    .setDuration(420).start()
+            }
         }
         val saved = prefs.getString("playlist_url", null)
         if (channels.isEmpty() && !saved.isNullOrBlank()) loadFromUrl(saved, false)
+        else if (!resumeStream.isNullOrBlank() && channels.isNotEmpty()) {
+            channels.firstOrNull { it.url == resumeStream }?.let { channel ->
+                Handler(Looper.getMainLooper()).post { play(channel) }
+            }
+        }
         if (prefs.getBoolean("auto_update_check", false)) {
             Handler(Looper.getMainLooper()).postDelayed({ checkForAppUpdate(false) }, 1800)
         }
@@ -127,13 +140,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildShell() {
+    private fun buildShell(showSplash: Boolean = true) {
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         home = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg) }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         renderHome()
-        showStartupAnimation()
+        if (showSplash) showStartupAnimation()
     }
 
     private fun showStartupAnimation() {
@@ -1151,7 +1164,29 @@ class MainActivity : AppCompatActivity() {
         } else super.onBackPressed()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("ui_section", section)
+        outState.putString("ui_group", selectedGroup)
+        outState.putString("ui_search", searchQuery)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onStop() {
+        prefs.edit()
+            .putString("ui_section", section)
+            .putString("ui_group", selectedGroup)
+            .putString("ui_search", searchQuery)
+            .putBoolean("resume_without_splash", true)
+            .putString("resume_stream", if (player?.isPlaying == true) currentChannel?.url else null)
+            .apply()
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        // Swiping this task away from Recents finishes SANY IPTV only.
+        if (isFinishing) {
+            prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
+        }
         playerView?.player = null
         player?.release(); player = null
         super.onDestroy()
