@@ -91,6 +91,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep automatic update checks enabled for every installation; there is no user-facing switch.
+        prefs.edit().putBoolean("auto_update_check", true).apply()
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         playlistUrls.addAll(readPlaylistUrls())
         val savedPlaylist = prefs.getString("playlist_url", null)
@@ -532,7 +534,6 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().remove("playlist_url").apply(); toast("Saved playlist URL cleared")
         }
         box.addView(text("APP UPDATES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsToggleCard(box, "Automatic update check", "Check for a new SANY IPTV release when the app opens", "auto_update_check", false)
         settingsCard(box, "Check for updates", "Look for the latest version and download it") { checkForAppUpdate(true) }
         box.addView(text("ABOUT", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
@@ -606,7 +607,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     // Automatic checks show a given release only once. Manual checks can still
                     // display the available update whenever the user explicitly asks.
-                    if (newer && (showUpToDate || lastPrompted != tag)) {
+                    if (newer && lastPrompted != tag) {
                         prefs.edit().putString("last_prompted_update_version", tag).apply()
                         val notes = release.optString("body").take(1200)
                         AlertDialog.Builder(this)
@@ -620,8 +621,8 @@ class MainActivity : AppCompatActivity() {
                             .setMessage("বর্তমান ভার্সন: " + current)
                             .setPositiveButton("OK", null).show()
                     } else if (showUpToDate && newer) {
-                        // The same release reminder was already shown automatically.
-                        toast("এই আপডেটটি আগে দেখানো হয়েছে: " + tag)
+                        // Do not repeat the same release notification after it has already been shown.
+                        toast("এই আপডেটের নোটিফিকেশন আগে দেখানো হয়েছে: " + tag)
                     }
                 }
             } catch (e: Exception) {
