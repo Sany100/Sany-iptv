@@ -102,38 +102,31 @@ class MainActivity : AppCompatActivity() {
     private var onlineSeriesGenre = "All"
     private var onlineSeriesYear = "All"
     private var onlineSeriesMinRating = 0.0
-    private var seriesStreamMode = "catalog"
-    private val defaultSeriesPlaylists = listOf(
-        "https://iptv-org.github.io/iptv/categories/animation.m3u",
-        "https://iptv-org.github.io/iptv/categories/series.m3u",
-        "https://raw.githubusercontent.com/wizakorhd/iptv/main/playlist-anime.m3u"
-    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Keep automatic update checks enabled for every installation; there is no user-facing switch.
         prefs.edit().putBoolean("auto_update_check", true).apply()
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
-        // Replace any previously saved playlist addresses with the three selected public sources.
-        playlistUrls.clear()
-        playlistUrls.addAll(defaultSeriesPlaylists)
-        val defaultPlaylistJson = JSONArray().apply { defaultSeriesPlaylists.forEach { put(it) } }
-        prefs.edit()
-            .putString("playlist_urls", defaultPlaylistJson.toString())
-            .putString("playlist_url", defaultSeriesPlaylists.first())
-            .remove("server_live_url")
-            .remove("server_series_url")
-            .remove("server_extra_url")
-            .remove("resume_stream")
-            .apply()
-        val savedPlaylist = defaultSeriesPlaylists.first()
+        // Restore the user's existing playlist manager; discard only the three rejected demo sources.
+        val rejectedSources = setOf(
+            "https://iptv-org.github.io/iptv/categories/animation.m3u",
+            "https://iptv-org.github.io/iptv/categories/series.m3u",
+            "https://raw.githubusercontent.com/wizakorhd/iptv/main/playlist-anime.m3u"
+        )
+        playlistUrls.addAll(readPlaylistUrls().filterNot { it in rejectedSources })
+        val savedPlaylist = prefs.getString("playlist_url", null)?.takeUnless { it in rejectedSources }
+        if (savedPlaylist == null) prefs.edit().remove("playlist_url").apply()
         val restoringBackground = savedInstanceState != null || prefs.getBoolean("resume_without_splash", false)
         section = savedInstanceState?.getString("ui_section") ?: prefs.getString("ui_section", "Live TV") ?: "Live TV"
         selectedGroup = savedInstanceState?.getString("ui_group") ?: prefs.getString("ui_group", "All") ?: "All"
         searchQuery = savedInstanceState?.getString("ui_search") ?: prefs.getString("ui_search", "") ?: ""
         val resumeStream = if (restoringBackground) prefs.getString("resume_stream", null) else null
         prefs.edit().putBoolean("resume_without_splash", false).apply()
-        // Default playlists are fetched together below; never restore an old single-playlist cache.
+        val cachedPlaylist = savedPlaylist?.let { playlistCacheFile(it) }
+        if (cachedPlaylist?.exists() == true) {
+            try { channels = M3uParser.parse(cachedPlaylist.readText()) } catch (_: Exception) { channels = emptyList() }
+        }
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
         if (!restoringBackground) {
@@ -146,7 +139,12 @@ class MainActivity : AppCompatActivity() {
                     .setDuration(420).start()
             }
         }
-        loadDefaultCategoryPlaylists(resumeStream)
+        if (channels.isEmpty() && !savedPlaylist.isNullOrBlank()) loadFromUrl(savedPlaylist, false)
+        else if (!resumeStream.isNullOrBlank() && channels.isNotEmpty()) {
+            channels.firstOrNull { it.url == resumeStream }?.let { channel ->
+                Handler(Looper.getMainLooper()).post { play(channel) }
+            }
+        }
         if (prefs.getBoolean("auto_update_check", false)) {
             Handler(Looper.getMainLooper()).postDelayed({ checkForAppUpdate(false) }, 1800)
         }
@@ -315,18 +313,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderOnlineSeriesCatalog() {
-        val sourceTabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        listOf("catalog" to "TVmaze", "series" to "Series Streams", "anime" to "Anime Streams", "animation" to "Animation").forEach { (mode, label) ->
-            sourceTabs.addView(actionButton(label) {
-                seriesStreamMode = mode
-                renderSection()
-            }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(4) })
-        }
-        contentArea.addView(sourceTabs, LinearLayout.LayoutParams(-1, dp(44)))
-        if (seriesStreamMode != "catalog") {
-            renderSeriesPlaylistItems(seriesStreamMode)
-            return
-        }
         contentArea.addView(text("DISCOVER TV SERIES", 12, accent, true))
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val input = EditText(this).apply {
@@ -389,99 +375,6 @@ class MainActivity : AppCompatActivity() {
             card.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
             card.setOnClickListener { showOnlineSeriesDetails(show) }
             list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
-        }
-    }
-
-    private fun renderSeriesPlaylistItems(mode: String) {
-        val prefix = when (mode) {
-            "series" -> "Series • "
-            "anime" -> "Anime • "
-            else -> "Animation • "
-        }
-        val title = when (mode) {
-            "series" -> "SERIES STREAMS"
-            "anime" -> "ANIME STREAMS"
-            else -> "ANIMATION STREAMS"
-        }
-        contentArea.addView(text(title, 12, accent, true).apply { setPadding(0, dp(8), 0, dp(8)) })
-        val input = EditText(this).apply {
-            hint = "Search playable streams..."
-            setTextColor(white); setHintTextColor(muted); textSize = 14f
-            isSingleLine = true; setPadding(dp(14), 0, dp(14), 0); background = glass(12)
-        }
-        contentArea.addView(input, LinearLayout.LayoutParams(-1, dp(46)))
-        val scroll = ScrollView(this)
-        val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        scroll.addView(list)
-        contentArea.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        fun render(query: String) {
-            list.removeAllViews()
-            val matches = channels.filter { it.group.startsWith(prefix, true) &&
-                (query.isBlank() || it.name.contains(query, true) || it.group.contains(query, true)) }
-            list.addView(text("${matches.size} playable entries • Tap an item to play", 11, muted)
-                .apply { setPadding(dp(2), dp(8), 0, dp(8)) })
-            if (matches.isEmpty()) {
-                list.addView(text("এই সোর্সে এখন কোনো stream পাওয়া যায়নি। পরে আবার চেষ্টা করো।", 14, muted)
-                    .apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(30), dp(12), dp(30)) })
-            }
-            matches.take(500).forEachIndexed { index, channel ->
-                val item = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    background = glass(12); setPadding(dp(12), dp(12), dp(12), dp(12))
-                    isFocusable = true
-                    setOnClickListener { play(channel) }
-                }
-                item.addView(text((index + 1).toString().padStart(2, '0'), 12, accent, true)
-                    .apply { gravity = Gravity.CENTER; minWidth = dp(34) })
-                val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), 0, 0, 0) }
-                details.addView(text(channel.name, 14, white, true))
-                details.addView(text(channel.group.removePrefix(prefix).ifBlank { "Online stream" }, 11, muted)
-                    .apply { setPadding(0, dp(4), 0, 0) })
-                item.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-                item.addView(text("▶", 18, accent, true))
-                list.addView(item, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
-            }
-        }
-        input.addTextChangedListener(SimpleTextWatcher { render(it) })
-        render("")
-    }
-
-    private fun loadDefaultCategoryPlaylists(resumeStream: String? = null) {
-        toast("৩টি Series / Anime playlist লোড হচ্ছে…")
-        thread {
-            val merged = mutableListOf<Channel>()
-            val labels = listOf("Animation • ", "Series • ", "Anime • ")
-            var success = 0
-            defaultSeriesPlaylists.forEachIndexed { index, url ->
-                try {
-                    val connection = URL(url).openConnection().apply {
-                        connectTimeout = 15000
-                        readTimeout = 30000
-                    }
-                    val content = connection.getInputStream().bufferedReader().use { it.readText() }
-                    val parsed = M3uParser.parse(content)
-                    if (parsed.isNotEmpty()) {
-                        try { playlistCacheFile(url).writeText(content) } catch (_: Exception) { }
-                        merged.addAll(parsed.map { it.copy(group = labels[index] + it.group) })
-                        success++
-                    }
-                } catch (_: Exception) { }
-            }
-            val unique = merged.distinctBy { it.url }
-            runOnUiThread {
-                channels = unique
-                if (unique.isNotEmpty()) {
-                    prefs.edit().putString("playlist_url", defaultSeriesPlaylists.first()).apply()
-                    renderHome()
-                    toast("$success/3 playlist loaded • ${unique.size} streams")
-                    if (!resumeStream.isNullOrBlank()) {
-                        unique.firstOrNull { it.url == resumeStream }?.let { play(it) }
-                    }
-                } else {
-                    renderHome()
-                    toast("Playlist load হয়নি। ইন্টারনেট বা source unavailable হতে পারে।")
-                }
-            }
         }
     }
 
@@ -849,10 +742,6 @@ class MainActivity : AppCompatActivity() {
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsToggleCard(box, "Background video playback", "Keep video playing in a floating window when you leave the app", "background_playback", true)
-        box.addView(text("BUILT-IN SERIES / ANIME PLAYLISTS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Animation playlist", defaultSeriesPlaylists[0]) { loadFromUrl(defaultSeriesPlaylists[0]) }
-        settingsCard(box, "Series playlist", defaultSeriesPlaylists[1]) { loadFromUrl(defaultSeriesPlaylists[1]) }
-        settingsCard(box, "Anime playlist", defaultSeriesPlaylists[2]) { loadFromUrl(defaultSeriesPlaylists[2]) }
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             val url = prefs.getString("playlist_url", null)
             if (url.isNullOrBlank()) showPlaylistDialog() else loadFromUrl(url)
