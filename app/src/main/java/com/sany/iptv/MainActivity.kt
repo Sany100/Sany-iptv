@@ -79,6 +79,14 @@ class MainActivity : AppCompatActivity() {
         favorites.addAll(prefs.getStringSet("favorites", emptySet()) ?: emptySet())
         applySystemBars()
         buildShell()
+        home.alpha = 0f
+        home.translationY = dp(14).toFloat()
+        home.scaleX = 0.985f
+        home.scaleY = 0.985f
+        home.post {
+            home.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                .setDuration(420).start()
+        }
         val saved = prefs.getString("playlist_url", null)
         if (!saved.isNullOrBlank()) loadFromUrl(saved, false)
     }
@@ -540,8 +548,8 @@ class MainActivity : AppCompatActivity() {
 
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("SANY IPTV/1.0 (Android)")
-            .setConnectTimeoutMs(8000)
-            .setReadTimeoutMs(12000)
+            .setConnectTimeoutMs(5000)
+            .setReadTimeoutMs(8000)
             .setAllowCrossProtocolRedirects(true)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -555,7 +563,7 @@ class MainActivity : AppCompatActivity() {
             })
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(1000, 10000, 300, 500)
+                    .setBufferDurationsMs(700, 7000, 250, 500)
                     .build()
             )
             .build().also { created ->
@@ -574,7 +582,7 @@ class MainActivity : AppCompatActivity() {
                 player = created
             }
 
-        val screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         playerScreen = screen
         isPlayerFullscreen = false
         playerHeader = null
@@ -584,7 +592,9 @@ class MainActivity : AppCompatActivity() {
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
-        screen.addView(view, FrameLayout.LayoutParams(-1, -1))
+        screen.addView(view, FrameLayout.LayoutParams(-1, dp(230), Gravity.TOP).apply {
+            leftMargin = dp(0); rightMargin = dp(0)
+        })
 
         val swipeDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             private val threshold = dp(65)
@@ -623,7 +633,9 @@ class MainActivity : AppCompatActivity() {
         header.addView(back, LinearLayout.LayoutParams(dp(42), dp(48)))
         header.addView(text(channel.name, 16, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f))
         playerHeader = header
-        screen.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        screen.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+            topMargin = dp(230)
+        })
         val fullscreenButton = text("⛶  FULL", 13, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
             setPadding(dp(13), 0, dp(13), 0)
@@ -637,8 +649,8 @@ class MainActivity : AppCompatActivity() {
             contentDescription = "Toggle fullscreen"
         }
         playerFullscreenButton = fullscreenButton
-        screen.addView(fullscreenButton, FrameLayout.LayoutParams(-2, dp(46), Gravity.BOTTOM or Gravity.END).apply {
-            bottomMargin = dp(24); rightMargin = dp(16)
+        screen.addView(fullscreenButton, FrameLayout.LayoutParams(-2, dp(46), Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(244); rightMargin = dp(16)
         })
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
 
@@ -670,6 +682,23 @@ class MainActivity : AppCompatActivity() {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerFullscreenButton?.text = if (enabled) "⤢  EXIT" else "⛶  FULL"
+        playerView?.layoutParams = FrameLayout.LayoutParams(
+            -1, if (enabled) -1 else dp(230), if (enabled) Gravity.CENTER else Gravity.TOP
+        )
+        playerHeader?.let { header ->
+            (header.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.topMargin = if (enabled) 0 else dp(230)
+                header.layoutParams = params
+            }
+        }
+        playerFullscreenButton?.let { button ->
+            (button.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.gravity = if (enabled) Gravity.BOTTOM or Gravity.END else Gravity.TOP or Gravity.END
+                params.topMargin = if (enabled) 0 else dp(244)
+                params.bottomMargin = if (enabled) dp(24) else 0
+                button.layoutParams = params
+            }
+        }
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         if (!enabled) { applySystemBars(); return }
