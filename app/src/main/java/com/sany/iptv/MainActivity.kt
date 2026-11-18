@@ -468,7 +468,13 @@ class MainActivity : AppCompatActivity() {
                 val json = connection.inputStream.bufferedReader().use { it.readText() }
                 connection.disconnect()
                 val release = org.json.JSONObject(json)
-                val tag = release.optString("tag_name").removePrefix("v").removePrefix("V")
+                val tagVersion = release.optString("tag_name").trim().removePrefix("v").removePrefix("V")
+                // Some releases have a title like "SANY IPTV v1.2" while the tag is still V1.1.
+                // Prefer the explicit version in the release title when it is newer than the tag.
+                val titleVersion = Regex("(?i)\\\\bv?([0-9]+(?:\\\\.[0-9]+){1,3})\\\\b")
+                    .find(release.optString("name"))?.groupValues?.getOrNull(1).orEmpty()
+                val tag = if (titleVersion.isNotBlank() && compareVersions(titleVersion, tagVersion) > 0)
+                    titleVersion else tagVersion
                 val current = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
                 val apkUrl = release.optJSONArray("assets")?.let { assets ->
                     (0 until assets.length()).map { assets.optJSONObject(it) }
