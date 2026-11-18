@@ -547,7 +547,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Keep the current landscape lock while replacing the channel player.
+        // Preserve the current viewing mode when switching channels.
+        // First playback opens fullscreen; a switch from portrait stays portrait.
+        val wasAlreadyPlaying = playerView != null
+        val keepFullscreenMode = if (wasAlreadyPlaying) isPlayerFullscreen else true
         closePlayer(keepOrientation = true)
         currentChannel = channel
 
@@ -608,7 +611,7 @@ class MainActivity : AppCompatActivity() {
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         playerScreen = screen
-        isPlayerFullscreen = false
+        isPlayerFullscreen = keepFullscreenMode
         playerHeader = null
         val view = PlayerView(this).apply {
             useController = true
@@ -693,8 +696,8 @@ class MainActivity : AppCompatActivity() {
             }
         )
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
-        // Start every selected channel in immersive landscape fullscreen.
-        setPlayerFullscreen(true)
+        // Retain portrait/fullscreen mode across channel changes.
+        setPlayerFullscreen(keepFullscreenMode)
         view.showController()
 
         val lowerUrl = streamUrl.substringBefore("?").lowercase()
