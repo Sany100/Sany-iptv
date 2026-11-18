@@ -27,6 +27,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -551,9 +552,15 @@ class MainActivity : AppCompatActivity() {
         currentChannel = channel
 
         val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("SANY IPTV/1.0 (Android)")
-            .setConnectTimeoutMs(5000)
-            .setReadTimeoutMs(8000)
+            // Common IPTV endpoints reject minimal/custom user agents; send normal
+            // media request headers and allow redirects without adding long waits.
+            .setUserAgent("Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+            .setDefaultRequestProperties(mapOf(
+                "Accept" to "*/*",
+                "Connection" to "keep-alive"
+            ))
+            .setConnectTimeoutMs(7000)
+            .setReadTimeoutMs(12000)
             .setAllowCrossProtocolRedirects(true)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -573,8 +580,21 @@ class MainActivity : AppCompatActivity() {
             .build().also { created ->
                 created.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
+                        var cause: Throwable? = error
+                        var httpStatus: Int? = null
+                        while (cause != null) {
+                            if (cause is HttpDataSource.InvalidResponseCodeException) {
+                                httpStatus = cause.responseCode
+                                break
+                            }
+                            cause = cause.cause
+                        }
                         runOnUiThread {
-                            toast("প্লে হচ্ছে না: ${error.errorCodeName}")
+                            if (httpStatus != null) {
+                                toast("সার্ভার HTTP $httpStatus দিয়েছে — অন্য stream link চেষ্টা করুন")
+                            } else {
+                                toast("প্লে হচ্ছে না: ${error.errorCodeName}")
+                            }
                         }
                     }
                     override fun onPlaybackStateChanged(state: Int) {
@@ -586,7 +606,7 @@ class MainActivity : AppCompatActivity() {
                 player = created
             }
 
-        val screen = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         playerScreen = screen
         isPlayerFullscreen = false
         playerHeader = null
@@ -724,7 +744,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
         if (!enabled) { applySystemBars(); return }
         window.decorView.systemUiVisibility = if (enabled) {
             (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
