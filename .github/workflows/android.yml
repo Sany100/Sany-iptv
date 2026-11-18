@@ -54,6 +54,9 @@ jobs:
           SANY_KEY_ALIAS: ${{ secrets.SANY_RELEASE_KEY_ALIAS }}
           SANY_KEY_PASSWORD: ${{ secrets.SANY_RELEASE_KEY_PASSWORD }}
         run: |
+          test -n "$SANY_KEYSTORE_PASSWORD" || (echo "Missing SANY_RELEASE_STORE_PASSWORD secret" && exit 1)
+          test -n "$SANY_KEY_ALIAS" || (echo "Missing SANY_RELEASE_KEY_ALIAS secret" && exit 1)
+          test -n "$SANY_KEY_PASSWORD" || (echo "Missing SANY_RELEASE_KEY_PASSWORD secret" && exit 1)
           VERSION="${GITHUB_REF_NAME#v}"
           VERSION_CODE="${GITHUB_RUN_NUMBER}"
           gradle assembleRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
