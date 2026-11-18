@@ -4,6 +4,10 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.BitmapFactory
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.widget.ImageView
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -213,11 +217,38 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(10), dp(9), dp(10), dp(9))
                 background = rounded(panel, 12)
             }
-            val logo = text(channel.name.take(1).uppercase(), 18, accent, true).apply {
-                gravity = Gravity.CENTER
+            val logo = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
                 background = rounded(panel2, 10)
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+                setImageDrawable(android.graphics.drawable.GradientDrawable().apply {
+                    setColor(panel2); cornerRadius = dp(10).toFloat()
+                })
+                contentDescription = "${channel.name} logo"
+                channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
+                    tag = logoUrl
+                    thread {
+                        try {
+                            val connection = URL(logoUrl).openConnection().apply {
+                                connectTimeout = 8000
+                                readTimeout = 8000
+                            }
+                            val bitmap = connection.getInputStream().use { BitmapFactory.decodeStream(it) }
+                            if (bitmap != null) runOnUiThread {
+                                if (tag == logoUrl) setImageBitmap(bitmap)
+                            }
+                        } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
+                    }
+                }
             }
-            row.addView(logo, LinearLayout.LayoutParams(dp(46), dp(46)))
+            val logoFrame = FrameLayout(this).apply {
+                addView(logo, FrameLayout.LayoutParams(-1, -1))
+                addView(text(channel.name.take(1).uppercase(), 18, accent, true).apply {
+                    gravity = Gravity.CENTER
+                    isClickable = false
+                }, FrameLayout.LayoutParams(-1, -1))
+            }
+            row.addView(logoFrame, LinearLayout.LayoutParams(dp(46), dp(46)))
             val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0) }
             details.addView(text(channel.name, 14, white, true))
             details.addView(text(channel.group.ifBlank { "Other" }, 11, muted).apply { setPadding(0, dp(4), 0, 0) })
@@ -436,6 +467,27 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         screen.addView(view, FrameLayout.LayoutParams(-1, -1))
 
+        val swipeDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            private val threshold = dp(65)
+            private val velocity = dp(120)
+            override fun onDown(e: MotionEvent) = true
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                val start = e1 ?: return false
+                val dx = e2.x - start.x
+                val dy = e2.y - start.y
+                if (kotlin.math.abs(dx) > threshold && kotlin.math.abs(dx) > kotlin.math.abs(dy) &&
+                    kotlin.math.abs(velocityX) > velocity) {
+                    playAdjacentChannel(if (dx < 0) 1 else -1)
+                    return true
+                }
+                return false
+            }
+        })
+        view.setOnTouchListener { _, event ->
+            swipeDetector.onTouchEvent(event)
+            false
+        }
+
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -464,6 +516,18 @@ class MainActivity : AppCompatActivity() {
         p.prepare()
         p.playWhenReady = true
         prefs.edit().putString("last_channel", streamUrl).apply()
+    }
+
+    private fun playAdjacentChannel(direction: Int) {
+        val current = currentChannel ?: return
+        val index = channels.indexOfFirst { it.url == current.url }
+        if (index < 0 || channels.size < 2) {
+            toast("আর কোনো চ্যানেল নেই")
+            return
+        }
+        val nextIndex = (index + direction + channels.size) % channels.size
+        play(channels[nextIndex])
+        toast("Playing: ${channels[nextIndex].name}")
     }
 
     private fun closePlayer() {
