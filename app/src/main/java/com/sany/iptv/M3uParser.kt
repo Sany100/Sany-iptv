@@ -10,7 +10,7 @@ object M3uParser {
             val line = raw.trim()
             when {
                 line.startsWith("#EXTINF", ignoreCase = true) -> {
-                    val attrs = Regex("([\\\\w-]+)=\\\"([^\\\"]*)\\\"").findAll(line)
+                    val attrs = Regex("([\\w-]+)=\"([^\"]*)\"").findAll(line)
                         .associate { it.groupValues[1].lowercase() to it.groupValues[2] }
                     name = line.substringAfterLast(',').trim().ifBlank { "Unknown channel" }
                     group = attrs["group-title"]?.ifBlank { "Other" } ?: "Other"
