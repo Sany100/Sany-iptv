@@ -12,6 +12,8 @@ import android.widget.ImageView
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.content.res.Configuration
 import android.view.Gravity
 import android.view.View
@@ -589,6 +591,7 @@ class MainActivity : AppCompatActivity() {
         val view = PlayerView(this).apply {
             useController = true
             player = p
+            setControllerShowTimeoutMs(2500)
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
@@ -652,7 +655,17 @@ class MainActivity : AppCompatActivity() {
         screen.addView(fullscreenButton, FrameLayout.LayoutParams(-2, dp(46), Gravity.TOP or Gravity.END).apply {
             topMargin = dp(244); rightMargin = dp(16)
         })
+        // Keep the custom fullscreen control in sync with Media3's auto-hiding controls.
+        view.setControllerVisibilityListener { visibility ->
+            val controlsVisible = visibility == View.VISIBLE
+            playerFullscreenButton?.visibility = if (controlsVisible) View.VISIBLE else View.GONE
+            playerHeader?.visibility = if (isPlayerFullscreen && controlsVisible) View.VISIBLE
+                else if (isPlayerFullscreen) View.GONE else View.VISIBLE
+        }
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
+        // Start every selected channel in immersive landscape fullscreen.
+        setPlayerFullscreen(true)
+        view.showController()
 
         val lowerUrl = streamUrl.substringBefore("?").lowercase()
         val itemBuilder = MediaItem.Builder().setUri(streamUrl)
