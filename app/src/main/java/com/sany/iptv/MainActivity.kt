@@ -37,6 +37,9 @@ import java.net.URL
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
+    private val isTvDevice: Boolean
+        get() = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+            (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
     private val isLight: Boolean
         get() = when (prefs.getString("app_theme", "dark")) {
             "light" -> true
@@ -210,6 +213,7 @@ class MainActivity : AppCompatActivity() {
         options.forEach { item ->
             val active = selectedGroup == item
             val chip = text(item, 12, if (active) bg else muted, true).apply {
+                isFocusable = true
                 gravity = Gravity.CENTER
                 setPadding(dp(15), 0, dp(15), 0)
                 background = if (active) rounded(Color.argb(220, 0, 170, 130), 30, Color.argb(160, 160, 255, 230), 1)
@@ -242,6 +246,8 @@ class MainActivity : AppCompatActivity() {
         }
         filtered.take(displayedLimit).forEachIndexed { index, channel ->
             val row = LinearLayout(this).apply {
+                isFocusable = true
+                isFocusableInTouchMode = false
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(9), dp(10), dp(9))
@@ -291,6 +297,7 @@ class MainActivity : AppCompatActivity() {
             details.addView(text(channel.group.ifBlank { "Other" }, 11, muted).apply { setPadding(0, dp(4), 0, 0) })
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
             val star = text(if (channel.url in favorites) "★" else "☆", 21, if (channel.url in favorites) accent else muted).apply {
+                isFocusable = true
                 gravity = Gravity.CENTER
                 setOnClickListener { toggleFavorite(channel) }
             }
@@ -343,6 +350,8 @@ class MainActivity : AppCompatActivity() {
         listOf("Live TV" to "▣", "Movies" to "▤", "Series" to "▥", "Favorites" to "☆", "Settings" to "⚙").forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
+                isFocusable = true
+                isFocusableInTouchMode = false
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setOnClickListener {
@@ -708,6 +717,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val back = text("‹", 34, Color.WHITE, true).apply {
+            isFocusable = true
             gravity = Gravity.CENTER
             setOnClickListener { closePlayer() }
         }
@@ -718,6 +728,7 @@ class MainActivity : AppCompatActivity() {
             topMargin = dp(230)
         })
         val fullscreenButton = text("⛶  FULL", 13, Color.WHITE, true).apply {
+            isFocusable = true
             gravity = Gravity.CENTER
             setPadding(dp(13), 0, dp(13), 0)
             background = GradientDrawable().apply {
@@ -862,7 +873,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun actionButton(label: String, action: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 13f; typeface = Typeface.DEFAULT_BOLD
+        isFocusable = true
+        isFocusableInTouchMode = false
+        text = label; textSize = if (isTvDevice) 16f else 13f; typeface = Typeface.DEFAULT_BOLD
         setTextColor(bg); gravity = Gravity.CENTER
         background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
@@ -872,7 +885,9 @@ class MainActivity : AppCompatActivity() {
         setOnClickListener { action() }
     }
     private fun iconButton(label: String, action: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 22f; setTextColor(white); gravity = Gravity.CENTER
+        isFocusable = true
+        isFocusableInTouchMode = false
+        text = label; textSize = if (isTvDevice) 28f else 22f; setTextColor(white); gravity = Gravity.CENTER
         background = glass(12); elevation = dp(2).toFloat(); setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply { leftMargin = dp(8) }
     }
@@ -882,7 +897,7 @@ class MainActivity : AppCompatActivity() {
         background = glass(30)
     }
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value; textSize = size.toFloat(); setTextColor(color)
+        text = value; textSize = (size * if (isTvDevice) 1.15f else 1f); setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
     private fun glass(radius: Int) = GradientDrawable(
@@ -895,7 +910,10 @@ class MainActivity : AppCompatActivity() {
     }
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    private fun dp(v: Int): Int {
+        val tvScale = if (isTvDevice) 1.15f else 1f
+        return (v * resources.displayMetrics.density * tvScale).toInt()
+    }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }
 
