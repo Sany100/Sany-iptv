@@ -217,36 +217,37 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(10), dp(9), dp(10), dp(9))
                 background = rounded(panel, 12)
             }
+            val fallbackLogo = text(channel.name.take(1).uppercase(), 18, accent, true).apply {
+                gravity = Gravity.CENTER
+                isClickable = false
+            }
             val logo = ImageView(this).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
+                scaleType = ImageView.ScaleType.FIT_CENTER
                 background = rounded(panel2, 10)
                 setPadding(dp(4), dp(4), dp(4), dp(4))
-                setImageDrawable(android.graphics.drawable.GradientDrawable().apply {
-                    setColor(panel2); cornerRadius = dp(10).toFloat()
-                })
                 contentDescription = "${channel.name} logo"
-                channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
-                    tag = logoUrl
-                    thread {
-                        try {
-                            val connection = URL(logoUrl).openConnection().apply {
-                                connectTimeout = 8000
-                                readTimeout = 8000
-                            }
-                            val bitmap = connection.getInputStream().use { BitmapFactory.decodeStream(it) }
-                            if (bitmap != null) runOnUiThread {
-                                if (tag == logoUrl) setImageBitmap(bitmap)
-                            }
-                        } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
-                    }
-                }
             }
             val logoFrame = FrameLayout(this).apply {
                 addView(logo, FrameLayout.LayoutParams(-1, -1))
-                addView(text(channel.name.take(1).uppercase(), 18, accent, true).apply {
-                    gravity = Gravity.CENTER
-                    isClickable = false
-                }, FrameLayout.LayoutParams(-1, -1))
+                addView(fallbackLogo, FrameLayout.LayoutParams(-1, -1))
+            }
+            channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
+                logo.tag = logoUrl
+                thread {
+                    try {
+                        val connection = URL(logoUrl).openConnection().apply {
+                            connectTimeout = 8000
+                            readTimeout = 8000
+                        }
+                        val bitmap = connection.getInputStream().use { BitmapFactory.decodeStream(it) }
+                        if (bitmap != null) runOnUiThread {
+                            if (logo.tag == logoUrl) {
+                                logo.setImageBitmap(bitmap)
+                                fallbackLogo.visibility = View.GONE
+                            }
+                        }
+                    } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
+                }
             }
             row.addView(logoFrame, LinearLayout.LayoutParams(dp(46), dp(46)))
             val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0) }
