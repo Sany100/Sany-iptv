@@ -292,7 +292,7 @@ class MainActivity : AppCompatActivity() {
         val groups = listOf("All") + channels.asSequence().map { it.group }.distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
         val options = when (section) {
             "Favorites" -> listOf("All", "★ Favorites")
-            "Movies" -> listOf("All") + groups.drop(1)
+            "Movies" -> listOf("All") + movieCategories + groups.drop(1).filterNot { it in movieCategories }
             "Series" -> listOf("All", "Anime") + groups.drop(1).filterNot { it.equals("Anime", true) }
             else -> groups
         }
@@ -405,7 +405,7 @@ class MainActivity : AppCompatActivity() {
     private fun filteredChannels(): List<Channel> {
         return channels.filter { c ->
             val typeMatch = when (section) {
-                "Movies" -> isMovie(c)
+                "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
                 "Favorites" -> c.url in favorites
                 else -> !isMovie(c) && !isSeries(c)
@@ -414,11 +414,42 @@ class MainActivity : AppCompatActivity() {
                 selectedGroup == "All" -> true
                 selectedGroup == "★ Favorites" -> c.url in favorites
                 section == "Series" && selectedGroup == "Anime" -> isAnime(c)
+                section == "Movies" && selectedGroup in movieCategories -> matchesMovieCategory(c, selectedGroup)
                 else -> c.group.equals(selectedGroup, true)
             }
             val q = searchQuery.trim().lowercase()
             typeMatch && groupMatch && (q.isBlank() || c.name.lowercase().contains(q) || c.group.lowercase().contains(q))
         }
+    }
+
+    private val movieCategories = listOf(
+        "Hindi Dubbed", "South Indian", "Hollywood", "Bollywood", "Bangla Movies",
+        "Korean Movies", "Anime", "Animation", "Web Series", "Action", "Comedy",
+        "Horror", "Romance", "Thriller", "Sci-Fi", "Adventure"
+    )
+
+    private fun matchesMovieCategory(c: Channel, category: String): Boolean {
+        val metadata = (c.group + " " + c.name + " " + c.url).lowercase()
+        val keywords = when (category) {
+            "Hindi Dubbed" -> listOf("hindi dubbed", "dubbed hindi", "dual audio", "hindi audio")
+            "South Indian" -> listOf("south indian", "south", "tamil", "telugu", "malayalam", "kannada")
+            "Hollywood" -> listOf("hollywood", "english movie", "english film")
+            "Bollywood" -> listOf("bollywood", "hindi movie", "hindi film")
+            "Bangla Movies" -> listOf("bangla movie", "bangla film", "bengali movie", "bengali film")
+            "Korean Movies" -> listOf("korean movie", "korean film", "k-drama", "kdrama")
+            "Anime" -> listOf("anime", "animé")
+            "Animation" -> listOf("animation", "animated")
+            "Web Series" -> listOf("web series", "web-series", "webseries", "tv series")
+            "Action" -> listOf("action")
+            "Comedy" -> listOf("comedy")
+            "Horror" -> listOf("horror")
+            "Romance" -> listOf("romance", "romantic")
+            "Thriller" -> listOf("thriller")
+            "Sci-Fi" -> listOf("sci-fi", "sci fi", "science fiction")
+            "Adventure" -> listOf("adventure")
+            else -> listOf(category.lowercase())
+        }
+        return keywords.any { metadata.contains(it) }
     }
 
     private fun isMovie(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
