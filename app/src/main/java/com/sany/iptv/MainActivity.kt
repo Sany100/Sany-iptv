@@ -24,6 +24,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -255,6 +258,7 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 setPadding(dp(24), dp(35), dp(24), dp(35))
             }
+            if (section == "Series") addCircleFtpCard(empty)
             empty.addView(text("▶", 46, accent, true).apply { gravity = Gravity.CENTER })
             empty.addView(text("Your screen is ready", 21, white, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(14), 0, dp(8)) })
             empty.addView(text("Add an M3U playlist to browse live channels, movies and series.", 14, muted).apply { gravity = Gravity.CENTER })
@@ -262,6 +266,8 @@ class MainActivity : AppCompatActivity() {
             contentArea.addView(empty, LinearLayout.LayoutParams(-1, -1))
             return
         }
+
+        if (section == "Series") addCircleFtpCard(contentArea)
 
         search = EditText(this).apply {
             hint = "⌕   Search channels, movies, series..."
@@ -289,6 +295,51 @@ class MainActivity : AppCompatActivity() {
         renderChannelRows(listContainer)
     }
 
+    private fun addCircleFtpCard(parent: LinearLayout) {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            background = glass(14)
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { openCircleFtpSeries() }
+        }
+        card.addView(text("◎", 27, accent, true).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(dp(42), dp(42)))
+        val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(8), 0) }
+        info.addView(text("Circle FTP", 15, white, true))
+        info.addView(text("অনলাইন সিরিজ ব্রাউজ করুন", 11, muted).apply { setPadding(0, dp(4), 0, 0) })
+        card.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
+        card.addView(text("OPEN  ›", 11, accent, true))
+        parent.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+    }
+
+    private fun openCircleFtpSeries() {
+        val webView = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
+            webViewClient = WebViewClient()
+            webChromeClient = WebChromeClient()
+            setBackgroundColor(bg)
+        }
+        val wrapper = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            addView(text("Circle FTP • Series", 16, white, true).apply { setPadding(dp(4), dp(6), dp(4), dp(10)) })
+            addView(webView, LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+        val dialog = AlertDialog.Builder(this).setView(wrapper).setNegativeButton("CLOSE", null).create()
+        dialog.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP && webView.canGoBack()) { webView.goBack(); true } else false
+        }
+        dialog.setOnDismissListener { webView.stopLoading(); webView.destroy() }
+        dialog.show()
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.96f).toInt(), (resources.displayMetrics.heightPixels * 0.88f).toInt())
+        webView.loadUrl("http://new.circleftp.net/category/20")
+    }
     private fun renderCategories() {
         categoryRow.removeAllViews()
         val groups = listOf("All") + channels.asSequence().map { it.group }.distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
