@@ -87,6 +87,7 @@ class MainActivity : AppCompatActivity() {
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
+    private var pausedForBackground = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -484,6 +485,7 @@ class MainActivity : AppCompatActivity() {
         }
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
+        settingsToggleCard(box, "Background video playback", "Keep video playing in a floating window when you leave the app", "background_playback", true)
         box.addView(text("MULTI-SERVER", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Live TV server", "Separate live channels playlist") { editServer("server_live_url", "Live TV server") }
         settingsCard(box, "Series / Anime server", "Dedicated series and anime playlist") { editServer("server_series_url", "Series / Anime server") }
@@ -1137,9 +1139,31 @@ class MainActivity : AppCompatActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && playerView != null && player?.isPlaying == true) {
+        if (playerView == null || player?.isPlaying != true) return
+
+        if (!prefs.getBoolean("background_playback", true)) {
+            pausedForBackground = true
+            player?.pause()
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // PiP must use the whole Activity bounds. Keeping the portrait 230dp
+            // inline-player height here makes Android crop the floating video.
+            playerView?.let { view ->
+                view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                view.layoutParams = FrameLayout.LayoutParams(-1, -1)
+                view.setUseController(false)
+            }
+            val videoSize = player?.videoSize
+            var width = videoSize?.width ?: 0
+            var height = videoSize?.height ?: 0
+            if (videoSize?.unappliedRotationDegrees == 90 || videoSize?.unappliedRotationDegrees == 270) {
+                val swap = width; width = height; height = swap
+            }
+            val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
             val params = PictureInPictureParams.Builder()
-                .setAspectRatio(Rational(16, 9))
+                .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
                 .build()
             enterPictureInPictureMode(params)
         }
@@ -1150,9 +1174,26 @@ class MainActivity : AppCompatActivity() {
         if (isInPictureInPictureMode) {
             playerHeader?.visibility = View.GONE
             playerFullscreenButton?.visibility = View.GONE
+            playerView?.setUseController(false)
         } else if (playerView != null) {
-            playerHeader?.visibility = View.VISIBLE
+            playerView?.let { view ->
+                view.setUseController(true)
+                view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                view.layoutParams = FrameLayout.LayoutParams(
+                    -1, if (isPlayerFullscreen) -1 else dp(230),
+                    if (isPlayerFullscreen) Gravity.CENTER else Gravity.TOP
+                )
+            }
+            playerHeader?.visibility = if (isPlayerFullscreen) View.GONE else View.VISIBLE
             playerFullscreenButton?.visibility = View.VISIBLE
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (pausedForBackground) {
+            pausedForBackground = false
+            player?.play()
         }
     }
 
