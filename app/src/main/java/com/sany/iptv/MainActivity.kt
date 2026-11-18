@@ -98,6 +98,9 @@ class MainActivity : AppCompatActivity() {
     private var onlineSeriesShows = JSONArray()
     private var onlineSeriesLoading = false
     private var onlineSeriesQuery = ""
+    private var onlineSeriesGenre = "All"
+    private var onlineSeriesYear = "All"
+    private var onlineSeriesMinRating = 0.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -315,9 +318,16 @@ class MainActivity : AppCompatActivity() {
         row.addView(actionButton("SEARCH") {
             onlineSeriesQuery = input.text.toString().trim()
             fetchOnlineSeries(onlineSeriesQuery)
-        }, LinearLayout.LayoutParams(dp(94), dp(46)).apply { leftMargin = dp(8) })
+        }, LinearLayout.LayoutParams(dp(82), dp(46)).apply { leftMargin = dp(6) })
+        row.addView(actionButton("FILTER") { showSeriesFilterDialog() },
+            LinearLayout.LayoutParams(dp(78), dp(46)).apply { leftMargin = dp(6) })
         contentArea.addView(row, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(9) })
-        contentArea.addView(text(if (onlineSeriesLoading) "Loading series..." else "TVmaze • Online series catalogue", 11, muted).apply { setPadding(0, dp(8), 0, dp(8)) })
+        val visibleShows = filteredOnlineSeriesShows()
+        contentArea.addView(text(
+            (if (onlineSeriesLoading) "Loading series..." else "TVmaze • " + visibleShows.size + " series shown") +
+                "  •  Genre: " + onlineSeriesGenre + "  •  Year: " + onlineSeriesYear,
+            11, muted
+        ).apply { setPadding(0, dp(8), 0, dp(8)) })
         val scroll = ScrollView(this)
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(list)
@@ -326,8 +336,12 @@ class MainActivity : AppCompatActivity() {
             list.addView(text("Load popular series or search by name.", 14, muted).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(28)) })
             list.addView(actionButton("LOAD POPULAR SERIES") { fetchOnlineSeries("") }, LinearLayout.LayoutParams(-1, dp(48)))
         }
-        for (i in 0 until onlineSeriesShows.length()) {
-            val show = onlineSeriesShows.optJSONObject(i) ?: continue
+        if (onlineSeriesShows.length() > 0 && visibleShows.isEmpty()) {
+            list.addView(text("No series match these filters.", 14, muted).apply {
+                gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(28))
+            })
+        }
+        for (show in visibleShows) {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 background = glass(12); setPadding(dp(9), dp(9), dp(9), dp(9)); isFocusable = true
@@ -356,6 +370,82 @@ class MainActivity : AppCompatActivity() {
             card.setOnClickListener { showOnlineSeriesDetails(show) }
             list.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
         }
+    }
+
+    private fun filteredOnlineSeriesShows(): List<JSONObject> {
+        val result = mutableListOf<JSONObject>()
+        for (i in 0 until onlineSeriesShows.length()) {
+            val show = onlineSeriesShows.optJSONObject(i) ?: continue
+            val genres = show.optJSONArray("genres")
+            val genreMatches = onlineSeriesGenre == "All" || (genres != null &&
+                (0 until genres.length()).any { genres.optString(it).equals(onlineSeriesGenre, true) })
+            val year = show.optString("premiered", "").take(4)
+            val yearMatches = onlineSeriesYear == "All" || year == onlineSeriesYear
+            val rating = show.optJSONObject("rating")?.optDouble("average", 0.0) ?: 0.0
+            if (genreMatches && yearMatches && rating >= onlineSeriesMinRating) result.add(show)
+        }
+        return result
+    }
+
+    private fun showSeriesFilterDialog() {
+        val genres = sortedSetOf<String>()
+        val years = sortedSetOf<String>(compareByDescending { it })
+        for (i in 0 until onlineSeriesShows.length()) {
+            val show = onlineSeriesShows.optJSONObject(i) ?: continue
+            val values = show.optJSONArray("genres")
+            if (values != null) for (j in 0 until values.length()) {
+                values.optString(j).takeIf { it.isNotBlank() }?.let { genres.add(it) }
+            }
+            val year = show.optString("premiered", "").take(4)
+            if (year.matches(Regex("\\d{4}"))) years.add(year)
+        }
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(4))
+        }
+        fun addLabel(value: String) {
+            layout.addView(text(value, 12, muted, true).apply { setPadding(0, dp(8), 0, dp(5)) })
+        }
+        fun spinner(items: List<String>): Spinner {
+            val view = Spinner(this)
+            view.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, items)
+            layout.addView(view, LinearLayout.LayoutParams(-1, dp(46)))
+            return view
+        }
+        addLabel("GENRE")
+        val genreItems = listOf("All") + genres
+        val genreSpinner = spinner(genreItems)
+        genreSpinner.setSelection(genreItems.indexOf(onlineSeriesGenre).coerceAtLeast(0))
+        addLabel("RELEASE YEAR")
+        val yearItems = listOf("All") + years
+        val yearSpinner = spinner(yearItems)
+        yearSpinner.setSelection(yearItems.indexOf(onlineSeriesYear).coerceAtLeast(0))
+        addLabel("MINIMUM RATING")
+        val ratingItems = listOf("Any", "5+", "6+", "7+", "8+", "9+")
+        val ratingSpinner = spinner(ratingItems)
+        ratingSpinner.setSelection(when {
+            onlineSeriesMinRating >= 9.0 -> 5
+            onlineSeriesMinRating >= 8.0 -> 4
+            onlineSeriesMinRating >= 7.0 -> 3
+            onlineSeriesMinRating >= 6.0 -> 2
+            onlineSeriesMinRating >= 5.0 -> 1
+            else -> 0
+        })
+        AlertDialog.Builder(this).setTitle("Filter Series")
+            .setView(layout)
+            .setPositiveButton("APPLY") { _, _ ->
+                onlineSeriesGenre = genreSpinner.selectedItem?.toString() ?: "All"
+                onlineSeriesYear = yearSpinner.selectedItem?.toString() ?: "All"
+                onlineSeriesMinRating = when (ratingSpinner.selectedItemPosition) {
+                    1 -> 5.0; 2 -> 6.0; 3 -> 7.0; 4 -> 8.0; 5 -> 9.0; else -> 0.0
+                }
+                renderSection()
+            }
+            .setNeutralButton("RESET") { _, _ ->
+                onlineSeriesGenre = "All"; onlineSeriesYear = "All"; onlineSeriesMinRating = 0.0
+                renderSection()
+            }
+            .setNegativeButton("CANCEL", null).show()
     }
 
     private fun fetchOnlineSeries(query: String) {
@@ -1057,8 +1147,8 @@ class MainActivity : AppCompatActivity() {
                 "Accept" to "*/*",
                 "Connection" to "keep-alive"
             ))
-            .setConnectTimeoutMs(7000)
-            .setReadTimeoutMs(12000)
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(30000)
             .setAllowCrossProtocolRedirects(true)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -1072,7 +1162,7 @@ class MainActivity : AppCompatActivity() {
             })
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(700, 7000, 250, 500)
+                    .setBufferDurationsMs(2500, 15000, 1000, 2500)
                     .build()
             )
             .build().also { created ->
@@ -1197,11 +1287,14 @@ class MainActivity : AppCompatActivity() {
         setPlayerFullscreen(keepFullscreenMode)
         view.showController()
 
-        val lowerUrl = streamUrl.substringBefore("?").lowercase()
+        val lowerUrl = streamUrl.substringBefore("?").substringBefore("#").lowercase()
         val itemBuilder = MediaItem.Builder().setUri(streamUrl)
         when {
-            lowerUrl.endsWith(".m3u8") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            lowerUrl.endsWith(".mpd") -> itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+            lowerUrl.endsWith(".m3u8") || lowerUrl.endsWith(".m3u") ||
+                lowerUrl.contains("/hls/") || lowerUrl.contains("format=m3u8") ->
+                itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+            lowerUrl.endsWith(".mpd") || lowerUrl.contains("/dash/") ->
+                itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
         }
         p.setMediaItem(itemBuilder.build())
         p.prepare()
