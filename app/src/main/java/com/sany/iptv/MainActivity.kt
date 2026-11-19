@@ -1080,6 +1080,20 @@ class MainActivity : AppCompatActivity() {
         }
         box.addView(text("APP UPDATES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Check for updates", "Look for the latest version and download it") { checkForAppUpdate(true) }
+        box.addView(text("DEVICE & ADMIN", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        settingsCard(box, "Copy Device ID (Admin)", "Copy this phone's ID to allow admin access during maintenance") {
+            val deviceId = android.provider.Settings.Secure.getString(
+                contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID
+            ).orEmpty()
+            if (deviceId.isBlank()) {
+                toast("Device ID পাওয়া যায়নি")
+            } else {
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SANY IPTV device ID", deviceId))
+                toast("Device ID copied — এখানে পাঠান")
+            }
+        }
         box.addView(text("ADDITIONAL SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Update EPG data", "Manually refresh all 3 XMLTV sources now") {
             refreshEpgSources(true)
