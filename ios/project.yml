@@ -2,7 +2,7 @@ name: SANYIPTV
 options:
   bundleIdPrefix: com.sany.iptv
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "12.0"
 targets:
   SANYIPTV:
     type: application
