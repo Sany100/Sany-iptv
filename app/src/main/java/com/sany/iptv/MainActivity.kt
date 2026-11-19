@@ -365,7 +365,6 @@ class MainActivity : AppCompatActivity() {
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     logoGlow.cancel()
-                    welcomeColorAnimator.cancel()
                     splash.animate().alpha(0f).setDuration(350).withEndAction {
                         root.removeView(splash)
                         scheduleAutoUpdateCheck()
