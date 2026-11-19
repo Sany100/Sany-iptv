@@ -356,7 +356,7 @@ class MainActivity : AppCompatActivity() {
 
         // Keep the welcome screen visible for five seconds and show live percentage progress.
         val progressAnimator = ValueAnimator.ofInt(0, 100).apply {
-            duration = 5_000L
+            duration = 3_000L
             interpolator = android.view.animation.LinearInterpolator()
             addUpdateListener { animator ->
                 val progress = animator.animatedValue as Int
