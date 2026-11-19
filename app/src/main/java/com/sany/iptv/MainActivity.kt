@@ -1288,9 +1288,15 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val raw = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
                         val parsed = M3uParser.parse(raw)
+                        val detectedEpgUrl = extractEpgUrl(raw)
                         runOnUiThread {
                             if (parsed.isEmpty()) toast("No channels found in file") else {
-                                channels = parsed; selectedGroup = "All"; searchQuery = ""; renderHome()
+                                channels = parsed; selectedGroup = "All"; searchQuery = ""
+                                if (!detectedEpgUrl.isNullOrBlank()) {
+                                    prefs.edit().putString("epg_url", detectedEpgUrl).apply()
+                                    if (prefs.getBoolean("auto_add_epg", true)) updateEpgData(detectedEpgUrl, false)
+                                }
+                                renderHome()
                                 toast("Imported ${channels.size} items")
                             }
                         }
