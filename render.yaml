@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: sany-iptv-admin
+    runtime: python
+    plan: free
+    rootDir: admin-dashboard
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: GITHUB_REPOSITORY
+        value: Sany100/Sany-iptv
+      - key: GA4_PROPERTY_ID
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
