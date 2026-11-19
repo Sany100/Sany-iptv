@@ -45,20 +45,6 @@ android {
         versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.1").get()
     }
 
-    // Separate installable packages: mobile keeps the existing package ID;
-    // TV gets its own ID so both editions can coexist on one Android device.
-    flavorDimensions += "device"
-    productFlavors {
-        create("mobile") {
-            dimension = "device"
-        }
-        create("tv") {
-            dimension = "device"
-            applicationIdSuffix = ".tv"
-            versionNameSuffix = "-tv"
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -84,8 +70,8 @@ dependencies {
     if (file("google-services.json").exists()) {
         // BoM 34.14.1 maps Firebase Analytics to 23.2.0, avoiding the API 24
         // minimum introduced by Analytics 24.0.0 and retaining Android 6 support.
-        add("mobileImplementation", platform("com.google.firebase:firebase-bom:34.14.1"))
-        add("mobileImplementation", "com.google.firebase:firebase-analytics")
+        implementation(platform("com.google.firebase:firebase-bom:34.14.1"))
+        implementation("com.google.firebase:firebase-analytics")
     }
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
