@@ -1916,7 +1916,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             letterSpacing = 0.08f
         }, LinearLayout.LayoutParams(-1, -2))
-        content.addView(text("Scanning Chennai Live TV channels", 13, Color.rgb(166, 190, 225)).apply {
+        content.addView(text("Scanning Live TV channels", 13, Color.rgb(166, 190, 225)).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(9), 0, dp(24))
         }, LinearLayout.LayoutParams(-1, -2))
