@@ -1229,11 +1229,9 @@ class MainActivity : AppCompatActivity() {
                 if (tag.isBlank()) throw IllegalStateException("Latest release version পাওয়া যায়নি")
 
                 val current = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
-                // The release workflow publishes separate APK assets for each flavor.
-                // Select the artifact matching the installed package so TV boxes never
-                // receive the mobile build (and phones never receive the TV build).
-                val apkAsset = if (packageName.endsWith(".tv")) "app-tv-release.apk" else "app-mobile-release.apk"
-                val apkUrl = "https://github.com/Sany100/Sany-iptv/releases/latest/download/" + apkAsset
+                // The current workflow publishes one universal APK for phones,
+                // tablets, Android TV and Android TV boxes.
+                val apkUrl = "https://github.com/Sany100/Sany-iptv/releases/latest/download/app-release.apk"
                 val newer = compareVersions(tag, current) > 0
                 runOnUiThread {
                     if (!newer) {
