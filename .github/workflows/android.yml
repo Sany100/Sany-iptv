@@ -4,6 +4,10 @@ on:
     branches: [ main, 'feature/unique-preview' ]
     tags:
       - 'v*'
+    paths-ignore:
+      - 'admin-dashboard/**'
+      - 'render.yaml'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
 
 permissions:
