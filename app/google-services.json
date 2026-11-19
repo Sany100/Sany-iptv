@@ -1,0 +1,28 @@
+{
+  "project_info": {
+    "project_number": "151505077533",
+    "project_id": "sany-iptv-analytics-450fe",
+    "storage_bucket": "sany-iptv-analytics-450fe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:151505077533:android:256d610ab6ba4a355dcdf4",
+        "android_client_info": {
+          "package_name": "com.sany.iptv"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "AIzaSyA93mcqpWNO3marYoBgUcFxwnxecRBUN98"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
