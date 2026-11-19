@@ -378,6 +378,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHome() {
         home.removeAllViews()
+        // Keep the welcome message at the very top of the Home screen.
+        val homeWelcome = text("Welcome to my SANY IPTV app", 14, accent, true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.025f
+            setPadding(dp(8), dp(5), dp(8), dp(9))
+        }
+        home.addView(homeWelcome, LinearLayout.LayoutParams(-1, -2))
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(12))
