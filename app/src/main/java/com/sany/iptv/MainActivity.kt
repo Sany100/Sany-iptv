@@ -278,8 +278,8 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(18).toFloat()
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
-        center.addView(logo, LinearLayout.LayoutParams(dp(160), dp(160)).apply {
-            topMargin = dp(18)
+        center.addView(logo, LinearLayout.LayoutParams(dp(184), dp(184)).apply {
+            topMargin = dp(24)
             bottomMargin = dp(12)
         })
 
@@ -309,19 +309,9 @@ class MainActivity : AppCompatActivity() {
         }
         center.addView(thankYou)
 
-        // Cycle through a cool electric-blue / cyan / violet palette on both welcome lines.
-        val welcomeColorAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 3200L
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.RESTART
-            addUpdateListener { animator ->
-                val hue = (animator.animatedValue as Float) * 300f + 175f
-                val color = Color.HSVToColor(floatArrayOf(hue % 360f, 0.62f, 1f))
-                welcome.setTextColor(color)
-                thankYou.setTextColor(color)
-            }
-            start()
-        }
+        // Static welcome text colors: color/lighting animation intentionally disabled.
+        welcome.setTextColor(if (isLight) Color.rgb(25, 55, 100) else Color.WHITE)
+        thankYou.setTextColor(if (isLight) Color.rgb(0, 130, 190) else Color.rgb(126, 220, 255))
 
         val loadingBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = false
