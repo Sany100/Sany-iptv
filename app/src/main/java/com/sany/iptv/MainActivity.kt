@@ -1034,70 +1034,111 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkPlaylistStreams() {
         if (channels.isEmpty()) { toast("আগে একটি playlist যোগ করুন"); return }
+        section = "Checker"
+        renderHome()
+        startPlaylistCheck(true)
+    }
+
+    private fun startPlaylistCheck(showToast: Boolean) {
+        if (channels.isEmpty() || checkerRunning) return
         val snapshot = channels.toList()
-        val done = java.util.concurrent.atomic.AtomicInteger(0)
-        val counts = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
-        listOf("Working", "Offline", "Restricted", "Error").forEach { counts[it] = java.util.concurrent.atomic.AtomicInteger(0) }
-        val lines = java.util.Collections.synchronizedList(mutableListOf<String>())
+        checkerRunning = true
+        streamChecks.clear()
+        if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
+        if (::contentArea.isInitialized && section == "Checker") renderCheckerSection()
         val executor = java.util.concurrent.Executors.newFixedThreadPool(6)
-        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
-        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = snapshot.size }
-        val status = text("Checking 0 / " + snapshot.size + " channels…", 13, muted)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(10), dp(20), dp(10))
-            addView(status)
-            addView(progress, LinearLayout.LayoutParams(-1, dp(8)).apply { topMargin = dp(12) })
-        }
-        val dialog = AlertDialog.Builder(this).setTitle("Playlist Checker")
-            .setView(content).setNegativeButton("CANCEL", null).create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
-                cancelled.set(true)
-                executor.shutdownNow()
-                dialog.dismiss()
-            }
-        }
-        dialog.setOnCancelListener { cancelled.set(true); executor.shutdownNow() }
-        dialog.show()
-        snapshot.forEachIndexed { index, channel ->
+        snapshot.forEach { channel ->
             executor.submit {
                 val result = probeStream(channel.url)
-                counts[result.first]?.incrementAndGet()
-                lines.add((index + 1).toString() + ". " + channel.name + " — " + result.first + " (" + result.second + ")")
-                val number = done.incrementAndGet()
+                streamChecks[channel.url] = result
                 runOnUiThread {
-                    if (!cancelled.get() && dialog.isShowing) {
-                        progress.progress = number
-                        status.text = "Checking " + number + " / " + snapshot.size +
-                            "  •  Working " + counts["Working"]?.get() +
-                            "  •  Offline " + counts["Offline"]?.get() +
-                            "  •  Restricted " + counts["Restricted"]?.get() +
-                            "  •  Error " + counts["Error"]?.get()
-                        if (number == snapshot.size) {
-                            executor.shutdown()
-                            dialog.dismiss()
-                            val report = "Total: " + snapshot.size +
-                                "\nWorking: " + counts["Working"]?.get() +
-                                "\nOffline: " + counts["Offline"]?.get() +
-                                "\nRestricted: " + counts["Restricted"]?.get() +
-                                "\nError: " + counts["Error"]?.get() +
-                                "\n\nHTTP endpoint check only; playback is not guaranteed.\n\n" +
-                                lines.sortedBy { it.substringBefore(".").toIntOrNull() ?: 0 }.joinToString(System.lineSeparator())
-                            val reportView = TextView(this).apply {
-                                text = report
-                                textSize = 12f
-                                setTextColor(white)
-                                setPadding(dp(18), dp(12), dp(18), dp(12))
-                            }
-                            val reportScroll = ScrollView(this).apply { addView(reportView) }
-                            AlertDialog.Builder(this).setTitle("Playlist Check Results")
-                                .setView(reportScroll).setPositiveButton("DONE", null).show()
-                        }
-                    }
+                    if (section == "Checker") renderCheckerSection()
+                    if (section == "Live TV" && ::contentArea.isInitialized) renderListOnly()
                 }
             }
         }
+        executor.shutdown()
+        thread {
+            try { executor.awaitTermination(15, java.util.concurrent.TimeUnit.MINUTES) }
+            catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+            runOnUiThread {
+                checkerRunning = false
+                if (section == "Checker") renderCheckerSection()
+                if (section == "Live TV" && ::contentArea.isInitialized) renderListOnly()
+                toast("Check complete: " + streamChecks.values.count { it.first == "Working" } + " / " + snapshot.size + " responding")
+            }
+        }
+    }
+
+    private fun renderCheckerSection() {
+        contentArea.removeAllViews()
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(text("PLAYLIST HEALTH", 12, accent, true))
+        val summary = text(
+            if (checkerRunning) "Checking… " + streamChecks.size + " / " + channels.size
+            else "Total " + channels.size + " • Working " + streamChecks.values.count { it.first == "Working" } +
+                " • Not working " + streamChecks.values.count { it.first != "Working" },
+            13, muted
+        ).apply { setPadding(0, dp(7), 0, dp(12)) }
+        box.addView(summary)
+        box.addView(actionButton(if (checkerRunning) "CHECKING CHANNELS…" else "↻  CHECK ALL CHANNELS AGAIN") {
+            if (!checkerRunning) startPlaylistCheck(true)
+        }, LinearLayout.LayoutParams(-1, dp(46)).apply { bottomMargin = dp(10) })
+        val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val filterScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(filters) }
+        listOf("All", "Working", "Offline", "Restricted", "Error", "Checking").forEach { filter ->
+            val count = when (filter) {
+                "All" -> channels.size
+                "Checking" -> if (checkerRunning) channels.size - streamChecks.size else 0
+                else -> streamChecks.values.count { it.first == filter }
+            }
+            filters.addView(text(filter + " (" + count + ")", 11, if (checkerFilter == filter) bg else muted, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(12), 0, dp(12), 0)
+                background = if (checkerFilter == filter) rounded(accent, 24) else glass(24)
+                setOnClickListener { checkerFilter = filter; renderCheckerSection() }
+            }, LinearLayout.LayoutParams(-2, dp(36)).apply { rightMargin = dp(6) })
+        }
+        box.addView(filterScroll, LinearLayout.LayoutParams(-1, dp(44)))
+        val scroll = ScrollView(this)
+        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(rows)
+        val selected = channels.filter { channel ->
+            val status = streamChecks[channel.url]?.first
+            when (checkerFilter) {
+                "All" -> true
+                "Checking" -> checkerRunning && status == null
+                else -> status == checkerFilter
+            }
+        }
+        selected.forEach { channel ->
+            val result = streamChecks[channel.url]
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = glass(12)
+            }
+            val line = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            line.addView(text(channel.name, 13, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+            val label = result?.first ?: if (checkerRunning) "Checking…" else "Not checked"
+            val color = when (label) {
+                "Working" -> Color.rgb(35, 190, 120)
+                "Offline" -> Color.rgb(245, 85, 85)
+                "Restricted" -> Color.rgb(255, 170, 55)
+                else -> muted
+            }
+            line.addView(text(label.uppercase(), 10, color, true))
+            row.addView(line)
+            row.addView(text(result?.second ?: channel.group, 10, muted).apply { setPadding(0, dp(4), 0, 0) })
+            if (result?.first == "Working") row.setOnClickListener { play(channel) }
+            rows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
+        }
+        if (selected.isEmpty()) rows.addView(text("এই ফিল্টারে কোনো চ্যানেল নেই", 13, muted).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(30), 0, dp(30))
+        })
+        box.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        contentArea.addView(box, LinearLayout.LayoutParams(-1, -1))
     }
 
     private fun probeStream(streamUrl: String): Pair<String, String> {
