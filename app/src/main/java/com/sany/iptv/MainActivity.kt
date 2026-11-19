@@ -137,7 +137,7 @@ class MainActivity : AppCompatActivity() {
         // The owner playlist is compiled into the app and is always the startup playlist.
         val savedPlaylist = permanentPlaylistUrl
         prefs.edit().putString("playlist_url", permanentPlaylistUrl).apply()
-        val restoringBackground = savedInstanceState != null || prefs.getBoolean("resume_without_splash", false)
+        val restoringBackground = savedInstanceState != null
         section = savedInstanceState?.getString("ui_section") ?: prefs.getString("ui_section", "Live TV") ?: "Live TV"
         selectedGroup = savedInstanceState?.getString("ui_group") ?: prefs.getString("ui_group", "All") ?: "All"
         searchQuery = savedInstanceState?.getString("ui_search") ?: prefs.getString("ui_search", "") ?: ""
@@ -250,6 +250,7 @@ class MainActivity : AppCompatActivity() {
         val center = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
+            setPadding(dp(24), dp(20), dp(24), dp(20))
         }
         val logo = ImageView(this).apply {
             setImageResource(com.sany.iptv.R.drawable.sany_logo_icon)
@@ -261,29 +262,55 @@ class MainActivity : AppCompatActivity() {
             rotationY = -78f
             rotationX = 24f
             cameraDistance = 9000f * resources.displayMetrics.density
-            translationZ = dp(22).toFloat()
+            translationZ = dp(18).toFloat()
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
-        center.addView(logo, LinearLayout.LayoutParams(dp(280), dp(280)))
-        center.addView(text("Welcome to my SANY IPTV app", 16, Color.WHITE, true).apply {
+        center.addView(logo, LinearLayout.LayoutParams(dp(180), dp(180)).apply {
+            bottomMargin = dp(14)
+        })
+
+        val welcomeText = android.text.SpannableString("Welcome to my SANY IPTV app").apply {
+            val nameStart = indexOf("SANY IPTV")
+            if (nameStart >= 0) setSpan(
+                android.text.style.StyleSpan(Typeface.BOLD),
+                nameStart, nameStart + "SANY IPTV".length,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+        val welcome = text(welcomeText.toString(), 16, Color.WHITE, false).apply {
+            this.text = welcomeText
             gravity = Gravity.CENTER
             letterSpacing = 0.015f
-            setPadding(dp(12), dp(10), dp(12), 0)
+            setPadding(dp(12), dp(4), dp(12), 0)
             alpha = 0f
-            translationY = dp(20).toFloat()
-            scaleX = 0.92f
-            scaleY = 0.92f
-        })
-        center.addView(text("Thank you", 14, Color.rgb(126, 220, 255), true).apply {
+            translationY = dp(16).toFloat()
+        }
+        center.addView(welcome)
+
+        center.addView(text("Thank you for choosing SANY IPTV", 12, Color.rgb(126, 220, 255), true).apply {
             gravity = Gravity.CENTER
-            letterSpacing = 0.08f
-            setPadding(0, dp(10), 0, 0)
+            letterSpacing = 0.025f
+            setPadding(0, dp(8), 0, dp(18))
             alpha = 0f
-            translationY = dp(10).toFloat()
         })
+
+        val loadingBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = false
+            max = 100
+            progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(64, 170, 255))
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.argb(85, 210, 230, 255))
+        }
+        center.addView(loadingBar, LinearLayout.LayoutParams(dp(230), dp(7)))
+        val percentLabel = text("0%", 13, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(9), 0, 0)
+        }
+        center.addView(percentLabel)
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
         root.addView(splash, FrameLayout.LayoutParams(-1, -1))
-        val logoGlow = ValueAnimator.ofFloat(0.985f, 1.025f).apply {
+
+        val logoGlow = ValueAnimator.ofFloat(0.985f, 1.02f).apply {
             duration = 1200L
             repeatMode = ValueAnimator.REVERSE
             repeatCount = ValueAnimator.INFINITE
@@ -294,21 +321,39 @@ class MainActivity : AppCompatActivity() {
             }
             start()
         }
-        // A 3D entrance: the SANY IPTV logo rotates into place with depth.
         logo.animate()
             .alpha(1f).scaleX(1f).scaleY(1f)
             .rotationY(360f).rotationX(0f)
-            .setDuration(1350)
+            .setDuration(1150)
             .setInterpolator(DecelerateInterpolator(1.6f))
             .start()
-        center.getChildAt(1).animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
-            .setStartDelay(420).setDuration(700).setInterpolator(DecelerateInterpolator()).start()
-        center.getChildAt(2).animate().alpha(1f).translationY(0f).setStartDelay(850).setDuration(600)
+        welcome.animate().alpha(1f).translationY(0f)
+            .setStartDelay(350).setDuration(650)
             .setInterpolator(DecelerateInterpolator()).start()
-        splash.animate().alpha(0f).setStartDelay(2600).setDuration(400).withEndAction {
-            logoGlow.cancel()
-            root.removeView(splash)
-        }.start()
+        center.getChildAt(2).animate().alpha(1f)
+            .setStartDelay(650).setDuration(500)
+            .setInterpolator(DecelerateInterpolator()).start()
+
+        // Keep the welcome screen visible for ten seconds and show live percentage progress.
+        val progressAnimator = ValueAnimator.ofInt(0, 100).apply {
+            duration = 10_000L
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { animator ->
+                val progress = animator.animatedValue as Int
+                loadingBar.progress = progress
+                percentLabel.text = "$progress%"
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    logoGlow.cancel()
+                    splash.animate().alpha(0f).setDuration(350).withEndAction {
+                        root.removeView(splash)
+                    }.start()
+                }
+            })
+            start()
+        }
+        splash.setTag(R.id.splash_progress_animator, progressAnimator)
     }
 
     private fun renderHome() {
