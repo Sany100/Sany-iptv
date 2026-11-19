@@ -1029,10 +1029,32 @@ class MainActivity : AppCompatActivity() {
                     )?.requestFocus()
                 }
             }
-            item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
-            val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else name, 10, if (active) accent else muted, active).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) }
-            if (name == "Live TV") liveTvNavLabel = navLabel
-            item.addView(navLabel)
+            if (name == "Live TV" && checkerRunning) {
+                val loadingRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
+                }
+                val spinner = ProgressBar(this, null, android.R.attr.progressBarStyleSmall).apply {
+                    isIndeterminate = true
+                    indeterminateTintList = android.content.res.ColorStateList.valueOf(if (active) accent else Color.rgb(64, 170, 255))
+                }
+                loadingRow.addView(spinner, LinearLayout.LayoutParams(dp(17), dp(17)).apply { rightMargin = dp(5) })
+                val navLabel = text(liveTvProgressLabel(), 13, if (active) accent else Color.rgb(64, 170, 255), true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(2), 0, 0)
+                }
+                liveTvNavLabel = navLabel
+                loadingRow.addView(navLabel)
+                item.addView(loadingRow, LinearLayout.LayoutParams(-1, -2))
+            } else {
+                item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
+                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else name, 12, if (active) accent else muted, active).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(3), 0, 0)
+                }
+                if (name == "Live TV") liveTvNavLabel = navLabel
+                item.addView(navLabel)
+            }
             bottomNav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
         }
     }
