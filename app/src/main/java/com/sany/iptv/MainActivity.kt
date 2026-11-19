@@ -1224,7 +1224,7 @@ class MainActivity : AppCompatActivity() {
                 val code = connection.responseCode
                 if (code !in 200..299) throw java.io.IOException("HTTP $code")
                 val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                if (!body.trimStart().startsWith("#EXTM3U", true)) throw java.io.IOException("Invalid M3U response")
+                if (body.lineSequence().none { it.trim().startsWith("#EXTM3U", true) }) throw java.io.IOException("Invalid M3U response")
                 return body
             } catch (e: Exception) {
                 lastError = e
