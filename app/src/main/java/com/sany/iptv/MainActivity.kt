@@ -230,7 +230,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStartupAnimation() {
         val splash = FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(7, 12, 22))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(5, 15, 38), Color.rgb(13, 48, 91), Color.rgb(42, 22, 82))
+            )
             elevation = dp(30).toFloat()
         }
         val center = LinearLayout(this).apply {
@@ -240,7 +243,7 @@ class MainActivity : AppCompatActivity() {
         val logo = text("SANY", 62, Color.rgb(55, 145, 255), true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.20f
-            setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(170, 55, 145, 255))
+            setShadowLayer(dp(20).toFloat(), 0f, 0f, Color.argb(190, 55, 145, 255))
             alpha = 0f
             scaleX = 0.68f
             scaleY = 0.68f
@@ -255,16 +258,33 @@ class MainActivity : AppCompatActivity() {
             letterSpacing = 0.015f
             setPadding(dp(12), dp(10), dp(12), 0)
             alpha = 0f
-            translationY = dp(12).toFloat()
+            translationY = dp(20).toFloat()
+            scaleX = 0.92f
+            scaleY = 0.92f
         })
-        center.addView(text("Thank you", 14, Color.rgb(145, 195, 235), true).apply {
+        center.addView(text("Thank you", 14, Color.rgb(126, 220, 255), true).apply {
             gravity = Gravity.CENTER
-            letterSpacing = 0.06f
+            letterSpacing = 0.08f
             setPadding(0, dp(10), 0, 0)
             alpha = 0f
+            translationY = dp(10).toFloat()
         })
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
         root.addView(splash, FrameLayout.LayoutParams(-1, -1))
+        val logoGlow = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 1100L
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { animator ->
+                val fraction = animator.animatedValue as Float
+                val color = android.animation.ArgbEvaluator().evaluate(
+                    fraction, Color.rgb(55, 145, 255), Color.rgb(70, 235, 255)
+                ) as Int
+                logo.setTextColor(color)
+                logo.setShadowLayer(dp(16 + (fraction * 10).toInt()).toFloat(), 0f, 0f, color)
+            }
+            start()
+        }
         // A 3D entrance: the SANY wordmark rotates on its Y axis
         // while tilting back into place, with depth and a teal glow.
         logo.animate()
@@ -273,10 +293,12 @@ class MainActivity : AppCompatActivity() {
             .setDuration(1350)
             .setInterpolator(DecelerateInterpolator(1.6f))
             .start()
-        center.getChildAt(1).animate().alpha(1f).translationY(0f).setStartDelay(420).setDuration(650)
+        center.getChildAt(1).animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+            .setStartDelay(420).setDuration(700).setInterpolator(DecelerateInterpolator()).start()
+        center.getChildAt(2).animate().alpha(1f).translationY(0f).setStartDelay(850).setDuration(600)
             .setInterpolator(DecelerateInterpolator()).start()
-        center.getChildAt(2).animate().alpha(1f).setStartDelay(720).setDuration(500).start()
         splash.animate().alpha(0f).setStartDelay(2600).setDuration(400).withEndAction {
+            logoGlow.cancel()
             root.removeView(splash)
         }.start()
     }
