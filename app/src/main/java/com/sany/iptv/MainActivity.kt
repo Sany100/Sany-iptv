@@ -1452,53 +1452,74 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadAndInstallUpdate(url: String, version: String) {
+        var receiver: android.content.BroadcastReceiver? = null
         try {
-            val request = android.app.DownloadManager.Request(Uri.parse(url))
-                .setTitle("SANY IPTV " + version)
-                .setDescription("Downloading app update…")
-                .setMimeType("application/vnd.android.package-archive")
-                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(
-                    android.os.Environment.DIRECTORY_DOWNLOADS,
-                    (if (packageName.endsWith(".tv")) "SANY-IPTV-TV-" else "SANY-IPTV-MOBILE-") + version + ".apk"
-                )
             val manager = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
-            val downloadId = manager.enqueue(request)
-            val receiver = object : android.content.BroadcastReceiver() {
+            var downloadId = -1L
+            val filter = android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+
+            // Register before enqueue so a fast download cannot finish before we start listening.
+            receiver = object : android.content.BroadcastReceiver() {
                 override fun onReceive(context: android.content.Context?, intent: Intent?) {
                     if (intent?.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
                     try {
                         unregisterReceiver(this)
+                        val query = android.app.DownloadManager.Query().setFilterById(downloadId)
+                        manager.query(query).use { cursor ->
+                            if (!cursor.moveToFirst()) {
+                                toast("ডাউনলোডের তথ্য পাওয়া যায়নি")
+                                return
+                            }
+                            val status = cursor.getInt(cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS))
+                            if (status != android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                                val reason = cursor.getInt(cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_REASON))
+                                toast("APK download failed (code " + reason + ")")
+                                return
+                            }
+                        }
                         val apkUri = manager.getUriForDownloadedFile(downloadId)
                         if (apkUri == null) {
-                            toast("APK download failed")
+                            toast("ডাউনলোড সম্পন্ন, কিন্তু APK ফাইল খুঁজে পাওয়া যায়নি")
+                            return
+                        }
+                        if (android.os.Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:" + packageName)))
+                            toast("এই অ্যাপের জন্য Install unknown apps অনুমতি দিন, তারপর Downloads থেকে APK ইনস্টল করুন")
                             return
                         }
                         val installIntent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(apkUri, "application/vnd.android.package-archive")
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
-                        try {
-                            startActivity(installIntent)
-                        } catch (_: Exception) {
-                            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                Uri.parse("package:" + packageName)))
-                            toast("অনুমতি দিন, তারপর Downloads থেকে SANY IPTV APK খুলুন")
-                        }
+                        startActivity(installIntent)
                     } catch (e: Exception) {
                         toast("Install open failed: " + (e.message ?: "unknown error"))
                     }
                 }
             }
-            val filter = android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
             if (android.os.Build.VERSION.SDK_INT >= 33) {
                 registerReceiver(receiver, filter, android.content.Context.RECEIVER_EXPORTED)
             } else {
                 @Suppress("DEPRECATION")
                 registerReceiver(receiver, filter)
             }
-            toast("APK ডাউনলোড শুরু হয়েছে")
+
+            val request = android.app.DownloadManager.Request(Uri.parse(url))
+                .setTitle("SANY IPTV " + version)
+                .setDescription("Downloading update APK…")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+                .setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS,
+                    "SANY-IPTV-" + version + ".apk"
+                )
+            downloadId = manager.enqueue(request)
+            toast("APK ডাউনলোড শুরু হয়েছে — Notification দেখুন")
         } catch (e: Exception) {
+            try { receiver?.let { unregisterReceiver(it) } } catch (_: Exception) { }
             toast("Download failed: " + (e.message ?: "unknown error"))
         }
     }
