@@ -22,6 +22,7 @@ import android.os.Build
 import android.util.Rational
 import android.content.res.Configuration
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
@@ -379,6 +380,57 @@ class MainActivity : AppCompatActivity() {
         home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(66)))
         renderSection()
         renderBottomNav()
+        if (isTvDevice) root.post { focusInitialTvControl() }
+    }
+
+    private fun focusInitialTvControl() {
+        val target = when {
+            section == "Live TV" || section == "Movies" -> {
+                if (::listContainer.isInitialized && listContainer.childCount > 0) listContainer.getChildAt(0)
+                else bottomNav.getChildAt(0)
+            }
+            else -> bottomNav.getChildAt(
+                listOf("Live TV", "Checker", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
+            )
+        }
+        target?.requestFocus()
+    }
+
+    private fun applyTvFocusStyle(view: View) {
+        if (!isTvDevice) return
+        view.isFocusable = true
+        view.isFocusableInTouchMode = false
+        view.setOnFocusChangeListener { focusedView, hasFocus ->
+            focusedView.foreground = if (hasFocus) GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(2), accent)
+            } else null
+            focusedView.animate().cancel()
+            focusedView.animate().scaleX(if (hasFocus) 1.035f else 1f)
+                .scaleY(if (hasFocus) 1.035f else 1f)
+                .setDuration(110).start()
+            if (hasFocus) focusedView.requestRectangleOnScreen(
+                android.graphics.Rect(0, 0, focusedView.width, focusedView.height), true
+            )
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (isTvDevice) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                    if (player != null) { playAdjacentChannel(1); return true }
+                }
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                    if (player != null) { playAdjacentChannel(-1); return true }
+                }
+                KeyEvent.KEYCODE_ESCAPE -> {
+                    if (playerScreen != null) { closePlayer(); return true }
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     private fun renderSection() {
@@ -502,6 +554,7 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 gravity = Gravity.CENTER
                 setPadding(dp(15), 0, dp(15), 0)
+                applyTvFocusStyle(this)
                 background = if (active) rounded(Color.argb(220, 0, 170, 130), 30, Color.argb(160, 160, 255, 230), 1)
                     else glass(30)
                 setOnClickListener {
@@ -538,6 +591,7 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(9), dp(10), dp(9))
                 background = glass(12)
+                applyTvFocusStyle(this)
             }
             val number = text((index + 1).toString().padStart(2, '0'), 12, accent, true).apply {
                 gravity = Gravity.CENTER
@@ -668,6 +722,7 @@ class MainActivity : AppCompatActivity() {
             val item = LinearLayout(this).apply {
                 isFocusable = true
                 isFocusableInTouchMode = false
+                applyTvFocusStyle(this)
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 background = if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
@@ -685,6 +740,9 @@ class MainActivity : AppCompatActivity() {
                     headerTitleView?.text = if (section == "Movies") "Movies" else section
                     renderSection()
                     renderBottomNav()
+                    if (isTvDevice) bottomNav.getChildAt(
+                        listOf("Live TV", "Checker", "Movies", "Series", "Settings").indexOf(section)
+                    )?.requestFocus()
                 }
             }
             item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
@@ -1790,6 +1848,7 @@ class MainActivity : AppCompatActivity() {
         }
         val back = text("‹", 34, Color.WHITE, true).apply {
             isFocusable = true
+            applyTvFocusStyle(this)
             gravity = Gravity.CENTER
             setOnClickListener { closePlayer() }
         }
@@ -1801,6 +1860,7 @@ class MainActivity : AppCompatActivity() {
         })
         val fullscreenButton = text("⛶  FULL", 13, Color.WHITE, true).apply {
             isFocusable = true
+            applyTvFocusStyle(this)
             gravity = Gravity.CENTER
             setPadding(dp(13), 0, dp(13), 0)
             background = GradientDrawable().apply {
@@ -2040,6 +2100,7 @@ class MainActivity : AppCompatActivity() {
     private fun actionButton(label: String, action: () -> Unit) = TextView(this).apply {
         isFocusable = true
         isFocusableInTouchMode = false
+        applyTvFocusStyle(this)
         text = label; textSize = if (isTvDevice) 16f else 13f; typeface = Typeface.DEFAULT_BOLD
         setTextColor(bg); gravity = Gravity.CENTER
         background = GradientDrawable(
@@ -2052,6 +2113,7 @@ class MainActivity : AppCompatActivity() {
     private fun iconButton(label: String, action: () -> Unit) = TextView(this).apply {
         isFocusable = true
         isFocusableInTouchMode = false
+        applyTvFocusStyle(this)
         text = label; textSize = if (isTvDevice) 28f else 22f; setTextColor(white); gravity = Gravity.CENTER
         background = glass(12); elevation = dp(5).toFloat()
         setShadowLayer(dp(7).toFloat(), 0f, 0f, Color.argb(75, 75, 135, 255))
