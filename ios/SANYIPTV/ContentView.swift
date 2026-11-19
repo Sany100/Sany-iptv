@@ -105,18 +105,37 @@ struct ContentView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 45)
                         } else if let errorMessage, channels.isEmpty {
-                            ContentUnavailableView {
-                                Label("Could not load playlist", systemImage: "wifi.exclamationmark")
-                            } description: {
+                            VStack(spacing: 12) {
+                                Image(systemName: "wifi.exclamationmark")
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.cyan)
+                                Text("Could not load playlist")
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
                                 Text(errorMessage)
-                            } actions: {
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.65))
+                                    .multilineTextAlignment(.center)
                                 Button("Try Again") { Task { await loadPlaylist() } }
                                     .buttonStyle(.borderedProminent)
                                     .tint(.cyan)
                             }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 35)
                         } else if visibleChannels.isEmpty {
-                            ContentUnavailableView("No channels found", systemImage: "tv", description: Text("Try another category or search term."))
-                                .foregroundStyle(.white)
+                            VStack(spacing: 10) {
+                                Image(systemName: "tv")
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.cyan)
+                                Text("No channels found")
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                Text("Try another category or search term.")
+                                    .font(.caption)
+                                    .foregroundStyle(.white.opacity(0.6))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 35)
                         } else {
                             LazyVStack(spacing: 10) {
                                 ForEach(visibleChannels) { channel in
