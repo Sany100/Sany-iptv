@@ -22,6 +22,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Configure Firebase Analytics
+        if: ${{ secrets.SANY_FIREBASE_JSON != '' }}
+        env:
+          FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}
+        run: printf '%s' "$FIREBASE_JSON" > app/google-services.json
       - name: Build mobile and Android TV debug APKs
         run: gradle assembleMobileDebug assembleTvDebug
       - uses: actions/upload-artifact@v4
@@ -43,6 +48,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Configure Firebase Analytics
+        if: ${{ secrets.SANY_FIREBASE_JSON != '' }}
+        env:
+          FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}
+        run: printf '%s' "$FIREBASE_JSON" > app/google-services.json
       - name: Decode release signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.SANY_RELEASE_KEYSTORE_BASE64 }}
