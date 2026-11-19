@@ -1076,7 +1076,11 @@ class MainActivity : AppCompatActivity() {
                 if (tag.isBlank()) throw IllegalStateException("Latest release version পাওয়া যায়নি")
 
                 val current = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
-                val apkUrl = "https://github.com/Sany100/Sany-iptv/releases/latest/download/app-release.apk"
+                // The release workflow publishes separate APK assets for each flavor.
+                // Select the artifact matching the installed package so TV boxes never
+                // receive the mobile build (and phones never receive the TV build).
+                val apkAsset = if (packageName.endsWith(".tv")) "app-tv-release.apk" else "app-mobile-release.apk"
+                val apkUrl = "https://github.com/Sany100/Sany-iptv/releases/latest/download/" + apkAsset
                 val newer = compareVersions(tag, current) > 0
                 runOnUiThread {
                     if (!newer) {
@@ -1318,7 +1322,10 @@ class MainActivity : AppCompatActivity() {
                 .setDescription("Downloading app update…")
                 .setMimeType("application/vnd.android.package-archive")
                 .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, "SANY-IPTV-" + version + ".apk")
+                .setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS,
+                    (if (packageName.endsWith(".tv")) "SANY-IPTV-TV-" else "SANY-IPTV-MOBILE-") + version + ".apk"
+                )
             val manager = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
             val downloadId = manager.enqueue(request)
             val receiver = object : android.content.BroadcastReceiver() {
