@@ -80,6 +80,7 @@ class MainActivity : AppCompatActivity() {
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
     @Volatile private var checkerRunning = false
     private val checkerProgressCount = java.util.concurrent.atomic.AtomicInteger(0)
+    @Volatile private var liveTvPublishedCount = 0
     private var checkerFilter = "All"
     private var checkerDisplayedLimit = 250
     private var checkerSummaryView: TextView? = null
@@ -931,12 +932,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun filteredChannels(): List<Channel> {
-        return channels.filter { c ->
-            // Show every Live TV channel while the playlist is first loading/checking.
-            // Once the check is complete, keep only channels reported as Working.
-            // Starting a re-check clears results and temporarily restores the full list.
-            val liveTvHealthMatch = section != "Live TV" ||
-                (!checkerRunning && (streamChecks.isEmpty() || streamChecks[c.url]?.first == "Working"))
+        // Publish only verified-working channels to Live TV while checking: first 30,
+        // then the full working set after the checker reaches 100%.
+        val liveCandidates = if (section == "Live TV" && streamChecks.isNotEmpty()) {
+            val working = channels.filter { streamChecks[it.url]?.first == "Working" }
+            if (checkerRunning) working.take(30) else working
+        } else channels
+        return liveCandidates.filter { c ->
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
@@ -949,7 +951,7 @@ class MainActivity : AppCompatActivity() {
                 else -> c.group.equals(selectedGroup, true)
             }
             val q = searchQuery.trim().lowercase()
-            liveTvHealthMatch && typeMatch && groupMatch &&
+            typeMatch && groupMatch &&
                 (q.isBlank() || c.name.lowercase().contains(q) || c.group.lowercase().contains(q))
         }
     }
@@ -1862,6 +1864,13 @@ class MainActivity : AppCompatActivity() {
             if (!isFinishing) {
                 updateLiveTvProgress()
                 if (::contentArea.isInitialized && section == "Checker") updateCheckerUi()
+                if (::contentArea.isInitialized && section == "Live TV") {
+                    val readyCount = streamChecks.values.count { it.first == "Working" }.coerceAtMost(30)
+                    if (readyCount > liveTvPublishedCount) {
+                        liveTvPublishedCount = readyCount
+                        renderListOnly()
+                    }
+                }
             }
         }, 500L)
     }
@@ -1912,6 +1921,7 @@ class MainActivity : AppCompatActivity() {
         val snapshot = channels.toList()
         checkerRunning = true
         checkerProgressCount.set(0)
+        liveTvPublishedCount = 0
         updateLiveTvProgress()
         // Keep the last known health snapshot visible in Checker while refreshing.
         checkerDisplayedLimit = 250
