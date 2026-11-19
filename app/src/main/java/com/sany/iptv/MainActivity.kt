@@ -1823,7 +1823,6 @@ class MainActivity : AppCompatActivity() {
             if (!isFinishing) {
                 updateLiveTvProgress()
                 if (::contentArea.isInitialized && section == "Checker") updateCheckerUi()
-                if (::contentArea.isInitialized && section == "Live TV" && checkerRunning) renderListOnly()
             }
         }, 500L)
     }
@@ -1911,6 +1910,7 @@ class MainActivity : AppCompatActivity() {
                 updateLiveTvProgress()
                 checkerUiRefreshQueued.set(false)
                 checkerUiHandler.removeCallbacksAndMessages(null)
+                scheduleOfflineChannelRecheck()
 
                 // Once checking finishes, automatically switch to Live TV and
                 // refresh the complete screen/navigation so every checked channel
@@ -2065,9 +2065,18 @@ class MainActivity : AppCompatActivity() {
             val retry = channels.filter { streamChecks[it.url]?.first != "Working" }
             if (retry.isNotEmpty()) {
                 thread(name = "SANY-Offline-Recheck") {
-                    retry.forEach { channel ->
-                        streamChecks[channel.url] = probeStream(channel.url)
+                    val next = java.util.concurrent.atomic.AtomicInteger(0)
+                    val workers = (0 until minOf(6, retry.size)).map { worker ->
+                        thread(name = "SANY-Offline-Recheck-$worker") {
+                            while (true) {
+                                val index = next.getAndIncrement()
+                                if (index >= retry.size) break
+                                val channel = retry[index]
+                                streamChecks[channel.url] = probeStream(channel.url)
+                            }
+                        }
                     }
+                    workers.forEach { it.join() }
                     saveStreamCheckResults()
                     runOnUiThread {
                         if (!isFinishing && section == "Live TV") renderHome()
