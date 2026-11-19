@@ -932,12 +932,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun filteredChannels(): List<Channel> {
-        // Publish only verified-working channels to Live TV while checking: first 30,
-        // then the full working set after the checker reaches 100%.
-        val liveCandidates = if (section == "Live TV" && streamChecks.isNotEmpty()) {
+        // During checking, show up to 30 verified channels before 50%,
+        // up to 60 from 50% to 99%, and all verified channels after 100%.
+        val liveCandidates = if (section == "Live TV" && (checkerRunning || streamChecks.isNotEmpty())) {
             val working = channels.filter { streamChecks[it.url]?.first == "Working" }
             if (checkerRunning) {
-                if (checkerProgressCount.get() * 2 >= channels.size) working.take(60) else emptyList()
+                val limit = if (channels.isNotEmpty() && checkerProgressCount.get() * 2 >= channels.size) 60 else 30
+                working.take(limit)
             } else working
         } else channels
         return liveCandidates.filter { c ->
@@ -1867,9 +1868,14 @@ class MainActivity : AppCompatActivity() {
                 updateLiveTvProgress()
                 if (::contentArea.isInitialized && section == "Checker") updateCheckerUi()
                 if (::contentArea.isInitialized && section == "Live TV") {
-                    val halfChecked = checkerRunning && checkerProgressCount.get() * 2 >= channels.size
-                    val readyCount = if (halfChecked) channels.count { streamChecks[it.url]?.first == "Working" }.coerceAtMost(60) else 0
-                    if (readyCount > liveTvPublishedCount || (!halfChecked && liveTvPublishedCount > 0)) {
+                    val checkedCount = checkerProgressCount.get()
+                    val publishLimit = when {
+                        !checkerRunning -> Int.MAX_VALUE
+                        channels.isNotEmpty() && checkedCount * 2 >= channels.size -> 60
+                        else -> 30
+                    }
+                    val readyCount = channels.count { streamChecks[it.url]?.first == "Working" }.coerceAtMost(publishLimit)
+                    if (readyCount > liveTvPublishedCount || (!checkerRunning && liveTvPublishedCount != readyCount)) {
                         liveTvPublishedCount = readyCount
                         renderListOnly()
                     }
