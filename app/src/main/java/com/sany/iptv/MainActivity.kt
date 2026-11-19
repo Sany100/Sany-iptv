@@ -852,13 +852,13 @@ class MainActivity : AppCompatActivity() {
             })
             details.addView(watermarkLine)
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-            // A gentle 3D flip gives the actual channel logo a premium animated entrance.
-            logoFrame.cameraDistance = 9000f * resources.displayMetrics.density
-            logoFrame.rotationY = -72f
-            logoFrame.scaleX = 0.82f
-            logoFrame.scaleY = 0.82f
-            // Keep channel rows immediately interactive; avoid per-row entrance animations.
-            if (section == "Live TV") {
+            // Keep the original full-width, front-facing channel logo presentation.
+            logoFrame.rotationY = 0f
+            logoFrame.rotationX = 0f
+            logoFrame.scaleX = 1f
+            logoFrame.scaleY = 1f
+            // Live TV and Movies can play; Checker remains diagnostic only.
+            if (section == "Live TV" || section == "Movies") {
                 row.setOnClickListener { play(channel) }
             }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
@@ -890,7 +890,7 @@ class MainActivity : AppCompatActivity() {
                     background = glass(16)
                     applyTvFocusStyle(this)
                     contentDescription = "Play ${channel.name}"
-                    if (section == "Live TV") setOnClickListener { play(channel) }
+                    if (section == "Live TV" || section == "Movies") setOnClickListener { play(channel) }
                 }
                 val topLine = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -2189,7 +2189,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun play(channel: Channel) {
-        if (section != "Live TV") return
+        if (section != "Live TV" && section != "Movies") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
