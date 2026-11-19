@@ -92,6 +92,7 @@ class MainActivity : AppCompatActivity() {
     private var checkerLoadingCount: TextView? = null
     private var checkerLoadingBar: ProgressBar? = null
     private var checkerLoadingRing: TextView? = null
+    private var checkerRingAnimator: ValueAnimator? = null
     private val permanentPlaylistUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
     private val playlistUrls = mutableListOf<String>()
     private var selectedGroup = "All"
@@ -1948,9 +1949,14 @@ class MainActivity : AppCompatActivity() {
         overlay.addView(content, FrameLayout.LayoutParams(-1, -1))
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         checkerLoadingOverlay = overlay
-        ring.animate().rotationBy(360f).setDuration(1800L).setInterpolator(android.view.animation.LinearInterpolator())
-            .withEndAction { if (checkerLoadingOverlay != null) ring.animate().rotationBy(360f).setDuration(1800L).setInterpolator(android.view.animation.LinearInterpolator()).start() }
-            .start()
+        checkerRingAnimator?.cancel()
+        checkerRingAnimator = ValueAnimator.ofFloat(0f, 360f).apply {
+            duration = 1800L
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { ring.rotation = it.animatedValue as Float }
+            start()
+        }
         content.alpha = 0f
         content.scaleX = 0.94f
         content.scaleY = 0.94f
@@ -1970,7 +1976,8 @@ class MainActivity : AppCompatActivity() {
     private fun hideCheckerLoadingScreen() {
         val overlay = checkerLoadingOverlay ?: return
         checkerLoadingOverlay = null
-        checkerLoadingRing?.animate()?.cancel()
+        checkerRingAnimator?.cancel()
+        checkerRingAnimator = null
         checkerLoadingOverlay = null
         overlay.animate().alpha(0f).setDuration(250L).withEndAction {
             if (overlay.parent === root) root.removeView(overlay)
