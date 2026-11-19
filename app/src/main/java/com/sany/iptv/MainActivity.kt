@@ -378,13 +378,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHome() {
         home.removeAllViews()
-        // Keep the welcome message at the very top of the Home screen.
-        val homeWelcome = text("Welcome to my SANY IPTV app", 14, accent, true).apply {
-            gravity = Gravity.CENTER
-            letterSpacing = 0.025f
-            setPadding(dp(8), dp(5), dp(8), dp(9))
-        }
-        home.addView(homeWelcome, LinearLayout.LayoutParams(-1, -2))
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(12))
@@ -397,7 +390,7 @@ class MainActivity : AppCompatActivity() {
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         // The header logo is intentionally removed; keep the brand name clean and prominent.
-        val brand = text("SANY IPTV", 24, accent, true).apply {
+        val brand = text("SANY IPTV", 28, accent, true).apply {
             letterSpacing = 0.06f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(8), 0, 0, 0)
@@ -407,9 +400,9 @@ class MainActivity : AppCompatActivity() {
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
-        top.addView(text("PREMIUM IPTV EXPERIENCE", 16, white, true).apply {
-            letterSpacing = 0.045f
-            setPadding(dp(8), dp(3), 0, dp(7))
+        top.addView(text("PREMIUM IPTV EXPERIENCE", 12, white, true).apply {
+            letterSpacing = 0.025f
+            setPadding(dp(8), dp(1), 0, dp(7))
         })
         top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
