@@ -252,7 +252,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
         val logo = ImageView(this).apply {
-            setImageResource(com.sany.iptv.R.drawable.sany_logo_splash)
+            setImageResource(com.sany.iptv.R.drawable.sany_logo_icon)
             scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = "SANY IPTV logo"
             alpha = 0f
