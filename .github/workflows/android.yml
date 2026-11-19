@@ -54,10 +54,15 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Configure Firebase Analytics
-        if: ${{ secrets.SANY_FIREBASE_JSON != '' }}
         env:
           FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}
-        run: printf '%s' "$FIREBASE_JSON" > app/google-services.json
+        run: |
+          if [ -n "$FIREBASE_JSON" ]; then
+            printf '%s' "$FIREBASE_JSON" > app/google-services.json
+            echo "Firebase Analytics configured."
+          else
+            echo "Firebase Analytics not configured; building without analytics."
+          fi
       - name: Decode release signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.SANY_RELEASE_KEYSTORE_BASE64 }}
