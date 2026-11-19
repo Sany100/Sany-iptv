@@ -378,6 +378,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHome() {
         home.removeAllViews()
+        // Preserve the exact welcome-message slot as blank space on the Home screen.
+        val homeWelcomeSpacer = text(" ", 14, accent, true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.025f
+            setPadding(dp(8), dp(5), dp(8), dp(9))
+            visibility = View.INVISIBLE
+        }
+        home.addView(homeWelcomeSpacer, LinearLayout.LayoutParams(-1, -2))
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(12))
@@ -390,7 +398,7 @@ class MainActivity : AppCompatActivity() {
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         // The header logo is intentionally removed; keep the brand name clean and prominent.
-        val brand = text("SANY IPTV", 28, accent, true).apply {
+        val brand = text("SANY IPTV", 30, accent, true).apply {
             letterSpacing = 0.06f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(8), 0, 0, 0)
