@@ -863,7 +863,7 @@ class MainActivity : AppCompatActivity() {
         val downloadButton = TextView(this).apply {
             text = "⬇  DOWNLOAD & INSTALL"
             textSize = 14f
-            setTextColor(Color.rgb(25, 48, 92))
+            setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             isAllCaps = false
@@ -871,10 +871,10 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(5).toFloat()
             background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.rgb(255, 225, 105), Color.rgb(255, 177, 55))
+                intArrayOf(Color.rgb(46, 204, 113), Color.rgb(22, 145, 78))
             ).apply {
                 cornerRadius = dp(15).toFloat()
-                setStroke(dp(1), Color.rgb(255, 242, 185))
+                setStroke(dp(1), Color.rgb(153, 255, 190))
             }
             contentDescription = "Download and install SANY IPTV update"
             setOnClickListener {
@@ -891,9 +891,9 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(15), dp(12), dp(15))
             background = GradientDrawable().apply {
-                setColor(Color.argb(70, 255, 255, 255))
+                setColor(Color.rgb(190, 45, 55))
                 cornerRadius = dp(15).toFloat()
-                setStroke(dp(1), Color.argb(150, 220, 230, 255))
+                setStroke(dp(1), Color.rgb(255, 145, 150))
             }
             setOnClickListener { dialog.dismiss() }
         }
