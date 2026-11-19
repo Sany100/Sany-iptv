@@ -208,6 +208,9 @@ class MainActivity : AppCompatActivity() {
         }, 900L)
     }
     private fun applySystemBars() {
+        // Keep the Activity window itself in sync with the selected theme; this
+        // prevents dark gaps showing through behind transparent/scrolling views.
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
         window.statusBarColor = bg
         window.navigationBarColor = bg
         if (android.os.Build.VERSION.SDK_INT >= 23) {
@@ -335,6 +338,7 @@ class MainActivity : AppCompatActivity() {
         contentArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(14), dp(18), 0)
+            setBackgroundColor(bg)
         }
         home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
         bottomNav = LinearLayout(this).apply {
@@ -387,7 +391,11 @@ class MainActivity : AppCompatActivity() {
         contentArea.addView(search, LinearLayout.LayoutParams(-1, dp(48)))
         search.addTextChangedListener(SimpleTextWatcher { searchQuery = it; displayedLimit = 120; renderListOnly() })
 
-        val categoriesScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val categoriesScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            setBackgroundColor(bg)
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
         categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         categoriesScroll.addView(categoryRow)
         contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(8) })
@@ -395,7 +403,11 @@ class MainActivity : AppCompatActivity() {
 
         countLabel = text("", 12, muted).apply { setPadding(dp(2), dp(4), 0, dp(8)) }
         contentArea.addView(countLabel)
-        val listScroll = ScrollView(this).apply { isFillViewport = true }
+        val listScroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(bg)
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
         listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listScroll.addView(listContainer)
         contentArea.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -652,8 +664,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderSettings() {
-        val scroll = ScrollView(this)
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(bg)
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
         scroll.addView(box)
         box.addView(text("APPEARANCE", 11, accent, true).apply { setPadding(0, dp(10), 0, dp(12)) })
         settingsCard(box, "Customize accent color", "Change the app highlight color") {
