@@ -534,10 +534,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun filteredChannels(): List<Channel> {
         return channels.filter { c ->
-            // Keep the full Live TV channel catalogue visible after checks.
-            // Checker results describe stream health; they must not remove channels
-            // from the Live TV tab, since IPTV servers may reject probe/range requests
-            // even when their streams can still play in the video player.
+            // Show every Live TV channel while the playlist is first loading/checking.
+            // Once the check is complete, keep only channels reported as Working.
+            // Starting a re-check clears results and temporarily restores the full list.
+            val liveTvHealthMatch = section != "Live TV" ||
+                checkerRunning ||
+                streamChecks.isEmpty() ||
+                streamChecks[c.url]?.first == "Working"
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
