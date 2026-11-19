@@ -81,7 +81,7 @@ object EpgRepository {
         }
         val output = java.io.File(context.filesDir, "epg_data.xml")
         val temp = java.io.File(context.filesDir, "epg_data.xml.tmp")
-        temp.writeText("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\\n" + rootTag + "\\n" +
+        temp.writeText("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + rootTag + "\n" +
             mergedBodies.toString() + "\\n</tv>", Charsets.UTF_8)
         if (output.exists() && !output.delete()) throw IllegalStateException("Cannot replace old EPG file")
         if (!temp.renameTo(output)) {
