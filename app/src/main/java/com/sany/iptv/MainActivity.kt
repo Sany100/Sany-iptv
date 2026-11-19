@@ -57,13 +57,13 @@ class MainActivity : AppCompatActivity() {
     private val isLight: Boolean
         get() = when (prefs.getString("app_theme", "dark")) {
             "light" -> true
-            "system" -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            "system" -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES
             else -> false
         }
     // Day mode uses a clean pure-white canvas and white surfaces throughout.
-    private val bg get() = if (isLight) Color.WHITE else Color.rgb(8, 12, 21)
-    private val panel get() = if (isLight) Color.WHITE else Color.rgb(18, 25, 39)
-    private val panel2 get() = if (isLight) Color.WHITE else Color.rgb(25, 34, 51)
+    private val bg get() = if (isLight) Color.WHITE else Color.BLACK
+    private val panel get() = if (isLight) Color.WHITE else Color.rgb(10, 10, 10)
+    private val panel2 get() = if (isLight) Color.WHITE else Color.rgb(18, 18, 18)
     private val accent: Int
         get() = when (prefs.getString("accent_color", "blue")) {
             "blue" -> Color.rgb(55, 145, 255)
@@ -646,7 +646,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
-            item.addView(text(if (name == "Movies") "Video" else name, 10, if (active) accent else muted, active).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
+            item.addView(text(name, 10, if (active) accent else muted, active).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
             bottomNav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
         }
     }
