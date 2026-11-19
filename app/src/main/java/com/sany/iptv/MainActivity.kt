@@ -353,7 +353,6 @@ class MainActivity : AppCompatActivity() {
             })
             start()
         }
-        splash.setTag(R.id.splash_progress_animator, progressAnimator)
     }
 
     private fun renderHome() {
