@@ -167,9 +167,6 @@ class MainActivity : AppCompatActivity() {
                 Handler(Looper.getMainLooper()).post { play(channel) }
             }
         }
-        if (prefs.getBoolean("auto_update_check", false)) {
-            Handler(Looper.getMainLooper()).postDelayed({ checkForAppUpdate(false) }, 1800)
-        }
     }
 
     private fun installSanyCrashLogger() {
@@ -236,7 +233,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         renderHome()
-        if (showSplash) showStartupAnimation()
+        if (showSplash) showStartupAnimation() else scheduleAutoUpdateCheck()
     }
 
     private fun showStartupAnimation() {
@@ -265,7 +262,7 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(18).toFloat()
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
-        center.addView(logo, LinearLayout.LayoutParams(dp(180), dp(180)).apply {
+        center.addView(logo, LinearLayout.LayoutParams(dp(135), dp(135)).apply {
             bottomMargin = dp(14)
         })
 
@@ -277,7 +274,7 @@ class MainActivity : AppCompatActivity() {
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
         }
-        val welcome = text(welcomeText.toString(), 16, Color.WHITE, false).apply {
+        val welcome = text(welcomeText.toString(), 23, Color.WHITE, false).apply {
             this.text = welcomeText
             gravity = Gravity.CENTER
             letterSpacing = 0.015f
@@ -348,11 +345,19 @@ class MainActivity : AppCompatActivity() {
                     logoGlow.cancel()
                     splash.animate().alpha(0f).setDuration(350).withEndAction {
                         root.removeView(splash)
+                        scheduleAutoUpdateCheck()
                     }.start()
                 }
             })
             start()
         }
+    }
+
+    private fun scheduleAutoUpdateCheck() {
+        if (!prefs.getBoolean("auto_update_check", false)) return
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!isFinishing && !isDestroyed && playerScreen == null) checkForAppUpdate(false)
+        }, 700L)
     }
 
     private fun renderHome() {
