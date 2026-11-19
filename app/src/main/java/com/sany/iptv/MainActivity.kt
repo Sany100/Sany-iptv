@@ -109,6 +109,7 @@ class MainActivity : AppCompatActivity() {
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
     private var headerTitleView: TextView? = null
+    private var liveTvNavLabel: TextView? = null
     private var pausedForBackground = false
     private var maintenanceOverlay: View? = null
     private val maintenanceHandler = Handler(Looper.getMainLooper())
@@ -168,6 +169,7 @@ class MainActivity : AppCompatActivity() {
                     .setDuration(420).start()
             }
         }
+        restoreStreamCheckResults()
         if (channels.isNotEmpty()) startPlaylistCheck(false)
         if (channels.isEmpty() && !savedPlaylist.isNullOrBlank()) loadFromUrl(savedPlaylist, false)
         else if (!resumeStream.isNullOrBlank() && channels.isNotEmpty()) {
@@ -772,7 +774,8 @@ class MainActivity : AppCompatActivity() {
         val filtered = filteredChannels()
         countLabel.text = "${filtered.size} ITEMS  •  ${channels.size} IN PLAYLIST"
         if (filtered.isEmpty()) {
-            container.addView(text("No items found", 15, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
+            val message = if (section == "Live TV" && checkerRunning) "Checking channels… ${liveTvProgressLabel()}" else "No working channels found"
+            container.addView(text(message, 15, muted, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
             return
         }
         if (isTvDevice) {
@@ -937,9 +940,7 @@ class MainActivity : AppCompatActivity() {
             // Once the check is complete, keep only channels reported as Working.
             // Starting a re-check clears results and temporarily restores the full list.
             val liveTvHealthMatch = section != "Live TV" ||
-                checkerRunning ||
-                streamChecks.isEmpty() ||
-                streamChecks[c.url]?.first == "Working"
+                (!checkerRunning && (streamChecks.isEmpty() || streamChecks[c.url]?.first == "Working"))
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
@@ -1028,7 +1029,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
-            item.addView(text(name, 10, if (active) accent else muted, active).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
+            val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else name, 10, if (active) accent else muted, active).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) }
+            if (name == "Live TV") liveTvNavLabel = navLabel
+            item.addView(navLabel)
             bottomNav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
         }
     }
@@ -1055,7 +1058,7 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data", "low_data_mode", false)
+        settingsToggleCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data", "low_data_mode", true)
         settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
             val modes = arrayOf("Day mode", "Night mode", "System default")
             val values = arrayOf("light", "dark", "system")
@@ -1816,8 +1819,10 @@ class MainActivity : AppCompatActivity() {
         if (!checkerUiRefreshQueued.compareAndSet(false, true)) return
         checkerUiHandler.postDelayed({
             checkerUiRefreshQueued.set(false)
-            if (!isFinishing && ::contentArea.isInitialized && section == "Checker") {
-                updateCheckerUi()
+            if (!isFinishing) {
+                updateLiveTvProgress()
+                if (::contentArea.isInitialized && section == "Checker") updateCheckerUi()
+                if (::contentArea.isInitialized && section == "Live TV" && checkerRunning) renderListOnly()
             }
         }, 500L)
     }
@@ -1828,6 +1833,37 @@ class MainActivity : AppCompatActivity() {
         checkerRunButton?.text = if (checkerRunning) "CHECKING CHANNELS…" else "↻  CHECK ALL CHANNELS AGAIN"
     }
 
+    private fun liveTvProgressLabel(): String {
+        if (channels.isEmpty()) return "Live TV"
+        if (!checkerRunning && streamChecks.isEmpty()) return "Live TV"
+        val percent = if (channels.isEmpty()) 100 else (streamChecks.size * 100 / channels.size).coerceIn(0, 100)
+        return if (checkerRunning) "Live TV $percent%" else "Live TV"
+    }
+
+    private fun updateLiveTvProgress() {
+        liveTvNavLabel?.text = liveTvProgressLabel()
+    }
+
+    private fun saveStreamCheckResults() {
+        try {
+            val json = JSONObject()
+            streamChecks.forEach { (url, result) ->
+                json.put(url, JSONArray().put(result.first).put(result.second))
+            }
+            prefs.edit().putString("stream_check_results", json.toString()).apply()
+        } catch (_: Exception) { }
+    }
+
+    private fun restoreStreamCheckResults() {
+        try {
+            val json = JSONObject(prefs.getString("stream_check_results", "{}") ?: "{}")
+            channels.forEach { channel ->
+                val value = json.optJSONArray(channel.url) ?: return@forEach
+                if (value.length() >= 2) streamChecks[channel.url] = value.optString(0) to value.optString(1)
+            }
+        } catch (_: Exception) { streamChecks.clear() }
+    }
+
     private fun checkerSummaryText(): String =
         if (checkerRunning) "Checking… ${streamChecks.size} / ${channels.size}"
         else "Total ${channels.size} • Working ${streamChecks.values.count { it.first == "Working" }} • Not working ${streamChecks.values.count { it.first != "Working" }}"
@@ -1836,7 +1872,7 @@ class MainActivity : AppCompatActivity() {
         if (channels.isEmpty() || checkerRunning) return
         val snapshot = channels.toList()
         checkerRunning = true
-        streamChecks.clear()
+        // Keep the last known health snapshot visible in Checker while refreshing.
         checkerDisplayedLimit = 250
         if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
         if (::contentArea.isInitialized && section == "Checker") renderCheckerSection()
@@ -1866,6 +1902,7 @@ class MainActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 checkerRunning = false
+                saveStreamCheckResults()
                 checkerUiRefreshQueued.set(false)
                 checkerUiHandler.removeCallbacksAndMessages(null)
 
@@ -2112,8 +2149,8 @@ class MainActivity : AppCompatActivity() {
 
         val p = player ?: ExoPlayer.Builder(this, mediaSourceFactory)
             .setTrackSelector(DefaultTrackSelector(this).apply {
-                if (prefs.getBoolean("low_data_mode", false)) {
-                    setParameters(buildUponParameters().setMaxVideoBitrate(650_000))
+                if (prefs.getBoolean("low_data_mode", true)) {
+                    setParameters(buildUponParameters().setMaxVideoBitrate(650_000).setMaxVideoSize(854, 480))
                 }
             })
             .setLoadControl(
@@ -2473,13 +2510,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
+        if (closingPip) {
+            // Android's PiP close (X) dismisses the Activity; explicitly stop playback
+            // so audio cannot continue after the floating window is closed.
+            player?.pause()
+            player?.stop()
+        }
         prefs.edit()
             .putString("ui_section", section)
             .putString("ui_group", selectedGroup)
             .putString("ui_search", searchQuery)
             .putBoolean("resume_without_splash", true)
-            .putString("resume_stream", if (player?.isPlaying == true) currentChannel?.url else null)
+            .putString("resume_stream", if (!closingPip && player?.isPlaying == true) currentChannel?.url else null)
             .apply()
+        if (closingPip) prefs.edit().remove("resume_stream").putBoolean("resume_without_splash", false).apply()
         super.onStop()
     }
 
