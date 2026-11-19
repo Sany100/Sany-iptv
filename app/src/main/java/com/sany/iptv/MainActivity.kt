@@ -36,6 +36,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
@@ -94,6 +96,9 @@ class MainActivity : AppCompatActivity() {
     private var section = "Live TV"
     private var searchQuery = ""
     private var player: ExoPlayer? = null
+    private var trackSelector: DefaultTrackSelector? = null
+    private val playbackRetryHandler = Handler(Looper.getMainLooper())
+    private var playbackRetryCount = 0
     private var playerView: PlayerView? = null
     private var currentChannel: Channel? = null
     private var previousChannel: Channel? = null
@@ -1119,6 +1124,32 @@ class MainActivity : AppCompatActivity() {
                     toast("Playback speed saved")
                 }.setNegativeButton("CANCEL", null).show()
         }
+        settingsToggleCard(box, "Auto Play", "Automatically start a stream when you select a channel", "auto_play", true)
+        settingsCard(box, "Video Quality", "Choose Auto, 480p, 720p or 1080p") {
+            val labels = arrayOf("Auto", "480p", "720p", "1080p")
+            val values = arrayOf("auto", "480", "720", "1080")
+            val selected = values.indexOf(prefs.getString("video_quality", "auto")).coerceAtLeast(0)
+            AlertDialog.Builder(this).setTitle("Video Quality")
+                .setSingleChoiceItems(labels, selected) { dialog, which ->
+                    prefs.edit().putString("video_quality", values[which]).apply()
+                    applyVideoQuality()
+                    dialog.dismiss()
+                    toast("Video quality saved")
+                }.setNegativeButton("CANCEL", null).show()
+        }
+        settingsToggleCard(box, "Hardware Decoder", "Prefer hardware video decoding when supported; OFF prefers software decoding", "hardware_decoder", true)
+        settingsCard(box, "Buffer Control", "Choose buffering for slower or faster connections") {
+            val labels = arrayOf("Low — faster start", "Balanced — recommended", "High — fewer interruptions")
+            val values = arrayOf("low", "balanced", "high")
+            val selected = values.indexOf(prefs.getString("network_buffer_size", "balanced")).coerceAtLeast(0)
+            AlertDialog.Builder(this).setTitle("Buffer Control")
+                .setSingleChoiceItems(labels, selected) { dialog, which ->
+                    prefs.edit().putString("network_buffer_size", values[which]).apply()
+                    dialog.dismiss()
+                    toast("Buffer setting saved — applies to next playback")
+                }.setNegativeButton("CANCEL", null).show()
+        }
+        settingsToggleCard(box, "Auto Retry on Failure", "Retry a failed stream up to 2 times automatically", "auto_retry_playback", true)
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
@@ -2265,11 +2296,20 @@ class MainActivity : AppCompatActivity() {
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(httpFactory)
 
-        val p = player ?: ExoPlayer.Builder(this, mediaSourceFactory)
-            .setTrackSelector(DefaultTrackSelector(this).apply {
-                if (prefs.getBoolean("low_data_mode", true)) {
-                    setParameters(buildUponParameters().setMaxVideoBitrate(650_000).setMaxVideoSize(854, 480))
+        val p = player ?: ExoPlayer.Builder(
+            this,
+            DefaultRenderersFactory(this).setMediaCodecSelector(
+                MediaCodecSelector { mimeType, secure, tunneling ->
+                    val available = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, secure, tunneling)
+                    val preferHardware = prefs.getBoolean("hardware_decoder", true)
+                    val preferred = available.filter { it.hardwareAccelerated == preferHardware }
+                    if (preferred.isNotEmpty()) preferred else available
                 }
+            )
+        ).setMediaSourceFactory(mediaSourceFactory)
+            .setTrackSelector(DefaultTrackSelector(this).also { selector ->
+                trackSelector = selector
+                applyVideoQuality(selector)
             })
             .setLoadControl(
                 DefaultLoadControl.Builder()
@@ -2315,11 +2355,22 @@ class MainActivity : AppCompatActivity() {
                             } else {
                                 toast("প্লে হচ্ছে না: ${error.errorCodeName}")
                             }
+                            val permanentHttpError = httpStatus == 401 || httpStatus == 403 || httpStatus == 404
+                            if (prefs.getBoolean("auto_retry_playback", true) && !permanentHttpError && playbackRetryCount < 2) {
+                                playbackRetryCount++
+                                toast("Auto retry ${playbackRetryCount}/2…")
+                                playbackRetryHandler.postDelayed({
+                                    if (player === this@MainActivity.player && playerView != null) {
+                                        player?.prepare()
+                                        player?.playWhenReady = prefs.getBoolean("auto_play", true)
+                                    }
+                                }, 1800L)
+                            }
                         }
                     }
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) {
-                            runOnUiThread { /* first frame can now start */ }
+                            playbackRetryCount = 0
                         }
                     }
                 })
@@ -2458,6 +2509,23 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
 
+    private fun applyVideoQuality(selector: DefaultTrackSelector? = trackSelector) {
+        val target = selector ?: return
+        val quality = prefs.getString("video_quality", "auto") ?: "auto"
+        val builder = target.buildUponParameters()
+        when (quality) {
+            "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
+            "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
+            "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
+            else -> if (prefs.getBoolean("low_data_mode", true)) {
+                builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(650_000)
+            } else {
+                builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
+            }
+        }
+        target.setParameters(builder)
+    }
+
     private fun playAdjacentChannel(direction: Int) {
         val current = currentChannel ?: return
         val index = channels.indexOfFirst { it.url == current.url }
@@ -2513,6 +2581,7 @@ class MainActivity : AppCompatActivity() {
         }
         playerHeader = null
         playerFullscreenButton = null
+        playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
         playerView?.player = null
         playerView = null
