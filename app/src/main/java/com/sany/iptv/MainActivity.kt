@@ -220,8 +220,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildShell(showSplash: Boolean = true) {
-        root = FrameLayout(this).apply { setBackgroundColor(bg) }
-        home = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg) }
+        root = FrameLayout(this).apply { background = premiumBackdrop() }
+        home = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = premiumBackdrop() }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         renderHome()
@@ -629,6 +629,8 @@ class MainActivity : AppCompatActivity() {
                 isFocusableInTouchMode = false
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
+                background = if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
+                setPadding(dp(3), dp(4), dp(3), dp(4))
                 setOnClickListener {
                     if (section == name) return@setOnClickListener
                     // Switch immediately; keep the transition animation lightweight.
@@ -1958,7 +1960,8 @@ class MainActivity : AppCompatActivity() {
         isFocusable = true
         isFocusableInTouchMode = false
         text = label; textSize = if (isTvDevice) 28f else 22f; setTextColor(white); gravity = Gravity.CENTER
-        background = glass(12); elevation = dp(2).toFloat()
+        background = glass(12); elevation = dp(5).toFloat()
+        setShadowLayer(dp(7).toFloat(), 0f, 0f, Color.argb(75, 75, 135, 255))
         setOnClickListener {
             // Run the requested action on the same tap; animation is only visual feedback.
             action()
@@ -1978,13 +1981,19 @@ class MainActivity : AppCompatActivity() {
         text = value; textSize = (size * if (isTvDevice) 1.15f else 1f); setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
+    private fun premiumBackdrop() = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        if (isLight) intArrayOf(Color.rgb(242, 248, 255), Color.rgb(250, 246, 255), Color.WHITE)
+        else intArrayOf(Color.rgb(4, 13, 34), Color.rgb(10, 23, 52), Color.rgb(30, 15, 55))
+    )
+
     private fun glass(radius: Int) = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
-        if (isLight) intArrayOf(Color.WHITE, Color.WHITE)
-        else intArrayOf(Color.argb(238, 17, 34, 62), Color.argb(225, 8, 17, 34))
+        if (isLight) intArrayOf(Color.argb(238, 255, 255, 255), Color.argb(226, 239, 246, 255))
+        else intArrayOf(Color.argb(178, 22, 48, 88), Color.argb(158, 13, 27, 58), Color.argb(174, 39, 24, 75))
     ).apply {
         cornerRadius = dp(radius).toFloat()
-        setStroke(dp(1), if (isLight) Color.rgb(232, 236, 242) else Color.argb(88, 75, 155, 255))
+        setStroke(dp(1), if (isLight) Color.argb(190, 125, 165, 220) else Color.argb(145, 83, 157, 255))
     }
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
