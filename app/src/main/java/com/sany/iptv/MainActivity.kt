@@ -278,7 +278,7 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(18).toFloat()
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
-        center.addView(logo, LinearLayout.LayoutParams(dp(96), dp(96)).apply {
+        center.addView(logo, LinearLayout.LayoutParams(dp(128), dp(128)).apply {
             bottomMargin = dp(12)
         })
 
