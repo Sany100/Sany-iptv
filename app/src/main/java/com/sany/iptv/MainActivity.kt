@@ -696,22 +696,51 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(22), dp(12), dp(24))
             addView(text("This App Made By Sany Sarfaraz", 14, white, true))
-            addView(text("f", 25, Color.WHITE, true).apply {
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.rgb(24, 119, 242))
-                }
-                elevation = dp(3).toFloat()
-                setOnClickListener {
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.facebook.com/share/1A6x5C9HTM/")))
-                    } catch (_: Exception) {
-                        toast("Facebook link খুলতে সমস্যা হয়েছে")
-                    }
-                }
-                contentDescription = "Open Sany Sarfaraz Facebook profile"
-                layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply { topMargin = dp(12) }
+                setPadding(0, dp(14), 0, 0)
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    addView(text("f", 25, Color.WHITE, true).apply {
+                        gravity = Gravity.CENTER
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(Color.rgb(24, 119, 242))
+                        }
+                        elevation = dp(3).toFloat()
+                        setOnClickListener {
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.facebook.com/share/1A6x5C9HTM/")))
+                            } catch (_: Exception) { toast("Facebook link খুলতে সমস্যা হয়েছে") }
+                        }
+                        contentDescription = "Open Sany Sarfaraz Facebook profile"
+                        layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
+                    })
+                    addView(text("Facebook", 11, muted, true).apply { setPadding(0, dp(6), 0, 0) })
+                })
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    setPadding(dp(28), 0, 0, 0)
+                    addView(text("GH", 16, Color.WHITE, true).apply {
+                        gravity = Gravity.CENTER
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(Color.rgb(35, 40, 45))
+                        }
+                        elevation = dp(3).toFloat()
+                        setOnClickListener {
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Sany100")))
+                            } catch (_: Exception) { toast("GitHub profile খুলতে সমস্যা হয়েছে") }
+                        }
+                        contentDescription = "Open Sany100 GitHub profile"
+                        layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
+                    })
+                    addView(text("GitHub", 11, muted, true).apply { setPadding(0, dp(6), 0, 0) })
+                })
             })
         })
         contentArea.addView(scroll, LinearLayout.LayoutParams(-1, -1))
@@ -762,12 +791,7 @@ class MainActivity : AppCompatActivity() {
                     if (newer && lastPrompted != tag) {
                         prefs.edit().putString("last_prompted_update_version", tag).apply()
                         val notes = release.optString("body").take(1200)
-                        AlertDialog.Builder(this)
-                            .setTitle("SANY IPTV update available")
-                            .setMessage("Installed: " + current + "\nLatest: " + tag + "\n\n" + notes.ifBlank { "নতুন সংস্করণ পাওয়া গেছে।" })
-                            .setPositiveButton("DOWNLOAD & INSTALL") { _, _ -> downloadAndInstallUpdate(apkUrl, tag) }
-                            .setNegativeButton("LATER", null)
-                            .show()
+                        showSanyUpdateDialog(current, tag, notes, apkUrl)
                     } else if (showUpToDate && !newer) {
                         AlertDialog.Builder(this).setTitle("You're up to date")
                             .setMessage("বর্তমান ভার্সন: " + current)
@@ -781,6 +805,72 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { if (showUpToDate) toast("Update check failed: " + (e.message ?: "network error")) }
             }
         }
+    }
+
+    private fun showSanyUpdateDialog(current: String, latest: String, notes: String, apkUrl: String) {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(18))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(10, 83, 170), Color.rgb(35, 45, 125), Color.rgb(91, 39, 145))
+            ).apply { cornerRadius = dp(22).toFloat() }
+        }
+        card.addView(text("✦  SANY IPTV", 13, Color.rgb(190, 224, 255), true))
+        card.addView(text("A NEW EXPERIENCE\nIS READY!", 24, Color.WHITE, true).apply {
+            setPadding(0, dp(10), 0, dp(8))
+        })
+        card.addView(text("আপনার জন্য নতুন আপডেট এসেছে", 14, Color.WHITE, true))
+        val versions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(45, 255, 255, 255))
+                cornerRadius = dp(14).toFloat()
+            }
+        }
+        versions.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text("INSTALLED", 10, Color.rgb(205, 215, 255), true))
+            addView(text("v$current", 16, Color.WHITE, true).apply { setPadding(0, dp(4), 0, 0) })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        versions.addView(text("➜", 20, Color.rgb(255, 220, 110), true).apply {
+            setPadding(dp(8), 0, dp(8), 0)
+        })
+        versions.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(text("LATEST", 10, Color.rgb(205, 215, 255), true))
+            addView(text("v$latest", 16, Color.rgb(255, 225, 125), true).apply { setPadding(0, dp(4), 0, 0) })
+        })
+        card.addView(versions.apply { setPadding(dp(12), dp(12), dp(12), dp(12)) })
+        card.addView(text("WHAT'S NEW", 11, Color.rgb(190, 224, 255), true).apply {
+            setPadding(0, dp(16), 0, dp(6))
+        })
+        card.addView(text(notes.ifBlank { "নতুন ফিচার, উন্নত পারফরম্যান্স এবং আরও ভালো অভিজ্ঞতা উপভোগ করুন।" }, 13, Color.WHITE).apply {
+            maxLines = 7
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(35, 255, 255, 255))
+                cornerRadius = dp(12).toFloat()
+            }
+        })
+        val dialog = AlertDialog.Builder(this)
+            .setView(card)
+            .setPositiveButton("DOWNLOAD & INSTALL", null)
+            .setNegativeButton("MAYBE LATER", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+                setTextColor(Color.rgb(30, 65, 130))
+                setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(255, 211, 92)))
+                setOnClickListener { dialog.dismiss(); downloadAndInstallUpdate(apkUrl, latest) }
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(white)
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        }
+        dialog.show()
     }
 
     private fun compareVersions(first: String, second: String): Int {
