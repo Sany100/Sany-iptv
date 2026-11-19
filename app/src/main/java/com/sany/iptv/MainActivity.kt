@@ -2301,18 +2301,27 @@ class MainActivity : AppCompatActivity() {
     // Shared translucent glass surface used by menu cards, controls, pills and icon buttons.
     // Native Android View backgrounds cannot blur arbitrary sibling content on every API level,
     // so use layered alpha gradients, a bright top edge and a soft tinted outline for a consistent glass look.
-    // White frosted-glass surface shared by menu cards, controls, pills and icon buttons.
-    // Alpha layers let the content beneath show through; the bright outline/top sheen gives a glass finish.
+    // Shared translucent glass surface used by menu cards, controls, pills and icon buttons.
+    // Native Android View backgrounds cannot blur arbitrary sibling content on every API level,
+    // so use layered alpha gradients, a bright top edge and a soft tinted outline for a consistent glass look.
     private fun glass(radius: Int) = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
-        intArrayOf(
-            Color.argb(224, 255, 255, 255),
-            Color.argb(174, 255, 255, 255),
-            Color.argb(205, 255, 255, 255)
+        if (isLight) intArrayOf(
+            Color.argb(205, 255, 255, 255),
+            Color.argb(168, 232, 242, 255),
+            Color.argb(188, 255, 255, 255)
+        ) else intArrayOf(
+            Color.argb(178, 35, 58, 88),
+            Color.argb(148, 12, 25, 46),
+            Color.argb(172, 32, 43, 75)
         )
     ).apply {
         cornerRadius = dp(radius).toFloat()
-        setStroke(dp(1), Color.argb(235, 255, 255, 255))
+        setStroke(
+            dp(1),
+            if (isLight) Color.argb(210, 255, 255, 255)
+            else Color.argb(185, 145, 195, 255)
+        )
     }
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
