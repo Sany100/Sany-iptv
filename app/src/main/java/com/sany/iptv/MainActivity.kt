@@ -854,17 +854,59 @@ class MainActivity : AppCompatActivity() {
         })
         val dialog = AlertDialog.Builder(this)
             .setView(card)
-            .setPositiveButton("DOWNLOAD & INSTALL", null)
-            .setNegativeButton("MAYBE LATER", null)
             .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
-                setTextColor(Color.rgb(30, 65, 130))
-                setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(255, 211, 92)))
-                setOnClickListener { dialog.dismiss(); downloadAndInstallUpdate(apkUrl, latest) }
+        val actionRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(18), 0, 0)
+        }
+        val downloadButton = TextView(this).apply {
+            text = "⬇  DOWNLOAD & INSTALL"
+            textSize = 14f
+            setTextColor(Color.rgb(25, 48, 92))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            isAllCaps = false
+            setPadding(dp(14), dp(15), dp(14), dp(15))
+            elevation = dp(5).toFloat()
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(255, 225, 105), Color.rgb(255, 177, 55))
+            ).apply {
+                cornerRadius = dp(15).toFloat()
+                setStroke(dp(1), Color.rgb(255, 242, 185))
             }
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(white)
+            contentDescription = "Download and install SANY IPTV update"
+            setOnClickListener {
+                dialog.dismiss()
+                downloadAndInstallUpdate(apkUrl, latest)
+            }
+        }
+        actionRow.addView(downloadButton, LinearLayout.LayoutParams(0, -2, 1.35f))
+        val laterButton = TextView(this).apply {
+            text = "LATER"
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(15), dp(12), dp(15))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(70, 255, 255, 255))
+                cornerRadius = dp(15).toFloat()
+                setStroke(dp(1), Color.argb(150, 220, 230, 255))
+            }
+            setOnClickListener { dialog.dismiss() }
+        }
+        actionRow.addView(laterButton, LinearLayout.LayoutParams(0, -2, 0.75f).apply {
+            marginStart = dp(10)
+        })
+        card.addView(actionRow)
+        dialog.setOnShowListener {
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            dialog.window?.setLayout(
+                (resources.displayMetrics.widthPixels - dp(36)).coerceAtLeast(dp(280)),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
         }
         dialog.show()
     }
