@@ -1202,41 +1202,83 @@ class MainActivity : AppCompatActivity() {
         }, pickFile)
     }
 
+    // Try multiple public delivery routes; use the last successful local copy offline.
+    private fun fetchPlaylistText(url: String): String {
+        val candidates = if (url == permanentPlaylistUrl) listOf(
+            permanentPlaylistUrl,
+            "https://cdn.jsdelivr.net/gh/Sany100/Sany-iptv@main/playlist.m3u",
+            "https://github.com/Sany100/Sany-iptv/raw/refs/heads/main/playlist.m3u"
+        ) else listOf(url)
+        var lastError: Exception? = null
+        for (candidate in candidates.distinct()) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = URL(candidate).openConnection() as HttpURLConnection
+                connection.connectTimeout = 10000
+                connection.readTimeout = 20000
+                connection.instanceFollowRedirects = true
+                connection.useCaches = false
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) SANY-IPTV/1.0")
+                connection.setRequestProperty("Accept", "application/vnd.apple.mpegurl, audio/x-mpegurl, text/plain, */*")
+                connection.setRequestProperty("Connection", "close")
+                val code = connection.responseCode
+                if (code !in 200..299) throw java.io.IOException("HTTP $code")
+                val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                if (!body.trimStart().startsWith("#EXTM3U", true)) throw java.io.IOException("Invalid M3U response")
+                return body
+            } catch (e: Exception) {
+                lastError = e
+            } finally {
+                connection?.disconnect()
+            }
+        }
+        throw lastError ?: java.io.IOException("All playlist sources failed")
+    }
+
     private fun loadFromUrl(url: String, showStatus: Boolean = true) {
         if (url.isBlank()) { showPlaylistDialog(); return }
         if (showStatus) toast("Loading playlist…")
-        thread {
+        thread(name = "SANY-Playlist-Load") {
+            var usedCache = false
             try {
-                val content = URL(url).openConnection().apply { connectTimeout = 15000; readTimeout = 25000 }
-                    .getInputStream().bufferedReader().use { it.readText() }
+                val content = try {
+                    fetchPlaylistText(url)
+                } catch (networkError: Exception) {
+                    val cached = playlistCacheFile(url)
+                    if (!cached.exists()) throw networkError
+                    usedCache = true
+                    cached.readText()
+                }
                 val parsed = M3uParser.parse(content)
                 val detectedEpgUrl = extractEpgUrl(content)
-                if (parsed.isNotEmpty()) {
-                    // Write the cache on the worker thread, not the UI thread.
-                    try { playlistCacheFile(url).writeText(content) } catch (_: Exception) { /* Keep the live playlist usable if caching fails. */ }
+                if (parsed.isNotEmpty() && !usedCache) {
+                    try { playlistCacheFile(url).writeText(content) } catch (_: Exception) { }
                 }
                 runOnUiThread {
-                    if (parsed.isEmpty()) toast("No playable entries found in this playlist")
-                    else {
+                    if (parsed.isEmpty()) {
+                        toast("No playable entries found in this playlist")
+                    } else {
                         channels = parsed
                         streamChecks.clear()
                         savePlaylistUrl(url)
-                        // After a playlist is saved/loaded, immediately open the Live TV section.
-                        // This refreshes the navigation and channel list without requiring a manual tab switch.
                         section = "Live TV"
                         selectedGroup = "All"; searchQuery = ""
-                        prefs.edit().putString("ui_section", "Live TV").putString("ui_group", "All").putString("ui_search", "").apply()
+                        prefs.edit().putString("ui_section", "Live TV")
+                            .putString("ui_group", "All").putString("ui_search", "").apply()
                         if (!detectedEpgUrl.isNullOrBlank()) {
                             prefs.edit().putString("epg_url", detectedEpgUrl).apply()
                             if (prefs.getBoolean("auto_add_epg", true)) updateEpgData(detectedEpgUrl, false)
                         }
                         renderHome()
                         startPlaylistCheck(false)
-                        toast("Loaded " + channels.size + " items — checking streams")
+                        toast(if (usedCache) "Offline mode: loaded ${channels.size} saved items"
+                            else "Loaded ${channels.size} items — checking streams")
                     }
                 }
             } catch (e: Exception) {
-                runOnUiThread { toast("Playlist load failed: ${e.message ?: "network error"}") }
+                runOnUiThread {
+                    toast("Playlist unavailable: " + (e.message ?: "network error").take(90))
+                }
             }
         }
     }
