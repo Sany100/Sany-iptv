@@ -101,11 +101,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         // Keep automatic update checks enabled for every installation; there is no user-facing switch.
         prefs.edit().putBoolean("auto_update_check", true).apply()
-        // Restore the user's existing playlist manager; discard only the three rejected demo sources.
+        // Remove assistant-added demo playlists while preserving all other user-saved playlists.
         val rejectedSources = setOf(
             "https://iptv-org.github.io/iptv/categories/animation.m3u",
             "https://iptv-org.github.io/iptv/categories/series.m3u",
-            "https://raw.githubusercontent.com/wizakorhd/iptv/main/playlist-anime.m3u"
+            "https://raw.githubusercontent.com/wizakorhd/iptv/main/playlist-anime.m3u",
+            "https://biskyt.github.io/legalFreeIPTVplaylist/vod.m3u"
         )
         playlistUrls.addAll(readPlaylistUrls().filterNot { it in rejectedSources })
         val savedPlaylist = prefs.getString("playlist_url", null)?.takeUnless { it in rejectedSources }
