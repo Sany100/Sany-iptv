@@ -75,8 +75,10 @@ class MainActivity : AppCompatActivity() {
     private val pickFile = 41
     private var channels = listOf<Channel>()
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
-    private var checkerRunning = false
+    @Volatile private var checkerRunning = false
     private var checkerFilter = "All"
+    private val checkerUiHandler = Handler(Looper.getMainLooper())
+    private val checkerUiRefreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
     private val playlistUrls = mutableListOf<String>()
     private var selectedGroup = "All"
     private var section = "Live TV"
@@ -1039,6 +1041,18 @@ class MainActivity : AppCompatActivity() {
         startPlaylistCheck(true)
     }
 
+    // Coalesce many network responses into one UI refresh. Rebuilding every channel
+    // row for every probe result was causing frame drops and apparent freezes.
+    private fun scheduleCheckerUiRefresh() {
+        if (!checkerUiRefreshQueued.compareAndSet(false, true)) return
+        checkerUiHandler.postDelayed({
+            checkerUiRefreshQueued.set(false)
+            if (!isFinishing && ::contentArea.isInitialized && section == "Checker") {
+                renderCheckerSection()
+            }
+        }, 900L)
+    }
+
     private fun startPlaylistCheck(showToast: Boolean) {
         if (channels.isEmpty() || checkerRunning) return
         val snapshot = channels.toList()
@@ -1047,26 +1061,30 @@ class MainActivity : AppCompatActivity() {
         if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
         if (::contentArea.isInitialized && section == "Checker") renderCheckerSection()
         if (::contentArea.isInitialized && section == "Live TV") renderListOnly()
-        val executor = java.util.concurrent.Executors.newFixedThreadPool(6)
+
+        // Keep network I/O off the main thread and limit concurrency to avoid
+        // exhausting sockets/CPU on low-memory Android phones and TV boxes.
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(4)
         snapshot.forEach { channel ->
             executor.submit {
                 val result = probeStream(channel.url)
                 streamChecks[channel.url] = result
-                runOnUiThread {
-                    if (section == "Checker") renderCheckerSection()
-                    if (section == "Live TV" && ::contentArea.isInitialized) renderListOnly()
-                }
+                scheduleCheckerUiRefresh()
             }
         }
         executor.shutdown()
-        thread {
+        thread(name = "SANY-Playlist-Check") {
             try { executor.awaitTermination(15, java.util.concurrent.TimeUnit.MINUTES) }
             catch (_: InterruptedException) { Thread.currentThread().interrupt() }
             runOnUiThread {
                 checkerRunning = false
-                if (section == "Checker") renderCheckerSection()
+                checkerUiRefreshQueued.set(false)
+                checkerUiHandler.removeCallbacksAndMessages(null)
+                if (section == "Checker" && ::contentArea.isInitialized) renderCheckerSection()
+                // Refresh Live TV once, after the scan, instead of rebuilding its
+                // channel list for every single HTTP response.
                 if (section == "Live TV" && ::contentArea.isInitialized) renderListOnly()
-                toast("Check complete: " + streamChecks.values.count { it.first == "Working" } + " / " + snapshot.size + " responding")
+                if (showToast) toast("Check complete: " + streamChecks.values.count { it.first == "Working" } + " / " + snapshot.size + " responding")
             }
         }
     }
