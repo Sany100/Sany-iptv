@@ -62,9 +62,9 @@ class MainActivity : AppCompatActivity() {
             else -> false
         }
     // Day mode uses a clean pure-white canvas and white surfaces throughout.
-    private val bg get() = if (isLight) Color.WHITE else Color.BLACK
+    private val bg get() = if (isLight) Color.rgb(242, 246, 252) else Color.BLACK
     private val panel get() = if (isLight) Color.WHITE else Color.rgb(10, 10, 10)
-    private val panel2 get() = if (isLight) Color.WHITE else Color.rgb(18, 18, 18)
+    private val panel2 get() = if (isLight) Color.rgb(232, 239, 249) else Color.rgb(18, 18, 18)
     private val accent: Int
         get() = when (prefs.getString("accent_color", "blue")) {
             "blue" -> Color.rgb(55, 145, 255)
@@ -404,7 +404,7 @@ class MainActivity : AppCompatActivity() {
         home.addView(homeWelcomeSpacer, LinearLayout.LayoutParams(-1, -2))
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(12))
+            setPadding(dp(if (isTvDevice) 16 else 20), dp(if (isTvDevice) 10 else 18), dp(if (isTvDevice) 16 else 20), dp(if (isTvDevice) 8 else 12))
             background = glass(22)
             // Premium 3D glass header: perspective, depth and a soft raised-card finish.
             cameraDistance = 11000f * resources.displayMetrics.density
@@ -414,7 +414,7 @@ class MainActivity : AppCompatActivity() {
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         // The header logo is intentionally removed; keep the brand name clean and prominent.
-        val brand = text("SANY IPTV", 30, accent, true).apply {
+        val brand = text("SANY IPTV", if (isTvDevice) 24 else 30, accent, true).apply {
             letterSpacing = 0.06f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(8), 0, 0, 0)
@@ -455,7 +455,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(5), dp(8), dp(5), dp(8))
             background = glass(18)
         }
-        home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(66)))
+        home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 56 else 66)))
         renderSection()
         renderBottomNav()
         if (isTvDevice) root.post { focusInitialTvControl() }
@@ -499,10 +499,12 @@ class MainActivity : AppCompatActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (isTvDevice) {
             when (keyCode) {
-                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP,
+                KeyEvent.KEYCODE_DPAD_UP -> {
                     if (player != null) { playAdjacentChannel(1); return true }
                 }
-                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN,
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (player != null) { playAdjacentChannel(-1); return true }
                 }
                 KeyEvent.KEYCODE_ESCAPE -> {
@@ -549,7 +551,7 @@ class MainActivity : AppCompatActivity() {
             background = glass(12)
             setText(searchQuery)
         }
-        contentArea.addView(search, LinearLayout.LayoutParams(-1, dp(48)))
+        contentArea.addView(search, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 42 else 48)))
         search.addTextChangedListener(SimpleTextWatcher { searchQuery = it; displayedLimit = 60; renderListOnly() })
 
         val categoriesScroll = HorizontalScrollView(this).apply {
@@ -559,7 +561,7 @@ class MainActivity : AppCompatActivity() {
         }
         categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         categoriesScroll.addView(categoryRow)
-        contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(8) })
+        contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 42 else 52)).apply { topMargin = dp(if (isTvDevice) 4 else 8) })
         renderCategories()
 
         countLabel = text("", 12, muted).apply { setPadding(dp(2), dp(4), 0, dp(8)) }
@@ -775,7 +777,7 @@ class MainActivity : AppCompatActivity() {
                     gravity = Gravity.CENTER_VERTICAL
                     isFocusable = true
                     isFocusableInTouchMode = false
-                    setPadding(dp(16), dp(15), dp(16), dp(15))
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
                     background = glass(16)
                     applyTvFocusStyle(this)
                     contentDescription = "Play ${channel.name}"
@@ -797,15 +799,15 @@ class MainActivity : AppCompatActivity() {
                     letterSpacing = 0.06f
                     setPadding(0, dp(5), 0, 0)
                 })
-                cardRow.addView(card, LinearLayout.LayoutParams(0, dp(112), 1f).apply {
+                cardRow.addView(card, LinearLayout.LayoutParams(0, dp(92), 1f).apply {
                     if (columnIndex == 0) rightMargin = dp(8) else leftMargin = dp(8)
                 })
             }
             if (pair.size == 1) {
-                cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(8) })
+                cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(92), 1f).apply { leftMargin = dp(8) })
             }
             container.addView(cardRow, LinearLayout.LayoutParams(-1, -2).apply {
-                bottomMargin = dp(12)
+                bottomMargin = dp(if (isTvDevice) 7 else 12)
             })
         }
         if (filtered.size > displayedLimit) {
@@ -2055,6 +2057,27 @@ class MainActivity : AppCompatActivity() {
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         playerScreen = screen
+        if (isTvDevice) {
+            // TV-friendly channel switch hint stays visible when the player controls fade.
+            val remoteHint = TextView(this).apply {
+                text = "▲ / ▼  CHANGE CHANNEL     BACK  •  EXIT"
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                setPadding(dp(14), dp(8), dp(14), dp(8))
+                background = GradientDrawable().apply {
+                    setColor(0xB8000000.toInt())
+                    cornerRadius = dp(18).toFloat()
+                    setStroke(dp(1), 0x6688BBFF)
+                }
+                isFocusable = false
+                contentDescription = "Use Up or Down on the TV remote to change channel"
+            }
+            screen.addView(remoteHint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = dp(18)
+            })
+        }
         isPlayerFullscreen = keepFullscreenMode
         playerHeader = null
         val view = PlayerView(this).apply {
