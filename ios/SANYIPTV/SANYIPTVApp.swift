@@ -1,11 +1,13 @@
-import SwiftUI
+import UIKit
 
-@main
-struct SANYIPTVApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .preferredColorScheme(.dark)
-        }
+@UIApplicationMain
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    var window: UIWindow?
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        window = UIWindow(frame: UIScreen.main.bounds)
+        window?.rootViewController = UINavigationController(rootViewController: ChannelListViewController())
+        window?.makeKeyAndVisible()
+        return true
     }
 }
