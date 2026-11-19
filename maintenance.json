@@ -1,5 +1,7 @@
 {
-  "enabled": false,
+  "enabled": true,
   "message": "আমাদের অ্যাপে উন্নয়নমূলক কাজ চলছে। সাময়িক অসুবিধার জন্য আমরা আন্তরিকভাবে দুঃখিত। অনুগ্রহ করে কিছুক্ষণ পরে আবার চেষ্টা করুন।",
-  "allowed_devices": []
+  "allowed_devices": [
+    "9e6aee49a1abdced"
+  ]
 }
