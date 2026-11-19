@@ -251,19 +251,20 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        val logo = text("SANY", 62, Color.rgb(55, 145, 255), true).apply {
-            gravity = Gravity.CENTER
-            letterSpacing = 0.20f
-            setShadowLayer(dp(20).toFloat(), 0f, 0f, Color.argb(190, 55, 145, 255))
+        val logo = ImageView(this).apply {
+            setImageResource(com.sany.iptv.R.drawable.sany_logo_splash)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "SANY IPTV logo"
             alpha = 0f
-            scaleX = 0.68f
-            scaleY = 0.68f
+            scaleX = 0.72f
+            scaleY = 0.72f
             rotationY = -78f
             rotationX = 24f
             cameraDistance = 9000f * resources.displayMetrics.density
             translationZ = dp(22).toFloat()
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
-        center.addView(logo)
+        center.addView(logo, LinearLayout.LayoutParams(dp(280), dp(280)))
         center.addView(text("Welcome to my SANY IPTV app", 16, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.015f
@@ -282,22 +283,18 @@ class MainActivity : AppCompatActivity() {
         })
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
         root.addView(splash, FrameLayout.LayoutParams(-1, -1))
-        val logoGlow = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 1100L
+        val logoGlow = ValueAnimator.ofFloat(0.985f, 1.025f).apply {
+            duration = 1200L
             repeatMode = ValueAnimator.REVERSE
             repeatCount = ValueAnimator.INFINITE
             addUpdateListener { animator ->
-                val fraction = animator.animatedValue as Float
-                val color = android.animation.ArgbEvaluator().evaluate(
-                    fraction, Color.rgb(55, 145, 255), Color.rgb(70, 235, 255)
-                ) as Int
-                logo.setTextColor(color)
-                logo.setShadowLayer(dp(16 + (fraction * 10).toInt()).toFloat(), 0f, 0f, color)
+                val scale = animator.animatedValue as Float
+                logo.scaleX = scale
+                logo.scaleY = scale
             }
             start()
         }
-        // A 3D entrance: the SANY wordmark rotates on its Y axis
-        // while tilting back into place, with depth and a teal glow.
+        // A 3D entrance: the SANY IPTV logo rotates into place with depth.
         logo.animate()
             .alpha(1f).scaleX(1f).scaleY(1f)
             .rotationY(360f).rotationX(0f)
@@ -327,13 +324,20 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(14).toFloat()
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val brand = text("SANY", 39, accent, true).apply {
-            letterSpacing = 0.14f
-            setShadowLayer(dp(16).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
+        val brandLogo = ImageView(this).apply {
+            setImageResource(com.sany.iptv.R.drawable.sany_logo_icon)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "SANY IPTV"
             cameraDistance = 9000f * resources.displayMetrics.density
-            rotationY = -24f
-            rotationX = 9f
-            translationZ = dp(18).toFloat()
+            rotationY = -12f
+            translationZ = dp(12).toFloat()
+        }
+        brandLine.addView(brandLogo, LinearLayout.LayoutParams(dp(54), dp(54)))
+        val brand = text("SANY IPTV", 27, accent, true).apply {
+            letterSpacing = 0.10f
+            setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
+            setPadding(dp(9), 0, 0, 0)
+            translationZ = dp(10).toFloat()
         }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
@@ -361,7 +365,7 @@ class MainActivity : AppCompatActivity() {
         top.post {
             top.animate().alpha(1f).translationY(0f).rotationX(0f)
                 .setDuration(620).setInterpolator(DecelerateInterpolator(1.5f)).start()
-            brand.animate().rotationY(0f).rotationX(0f)
+            brandLogo.animate().rotationY(0f).rotationX(0f)
                 .setDuration(760).setInterpolator(DecelerateInterpolator(1.7f)).start()
         }
 
