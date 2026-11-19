@@ -103,10 +103,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNav: LinearLayout
     private lateinit var listContainer: LinearLayout
     private var playerScreen: FrameLayout? = null
-    private var displayedLimit = 120
+    private var displayedLimit = 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
+    private var headerTitleView: TextView? = null
     private var pausedForBackground = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -342,7 +343,8 @@ class MainActivity : AppCompatActivity() {
         })
         top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        titleRow.addView(text(if (section == "Movies") "Movies" else section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+        headerTitleView = text(if (section == "Movies") "Movies" else section, 23, white, true)
+        titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         titleRow.addView(iconButton("#") { showChannelNumberDialog() })
         titleRow.addView(iconButton("↶") {
             val previous = previousChannel
@@ -416,7 +418,7 @@ class MainActivity : AppCompatActivity() {
             setText(searchQuery)
         }
         contentArea.addView(search, LinearLayout.LayoutParams(-1, dp(48)))
-        search.addTextChangedListener(SimpleTextWatcher { searchQuery = it; displayedLimit = 120; renderListOnly() })
+        search.addTextChangedListener(SimpleTextWatcher { searchQuery = it; displayedLimit = 60; renderListOnly() })
 
         val categoriesScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -505,7 +507,7 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener {
                     animate().scaleX(0.92f).scaleY(0.92f).setDuration(65).withEndAction {
                         animate().scaleX(1f).scaleY(1f).setDuration(130).start()
-                        selectedGroup = item; renderListOnly()
+                        selectedGroup = item; displayedLimit = 60; renderListOnly()
                     }.start()
                 }
             }
@@ -676,12 +678,13 @@ class MainActivity : AppCompatActivity() {
                     section = name
                     selectedGroup = "All"
                     searchQuery = ""
-                    renderHome()
-                    home.alpha = 0.88f
-                    home.translationY = dp(5).toFloat()
-                    home.animate().alpha(1f).translationY(0f)
-                        .setDuration(130).setInterpolator(DecelerateInterpolator())
-                        .start()
+                    displayedLimit = 60
+                    // Reuse the existing shell and header; rebuild only the page content
+                    // and the five small navigation items. This avoids a full-screen layout
+                    // pass on every menu tap.
+                    headerTitleView?.text = if (section == "Movies") "Movies" else section
+                    renderSection()
+                    renderBottomNav()
                 }
             }
             item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
