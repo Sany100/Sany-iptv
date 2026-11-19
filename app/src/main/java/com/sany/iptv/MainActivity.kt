@@ -191,7 +191,7 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(22).toFloat()
         }
         center.addView(logo)
-        center.addView(text("প্রিমিয়াম আইপি টিভি experience", 16, Color.WHITE, true).apply {
+        center.addView(text("Premium IPTV Experience", 16, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.015f
             setPadding(0, dp(10), 0, 0)
@@ -234,7 +234,7 @@ class MainActivity : AppCompatActivity() {
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
-        top.addView(text("প্রিমিয়াম আইপি টিভি experience", 12, white, true).apply {
+        top.addView(text("Premium IPTV Experience", 12, white, true).apply {
             letterSpacing = 0.01f
             setPadding(0, dp(1), 0, dp(5))
         })
