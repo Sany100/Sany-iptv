@@ -215,6 +215,10 @@ class MainActivity : AppCompatActivity() {
         window.decorView.setBackgroundColor(bg)
         window.statusBarColor = bg
         window.navigationBarColor = bg
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
         if (android.os.Build.VERSION.SDK_INT >= 23) {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = if (isLight) {
@@ -967,9 +971,7 @@ class MainActivity : AppCompatActivity() {
                         prefs.edit().putString("last_prompted_update_version", tag).apply()
                         showSanyUpdateDialog(current, tag, "নতুন সংস্করণ উপলব্ধ।", apkUrl)
                     } else if (showUpToDate) {
-                        AlertDialog.Builder(this).setTitle("You're up to date")
-                            .setMessage("বর্তমান ভার্সন: " + current)
-                            .setPositiveButton("OK", null).show()
+                        showUpToDateDialog(current)
                     }
                 }
             } catch (e: Exception) {
@@ -979,6 +981,101 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun showUpToDateDialog(current: String) {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), dp(24), dp(22), dp(20))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(8, 38, 83), Color.rgb(18, 91, 132), Color.rgb(25, 54, 119), Color.rgb(76, 42, 132))
+            ).apply {
+                cornerRadius = dp(26).toFloat()
+                setStroke(dp(1), Color.rgb(105, 205, 255))
+            }
+            elevation = dp(12).toFloat()
+        }
+        val emblem = TextView(this).apply {
+            text = "✓"
+            textSize = 30f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(40, 220, 174), Color.rgb(35, 151, 225))
+            ).apply {
+                shape = GradientDrawable.OVAL
+                setStroke(dp(2), Color.argb(180, 220, 255, 255))
+            }
+            elevation = dp(8).toFloat()
+        }
+        card.addView(emblem, LinearLayout.LayoutParams(dp(68), dp(68)).apply { bottomMargin = dp(14) })
+        card.addView(text("SANY IPTV  •  SYSTEM STATUS", 11, Color.rgb(177, 226, 255), true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.10f
+        })
+        card.addView(text("You're up to date", 23, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(9), 0, dp(6))
+        })
+        card.addView(text("আপনার অ্যাপটি সর্বশেষ সংস্করণে রয়েছে", 13, Color.rgb(225, 241, 255), false).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(18))
+        })
+        val versionPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(48, 255, 255, 255))
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), Color.argb(100, 180, 230, 255))
+            }
+        }
+        versionPanel.addView(text("CURRENT VERSION", 10, Color.rgb(190, 225, 255), true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.12f
+        })
+        versionPanel.addView(text("v$current", 21, Color.rgb(255, 224, 132), true).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, 0)
+        })
+        card.addView(versionPanel, LinearLayout.LayoutParams(-1, -2))
+        val ok = TextView(this).apply {
+            text = "✓     GREAT, THANK YOU"
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(7, 45, 70))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(91, 245, 205), Color.rgb(110, 206, 255))
+            ).apply {
+                cornerRadius = dp(15).toFloat()
+                setStroke(dp(1), Color.rgb(200, 255, 255))
+            }
+        }
+        card.addView(ok, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        val dialog = AlertDialog.Builder(this).setView(card).create()
+        ok.setOnClickListener { dialog.dismiss() }
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            dialog.window?.setDimAmount(0.62f)
+            dialog.window?.setLayout(
+                (resources.displayMetrics.widthPixels - dp(42)).coerceAtLeast(dp(280)),
+                -2
+            )
+        }
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels - dp(42)).coerceAtLeast(dp(280)),
+            -2
+        )
     }
 
     private fun showSanyUpdateDialog(current: String, latest: String, notes: String, apkUrl: String) {
