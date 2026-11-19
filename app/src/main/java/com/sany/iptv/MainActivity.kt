@@ -47,6 +47,8 @@ import java.net.HttpURLConnection
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.concurrent.thread
+import java.io.PrintWriter
+import java.io.StringWriter
 
 class MainActivity : AppCompatActivity() {
     private val isTvDevice: Boolean
@@ -104,6 +106,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
         val lastEpgUpdate = prefs.getString("epg_last_updated", "0")?.toLongOrNull() ?: 0L
         if (System.currentTimeMillis() - lastEpgUpdate >= 24L * 60L * 60L * 1000L) {
@@ -137,6 +140,7 @@ class MainActivity : AppCompatActivity() {
         }
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
+        showPreviousCrashReport()
         if (!restoringBackground) {
             home.alpha = 0f
             home.translationY = dp(14).toFloat()
@@ -159,6 +163,43 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun installSanyCrashLogger() {
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            try {
+                val trace = StringWriter()
+                error.printStackTrace(PrintWriter(trace))
+                java.io.File(filesDir, "sany_last_crash.txt").writeText(
+                    "SANY IPTV crash report\nThread: " + thread.name +
+                        "\nAndroid: " + Build.VERSION.RELEASE +
+                        "\nDevice: " + Build.MANUFACTURER + " " + Build.MODEL +
+                        "\nTime: " + java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date()) +
+                        "\n\n" + trace.toString()
+                )
+            } catch (_: Exception) { }
+            previousHandler?.uncaughtException(thread, error)
+        }
+    }
+
+    private fun showPreviousCrashReport() {
+        val reportFile = java.io.File(filesDir, "sany_last_crash.txt")
+        if (!reportFile.exists()) return
+        val report = try { reportFile.readText().take(12000) } catch (_: Exception) { return }
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (isFinishing || isDestroyed) return@postDelayed
+            AlertDialog.Builder(this)
+                .setTitle("SANY IPTV — Crash report found")
+                .setMessage("আগেরবার অ্যাপ বন্ধ হওয়ার কারণের রিপোর্ট পাওয়া গেছে। COPY REPORT চাপুন, তারপর রিপোর্টটি এখানে পাঠান।")
+                .setPositiveButton("COPY REPORT") { _, _ ->
+                    val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SANY IPTV crash report", report))
+                    toast("Crash report copied — এখানে paste করুন")
+                }
+                .setNeutralButton("DELETE REPORT") { _, _ -> reportFile.delete() }
+                .setNegativeButton("LATER", null)
+                .show()
+        }, 900L)
+    }
     private fun applySystemBars() {
         window.statusBarColor = bg
         window.navigationBarColor = bg
