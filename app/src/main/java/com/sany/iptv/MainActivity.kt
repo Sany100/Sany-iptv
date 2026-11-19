@@ -229,13 +229,13 @@ class MainActivity : AppCompatActivity() {
         top.addView(brandLine)
         top.addView(text("✦  PREMIUM IPTV EXPERIENCE  •  WELCOME TO SANY", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        titleRow.addView(text(section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+        titleRow.addView(text(if (section == "Movies") "Video" else section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
         titleRow.addView(iconButton("#") { showChannelNumberDialog() })
         titleRow.addView(iconButton("↶") {
             val previous = previousChannel
             if (previous == null) toast("আগের কোনো চ্যানেল নেই") else play(previous)
         })
-        titleRow.addView(iconButton("＋") { showPlaylistDialog() })
+        if (section != "Movies") titleRow.addView(iconButton("＋") { showPlaylistDialog() })
         titleRow.addView(iconButton("⋮") { showQuickMenu() })
         top.addView(titleRow)
         home.addView(top, LinearLayout.LayoutParams(-1, -2))
@@ -540,7 +540,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
-            item.addView(text(name, 10, if (active) accent else muted, active).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
+            item.addView(text(if (name == "Movies") "Video" else name, 10, if (active) accent else muted, active).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
             bottomNav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
         }
     }
