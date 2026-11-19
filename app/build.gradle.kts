@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Firebase is enabled when app/google-services.json is supplied (local file or CI secret).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.sany.iptv"
     compileSdk = 35
@@ -64,6 +69,10 @@ android {
 }
 
 dependencies {
+    if (file("google-services.json").exists()) {
+        implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
+        implementation("com.google.firebase:firebase-analytics")
+    }
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
