@@ -376,7 +376,7 @@ class MainActivity : AppCompatActivity() {
             rotationY = -12f
             translationZ = dp(12).toFloat()
         }
-        brandLine.addView(brandLogo, LinearLayout.LayoutParams(dp(54), dp(54)))
+        brandLine.addView(brandLogo, LinearLayout.LayoutParams(dp(42), dp(42)))
         val brand = text("SANY IPTV", 27, accent, true).apply {
             letterSpacing = 0.10f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
