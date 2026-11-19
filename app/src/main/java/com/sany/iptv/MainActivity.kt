@@ -280,7 +280,7 @@ class MainActivity : AppCompatActivity() {
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
         center.addView(logo, LinearLayout.LayoutParams(dp(220), dp(220)).apply {
-            topMargin = dp(30)
+            topMargin = dp(70)
             bottomMargin = dp(0)
         })
 
@@ -1240,6 +1240,8 @@ class MainActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this)
             .setView(card)
             .create()
+        dialog.setCancelable(false)
+        dialog.setCanceledOnTouchOutside(false)
         val actionRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -1267,24 +1269,7 @@ class MainActivity : AppCompatActivity() {
                 downloadAndInstallUpdate(apkUrl, latest)
             }
         }
-        actionRow.addView(downloadButton, LinearLayout.LayoutParams(0, -2, 1.35f))
-        val laterButton = TextView(this).apply {
-            text = "LATER"
-            textSize = 13f
-            setTextColor(Color.WHITE)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(15), dp(12), dp(15))
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(190, 45, 55))
-                cornerRadius = dp(15).toFloat()
-                setStroke(dp(1), Color.rgb(255, 145, 150))
-            }
-            setOnClickListener { dialog.dismiss() }
-        }
-        actionRow.addView(laterButton, LinearLayout.LayoutParams(0, -2, 0.75f).apply {
-            marginStart = dp(10)
-        })
+        actionRow.addView(downloadButton, LinearLayout.LayoutParams(-1, -2))
         card.addView(actionRow)
         dialog.setOnShowListener {
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
