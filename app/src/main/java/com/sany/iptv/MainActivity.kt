@@ -1114,7 +1114,7 @@ class MainActivity : AppCompatActivity() {
             AlertDialog.Builder(this).setTitle("Playback speed")
                 .setSingleChoiceItems(labels, selected) { dialog, which ->
                     prefs.edit().putFloat("playback_speed", values[which]).apply()
-                    try { exoPlayer?.setPlaybackSpeed(values[which]) } catch (_: Exception) { }
+                    try { player?.setPlaybackSpeed(values[which]) } catch (_: Exception) { }
                     dialog.dismiss()
                     toast("Playback speed saved")
                 }.setNegativeButton("CANCEL", null).show()
