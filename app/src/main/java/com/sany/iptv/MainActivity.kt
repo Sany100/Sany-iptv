@@ -604,6 +604,18 @@ class MainActivity : AppCompatActivity() {
         }
         settingsToggleCard(box, "Auto add EPG data", "Detect EPG URL from a playlist and download it automatically", "auto_add_epg", true)
         settingsCard(box, "EPG source", "Add or change your XMLTV / EPG URL") { showEpgUrlDialog() }
+        settingsCard(box, "Network buffer size", "Choose buffering for unstable or slower internet") {
+            val labels = arrayOf("Low — 10 seconds (faster start)", "Balanced — 20 seconds (recommended)", "High — 40 seconds (more buffering)")
+            val values = arrayOf("low", "balanced", "high")
+            val current = prefs.getString("network_buffer_size", "balanced")
+            AlertDialog.Builder(this).setTitle("Network buffer size")
+                .setSingleChoiceItems(labels, values.indexOf(current).coerceAtLeast(0)) { dialog, which ->
+                    prefs.edit().putString("network_buffer_size", values[which]).apply()
+                    dialog.dismiss()
+                    toast("Buffer size saved. Applies to the next video playback.")
+                    renderHome()
+                }.setNegativeButton("CANCEL", null).show()
+        }
         box.addView(text("ABOUT", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
             setPadding(dp(15), dp(16), dp(15), dp(16)); background = rounded(panel, 12)
@@ -1075,7 +1087,28 @@ class MainActivity : AppCompatActivity() {
             })
             .setLoadControl(
                 DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(2500, 15000, 1000, 2500)
+                    .setBufferDurationsMs(
+                        when (prefs.getString("network_buffer_size", "balanced")) {
+                            "low" -> 5000
+                            "high" -> 20000
+                            else -> 10000
+                        },
+                        when (prefs.getString("network_buffer_size", "balanced")) {
+                            "low" -> 10000
+                            "high" -> 40000
+                            else -> 20000
+                        },
+                        when (prefs.getString("network_buffer_size", "balanced")) {
+                            "low" -> 1000
+                            "high" -> 2000
+                            else -> 1500
+                        },
+                        when (prefs.getString("network_buffer_size", "balanced")) {
+                            "low" -> 2000
+                            "high" -> 5000
+                            else -> 3000
+                        }
+                    )
                     .build()
             )
             .build().also { created ->
