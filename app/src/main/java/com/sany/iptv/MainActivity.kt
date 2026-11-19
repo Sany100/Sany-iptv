@@ -250,16 +250,16 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(22).toFloat()
         }
         center.addView(logo)
-        center.addView(text("Premium IPTV Experience", 16, Color.WHITE, true).apply {
+        center.addView(text("Welcome to my SANY IPTV app", 16, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.015f
-            setPadding(0, dp(10), 0, 0)
+            setPadding(dp(12), dp(10), dp(12), 0)
             alpha = 0f
             translationY = dp(12).toFloat()
         })
-        center.addView(text("LIVE TV  •  MOVIES  •  ENTERTAINMENT", 9, Color.rgb(145, 175, 210), true).apply {
+        center.addView(text("Thank you", 14, Color.rgb(145, 195, 235), true).apply {
             gravity = Gravity.CENTER
-            letterSpacing = 0.10f
+            letterSpacing = 0.06f
             setPadding(0, dp(10), 0, 0)
             alpha = 0f
         })
@@ -276,7 +276,7 @@ class MainActivity : AppCompatActivity() {
         center.getChildAt(1).animate().alpha(1f).translationY(0f).setStartDelay(420).setDuration(650)
             .setInterpolator(DecelerateInterpolator()).start()
         center.getChildAt(2).animate().alpha(1f).setStartDelay(720).setDuration(500).start()
-        splash.animate().alpha(0f).setStartDelay(1550).setDuration(400).withEndAction {
+        splash.animate().alpha(0f).setStartDelay(2600).setDuration(400).withEndAction {
             root.removeView(splash)
         }.start()
     }
