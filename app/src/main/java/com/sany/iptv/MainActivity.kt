@@ -87,6 +87,11 @@ class MainActivity : AppCompatActivity() {
     private var checkerListAdapter: android.widget.BaseAdapter? = null
     private val checkerUiHandler = Handler(Looper.getMainLooper())
     private val checkerUiRefreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var checkerLoadingOverlay: FrameLayout? = null
+    private var checkerLoadingPercent: TextView? = null
+    private var checkerLoadingCount: TextView? = null
+    private var checkerLoadingBar: ProgressBar? = null
+    private var checkerLoadingRing: TextView? = null
     private val permanentPlaylistUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
     private val playlistUrls = mutableListOf<String>()
     private var selectedGroup = "All"
@@ -1844,6 +1849,7 @@ class MainActivity : AppCompatActivity() {
             checkerUiRefreshQueued.set(false)
             if (!isFinishing) {
                 updateLiveTvProgress()
+                updateCheckerLoadingScreen()
                 if (::contentArea.isInitialized && section == "Checker") updateCheckerUi()
             }
         }, 500L)
@@ -1864,6 +1870,115 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateLiveTvProgress() {
         liveTvNavLabel?.text = liveTvProgressLabel()
+    }
+
+    // Full-screen neon 3D-style loading screen for playlist health checks.
+    private fun showCheckerLoadingScreen() {
+        if (!::root.isInitialized || checkerLoadingOverlay != null) return
+        val overlay = FrameLayout(this).apply {
+            isClickable = true
+            isFocusable = true
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(3, 8, 24), Color.rgb(9, 22, 55), Color.rgb(24, 10, 54))
+            )
+            elevation = dp(40).toFloat()
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(28), dp(28), dp(28))
+        }
+        val brand = text("SANY IPTV", 14, Color.rgb(100, 190, 255), true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.22f
+        }
+        content.addView(brand, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(24) })
+
+        val ringStage = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(35, 70, 145, 255))
+                setStroke(dp(2), Color.argb(170, 80, 180, 255))
+            }
+            elevation = dp(18).toFloat()
+        }
+        val ring = text("◉", 76, Color.rgb(105, 205, 255), true).apply {
+            gravity = Gravity.CENTER
+            setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.rgb(35, 125, 255))
+        }
+        checkerLoadingRing = ring
+        ringStage.addView(ring, FrameLayout.LayoutParams(-1, -1))
+        content.addView(ringStage, LinearLayout.LayoutParams(dp(148), dp(148)).apply { bottomMargin = dp(28) })
+
+        content.addView(text("CHECKING LIVE TV", 22, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            letterSpacing = 0.08f
+        }, LinearLayout.LayoutParams(-1, -2))
+        content.addView(text("Scanning Chennai Live TV channels", 13, Color.rgb(166, 190, 225)).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(9), 0, dp(24))
+        }, LinearLayout.LayoutParams(-1, -2))
+
+        val percent = text("0%", 48, Color.WHITE, true).apply {
+            gravity = Gravity.CENTER
+            setShadowLayer(dp(14).toFloat(), 0f, 0f, Color.rgb(30, 125, 255))
+        }
+        checkerLoadingPercent = percent
+        content.addView(percent, LinearLayout.LayoutParams(-1, -2))
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(40, 175, 255))
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.argb(65, 160, 190, 255))
+        }
+        checkerLoadingBar = bar
+        content.addView(bar, LinearLayout.LayoutParams(-1, dp(9)).apply {
+            topMargin = dp(18)
+            bottomMargin = dp(12)
+        })
+        val count = text("0 / ${channels.size} channels checked", 13, Color.rgb(175, 195, 225))
+            .apply { gravity = Gravity.CENTER }
+        checkerLoadingCount = count
+        content.addView(count, LinearLayout.LayoutParams(-1, -2))
+        val hint = text("Please wait while we find working streams…", 11, Color.rgb(115, 150, 195))
+            .apply { gravity = Gravity.CENTER; setPadding(0, dp(22), 0, 0) }
+        content.addView(hint, LinearLayout.LayoutParams(-1, -2))
+
+        overlay.addView(content, FrameLayout.LayoutParams(-1, -1))
+        root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        checkerLoadingOverlay = overlay
+        ring.animate().rotationBy(360f).setDuration(1800L).setInterpolator(android.view.animation.LinearInterpolator())
+            .withEndAction { if (checkerLoadingOverlay != null) ring.animate().rotationBy(360f).setDuration(1800L).setInterpolator(android.view.animation.LinearInterpolator()).start() }
+            .start()
+        content.alpha = 0f
+        content.scaleX = 0.94f
+        content.scaleY = 0.94f
+        content.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(380L).start()
+        updateCheckerLoadingScreen()
+    }
+
+    private fun updateCheckerLoadingScreen() {
+        val total = channels.size.coerceAtLeast(1)
+        val done = checkerProgressCount.get().coerceIn(0, total)
+        val percent = (done * 100 / total).coerceIn(0, 100)
+        checkerLoadingPercent?.text = "${percent}%"
+        checkerLoadingCount?.text = "${done} / ${channels.size} channels checked"
+        checkerLoadingBar?.progress = percent
+    }
+
+    private fun hideCheckerLoadingScreen() {
+        val overlay = checkerLoadingOverlay ?: return
+        checkerLoadingOverlay = null
+        checkerLoadingRing?.animate()?.cancel()
+        checkerLoadingOverlay = null
+        overlay.animate().alpha(0f).setDuration(250L).withEndAction {
+            if (overlay.parent === root) root.removeView(overlay)
+            checkerLoadingPercent = null
+            checkerLoadingCount = null
+            checkerLoadingBar = null
+            checkerLoadingRing = null
+        }.start()
     }
 
     private fun saveStreamCheckResults() {
@@ -1896,6 +2011,7 @@ class MainActivity : AppCompatActivity() {
         checkerRunning = true
         checkerProgressCount.set(0)
         updateLiveTvProgress()
+        showCheckerLoadingScreen()
         // Keep the last known health snapshot visible in Checker while refreshing.
         checkerDisplayedLimit = 250
         if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
@@ -1928,6 +2044,8 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 checkerRunning = false
                 checkerProgressCount.set(snapshot.size)
+                updateCheckerLoadingScreen()
+                hideCheckerLoadingScreen()
                 saveStreamCheckResults()
                 updateLiveTvProgress()
                 checkerUiRefreshQueued.set(false)
