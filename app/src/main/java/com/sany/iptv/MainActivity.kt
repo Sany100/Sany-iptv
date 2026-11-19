@@ -1044,6 +1044,9 @@ class MainActivity : AppCompatActivity() {
                     setPadding(0, dp(2), 0, 0)
                 }
                 liveTvNavLabel = navLabel
+                loadingRow.addView(spinner, LinearLayout.LayoutParams(dp(14), dp(14)).apply {
+                    rightMargin = dp(5)
+                })
                 loadingRow.addView(navLabel)
                 item.addView(loadingRow, LinearLayout.LayoutParams(-1, -2))
             } else {
@@ -1928,7 +1931,6 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 checkerRunning = false
                 checkerProgressCount.set(snapshot.size)
-                updateCheckerLoadingScreen()
                 saveStreamCheckResults()
                 updateLiveTvProgress()
                 checkerUiRefreshQueued.set(false)
