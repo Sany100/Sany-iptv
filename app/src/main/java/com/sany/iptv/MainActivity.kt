@@ -1014,7 +1014,11 @@ class MainActivity : AppCompatActivity() {
                         channels = parsed
                         streamChecks.clear()
                         savePlaylistUrl(url)
+                        // After a playlist is saved/loaded, immediately open the Live TV section.
+                        // This refreshes the navigation and channel list without requiring a manual tab switch.
+                        section = "Live TV"
                         selectedGroup = "All"; searchQuery = ""
+                        prefs.edit().putString("ui_section", "Live TV").putString("ui_group", "All").putString("ui_search", "").apply()
                         if (!detectedEpgUrl.isNullOrBlank()) {
                             prefs.edit().putString("epg_url", detectedEpgUrl).apply()
                             if (prefs.getBoolean("auto_add_epg", true)) updateEpgData(detectedEpgUrl, false)
