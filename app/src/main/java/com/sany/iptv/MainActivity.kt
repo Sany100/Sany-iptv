@@ -553,7 +553,8 @@ class MainActivity : AppCompatActivity() {
                 else -> c.group.equals(selectedGroup, true)
             }
             val q = searchQuery.trim().lowercase()
-            typeMatch && groupMatch && (q.isBlank() || c.name.lowercase().contains(q) || c.group.lowercase().contains(q))
+            liveTvHealthMatch && typeMatch && groupMatch &&
+                (q.isBlank() || c.name.lowercase().contains(q) || c.group.lowercase().contains(q))
         }
     }
 
