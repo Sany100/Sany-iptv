@@ -110,6 +110,9 @@ class MainActivity : AppCompatActivity() {
     private var playerFullscreenButton: TextView? = null
     private var headerTitleView: TextView? = null
     private var pausedForBackground = false
+    private var maintenanceOverlay: View? = null
+    private val maintenanceHandler = Handler(Looper.getMainLooper())
+    private val maintenanceConfigUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/maintenance.json"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -153,6 +156,7 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
+        checkMaintenanceMode()
         showPreviousCrashReport()
         if (!restoringBackground) {
             home.alpha = 0f
@@ -171,6 +175,121 @@ class MainActivity : AppCompatActivity() {
                 Handler(Looper.getMainLooper()).post { play(channel) }
             }
         }
+    }
+
+    private fun checkMaintenanceMode() {
+        thread(name = "sany-maintenance-check") {
+            try {
+                val connection = (URL(maintenanceConfigUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 5000
+                    readTimeout = 5000
+                    requestMethod = "GET"
+                    setRequestProperty("Cache-Control", "no-cache")
+                }
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val config = JSONObject(body)
+                val enabled = config.optBoolean("enabled", false)
+                val message = config.optString(
+                    "message",
+                    "আমাদের অ্যাপে উন্নয়নমূলক কাজ চলছে। অনুগ্রহ করে কিছুক্ষণ পরে আবার চেষ্টা করুন।"
+                )
+                val allowed = config.optJSONArray("allowed_devices") ?: JSONArray()
+                val deviceId = android.provider.Settings.Secure.getString(
+                    contentResolver,
+                    android.provider.Settings.Secure.ANDROID_ID
+                ) ?: ""
+                var isAdminDevice = false
+                for (i in 0 until allowed.length()) {
+                    if (allowed.optString(i) == deviceId && deviceId.isNotBlank()) {
+                        isAdminDevice = true
+                        break
+                    }
+                }
+                runOnUiThread {
+                    if (enabled && !isAdminDevice) showMaintenanceScreen(message, deviceId)
+                    else hideMaintenanceScreen()
+                }
+            } catch (_: Exception) {
+                // If the remote config cannot be reached, keep the app usable.
+            }
+        }
+        maintenanceHandler.removeCallbacksAndMessages(null)
+        maintenanceHandler.postDelayed({ checkMaintenanceMode() }, 60_000L)
+    }
+
+    private fun showMaintenanceScreen(message: String, deviceId: String) {
+        if (maintenanceOverlay != null || !::root.isInitialized) return
+        val overlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(28), dp(28), dp(28))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(5, 13, 32), Color.rgb(20, 31, 62), Color.rgb(8, 12, 27))
+            )
+        }
+        val icon = TextView(this).apply {
+            text = "🛠️"
+            textSize = 54f
+            gravity = Gravity.CENTER
+        }
+        overlay.addView(icon, LinearLayout.LayoutParams(-1, dp(82)))
+        val title = TextView(this).apply {
+            text = "SANY IPTV"
+            textSize = 27f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        }
+        overlay.addView(title, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        val heading = TextView(this).apply {
+            text = "App Under Maintenance"
+            textSize = 19f
+            setTextColor(Color.rgb(255, 195, 75))
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        }
+        overlay.addView(heading, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        val detail = TextView(this).apply {
+            text = message
+            textSize = 15f
+            setTextColor(Color.rgb(220, 228, 242))
+            gravity = Gravity.CENTER
+            setLineSpacing(dp(5).toFloat(), 1f)
+        }
+        overlay.addView(detail, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(14)
+            bottomMargin = dp(22)
+        })
+        val status = TextView(this).apply {
+            text = "MAINTENANCE MODE ACTIVE"
+            textSize = 12f
+            setTextColor(Color.rgb(255, 195, 75))
+            gravity = Gravity.CENTER
+            letterSpacing = 0.08f
+        }
+        overlay.addView(status, LinearLayout.LayoutParams(-1, -2))
+        val copy = TextView(this).apply {
+            text = "COPY THIS DEVICE ID (ADMIN)"
+            textSize = 12f
+            setTextColor(Color.rgb(120, 195, 255))
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(18), dp(12), dp(8))
+            setOnClickListener {
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SANY IPTV device ID", deviceId))
+                toast("Device ID copied")
+            }
+        }
+        overlay.addView(copy, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+        root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        maintenanceOverlay = overlay
+    }
+
+    private fun hideMaintenanceScreen() {
+        maintenanceOverlay?.let { root.removeView(it) }
+        maintenanceOverlay = null
     }
 
     private fun installSanyCrashLogger() {
