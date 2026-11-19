@@ -85,6 +85,7 @@ class MainActivity : AppCompatActivity() {
     private var checkerListAdapter: android.widget.BaseAdapter? = null
     private val checkerUiHandler = Handler(Looper.getMainLooper())
     private val checkerUiRefreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val permanentPlaylistUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
     private val playlistUrls = mutableListOf<String>()
     private var selectedGroup = "All"
     private var section = "Live TV"
@@ -129,9 +130,11 @@ class MainActivity : AppCompatActivity() {
             "https://raw.githubusercontent.com/wizakorhd/iptv/main/playlist-anime.m3u",
             "https://biskyt.github.io/legalFreeIPTVplaylist/vod.m3u"
         )
-        playlistUrls.addAll(readPlaylistUrls().filterNot { it in rejectedSources })
-        val savedPlaylist = prefs.getString("playlist_url", null)?.takeUnless { it in rejectedSources }
-        if (savedPlaylist == null) prefs.edit().remove("playlist_url").apply()
+        playlistUrls.add(permanentPlaylistUrl)
+        playlistUrls.addAll(readPlaylistUrls().filterNot { it in rejectedSources || it == permanentPlaylistUrl })
+        // The owner playlist is compiled into the app and is always the startup playlist.
+        val savedPlaylist = permanentPlaylistUrl
+        prefs.edit().putString("playlist_url", permanentPlaylistUrl).apply()
         val restoringBackground = savedInstanceState != null || prefs.getBoolean("resume_without_splash", false)
         section = savedInstanceState?.getString("ui_section") ?: prefs.getString("ui_section", "Live TV") ?: "Live TV"
         selectedGroup = savedInstanceState?.getString("ui_group") ?: prefs.getString("ui_group", "All") ?: "All"
@@ -651,11 +654,10 @@ class MainActivity : AppCompatActivity() {
         settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
         settingsToggleCard(box, "Background video playback", "Keep video playing in a floating window when you leave the app", "background_playback", true)
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
-            val url = prefs.getString("playlist_url", null)
-            if (url.isNullOrBlank()) showPlaylistDialog() else loadFromUrl(url)
+            loadFromUrl(permanentPlaylistUrl)
         }
-        settingsCard(box, "Clear playlist URL", "Forget the saved playlist address") {
-            prefs.edit().remove("playlist_url").apply(); toast("Saved playlist URL cleared")
+        settingsCard(box, "Permanent SANY playlist", "Built-in owner playlist — locked and cannot be removed from the app") {
+            loadFromUrl(permanentPlaylistUrl)
         }
         box.addView(text("APP UPDATES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Check for updates", "Look for the latest version and download it") { checkForAppUpdate(true) }
@@ -934,14 +936,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun savePlaylistUrl(url: String) {
-        if (url !in playlistUrls) playlistUrls.add(url)
+        if (url != permanentPlaylistUrl && url !in playlistUrls) playlistUrls.add(url)
+        // Keep the permanent owner playlist at position 1 in the saved list.
+        playlistUrls.remove(permanentPlaylistUrl)
+        playlistUrls.add(0, permanentPlaylistUrl)
         val json = org.json.JSONArray()
         playlistUrls.forEach { json.put(it) }
-        prefs.edit().putString("playlist_urls", json.toString()).putString("playlist_url", url).apply()
+        prefs.edit().putString("playlist_urls", json.toString()).putString("playlist_url", permanentPlaylistUrl).apply()
     }
 
     private fun showPlaylistDialog() {
-        val labels = playlistUrls.mapIndexed { index, url -> (index + 1).toString() + ". " + url }.toTypedArray()
+        val labels = playlistUrls.mapIndexed { index, url ->
+            if (url == permanentPlaylistUrl) "★ SANY IPTV — PERMANENT / LOCKED"
+            else (index + 1).toString() + ". " + url
+        }.toTypedArray()
         val builder = AlertDialog.Builder(this).setTitle("Playlist manager")
         if (labels.isNotEmpty()) builder.setItems(labels) { _, which -> loadFromUrl(playlistUrls[which]) }
         else builder.setMessage("এখনো কোনো playlist যোগ করা হয়নি।")
@@ -975,7 +983,7 @@ class MainActivity : AppCompatActivity() {
                 0 -> showPlaylistDialog()
                 1 -> showAddPlaylistDialog()
                 2 -> openFilePicker()
-                3 -> prefs.getString("playlist_url", null)?.let { loadFromUrl(it) } ?: showPlaylistDialog()
+                3 -> loadFromUrl(permanentPlaylistUrl)
                 4 -> { section = "Settings"; renderHome() }
             }
         }.show()
