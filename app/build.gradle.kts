@@ -30,6 +30,20 @@ android {
         versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.1").get()
     }
 
+    // Separate installable packages: mobile keeps the existing package ID;
+    // TV gets its own ID so both editions can coexist on one Android device.
+    flavorDimensions += "device"
+    productFlavors {
+        create("mobile") {
+            dimension = "device"
+        }
+        create("tv") {
+            dimension = "device"
+            applicationIdSuffix = ".tv"
+            versionNameSuffix = "-tv"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
