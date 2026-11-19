@@ -8,6 +8,14 @@ if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
 
+// The Firebase config currently registers the mobile package only.
+// Skip Google Services processing for the separate Android TV package.
+tasks.configureEach {
+    if (name.startsWith("processTv") && name.endsWith("GoogleServices")) {
+        enabled = false
+    }
+}
+
 android {
     namespace = "com.sany.iptv"
     compileSdk = 35
@@ -72,8 +80,8 @@ kotlin {
 
 dependencies {
     if (file("google-services.json").exists()) {
-        implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
-        implementation("com.google.firebase:firebase-analytics")
+        mobileImplementation(platform("com.google.firebase:firebase-bom:35.2.0"))
+        mobileImplementation("com.google.firebase:firebase-analytics")
     }
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
