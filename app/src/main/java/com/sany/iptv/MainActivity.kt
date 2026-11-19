@@ -280,8 +280,8 @@ class MainActivity : AppCompatActivity() {
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
         center.addView(logo, LinearLayout.LayoutParams(dp(220), dp(220)).apply {
-            topMargin = dp(16)
-            bottomMargin = dp(10)
+            topMargin = dp(30)
+            bottomMargin = dp(0)
         })
 
         val welcomeText = android.text.SpannableString("Welcome to my SANY IPTV app").apply {
@@ -298,7 +298,7 @@ class MainActivity : AppCompatActivity() {
             letterSpacing = 0.01f
             setPadding(dp(8), 0, dp(8), 0)
             alpha = 0f
-            translationY = dp(8).toFloat()
+            translationY = dp(-4).toFloat()
         }
         center.addView(welcome)
 
