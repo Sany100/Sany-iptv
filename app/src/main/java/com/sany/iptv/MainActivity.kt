@@ -79,7 +79,7 @@ class MainActivity : AppCompatActivity() {
     private var channels = listOf<Channel>()
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
     @Volatile private var checkerRunning = false
-    @Volatile private var checkerProgressCount = 0
+    private val checkerProgressCount = java.util.concurrent.atomic.AtomicInteger(0)
     private var checkerFilter = "All"
     private var checkerDisplayedLimit = 250
     private var checkerSummaryView: TextView? = null
@@ -1836,7 +1836,7 @@ class MainActivity : AppCompatActivity() {
     private fun liveTvProgressLabel(): String {
         if (channels.isEmpty()) return "Live TV"
         if (!checkerRunning && streamChecks.isEmpty()) return "Live TV"
-        val percent = if (channels.isEmpty()) 100 else ((if (checkerRunning) checkerProgressCount else streamChecks.size) * 100 / channels.size).coerceIn(0, 100)
+        val percent = if (channels.isEmpty()) 100 else ((if (checkerRunning) checkerProgressCount.get() else streamChecks.size) * 100 / channels.size).coerceIn(0, 100)
         return if (checkerRunning) "Live TV $percent%" else "Live TV"
     }
 
@@ -1865,14 +1865,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkerSummaryText(): String =
-        if (checkerRunning) "Checking… $checkerProgressCount / ${channels.size}"
+        if (checkerRunning) "Checking… ${checkerProgressCount.get()} / ${channels.size}"
         else "Total ${channels.size} • Working ${streamChecks.values.count { it.first == "Working" }} • Not working ${streamChecks.values.count { it.first != "Working" }}"
 
     private fun startPlaylistCheck(showToast: Boolean) {
         if (channels.isEmpty() || checkerRunning) return
         val snapshot = channels.toList()
         checkerRunning = true
-        checkerProgressCount = 0
+        checkerProgressCount.set(0)
         updateLiveTvProgress()
         // Keep the last known health snapshot visible in Checker while refreshing.
         checkerDisplayedLimit = 250
@@ -1891,7 +1891,7 @@ class MainActivity : AppCompatActivity() {
                     if (index >= snapshot.size || Thread.currentThread().isInterrupted) break
                     val channel = snapshot[index]
                     streamChecks[channel.url] = probeStream(channel.url)
-                    checkerProgressCount++
+                    checkerProgressCount.incrementAndGet()
                     scheduleCheckerUiRefresh()
                 }
             }
@@ -1905,7 +1905,7 @@ class MainActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 checkerRunning = false
-                checkerProgressCount = snapshot.size
+                checkerProgressCount.set(snapshot.size)
                 saveStreamCheckResults()
                 updateLiveTvProgress()
                 checkerUiRefreshQueued.set(false)
