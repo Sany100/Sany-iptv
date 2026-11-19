@@ -396,15 +396,7 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(14).toFloat()
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val brandLogo = ImageView(this).apply {
-            setImageResource(com.sany.iptv.R.drawable.sany_logo_icon)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = "SANY IPTV"
-            cameraDistance = 9000f * resources.displayMetrics.density
-            rotationY = -12f
-            translationZ = dp(12).toFloat()
-        }
-        brandLine.addView(brandLogo, LinearLayout.LayoutParams(dp(42), dp(42)))
+        // The header logo is intentionally removed; keep the brand name clean and prominent.
         val brand = text("SANY IPTV", 24, accent, true).apply {
             letterSpacing = 0.06f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
@@ -415,9 +407,9 @@ class MainActivity : AppCompatActivity() {
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
-        top.addView(text("Premium IPTV Experience", 12, white, true).apply {
-            letterSpacing = 0.01f
-            setPadding(0, dp(1), 0, dp(5))
+        top.addView(text("PREMIUM IPTV EXPERIENCE", 16, white, true).apply {
+            letterSpacing = 0.045f
+            setPadding(dp(8), dp(3), 0, dp(7))
         })
         top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -432,8 +424,6 @@ class MainActivity : AppCompatActivity() {
         top.post {
             top.animate().alpha(1f).translationY(0f).rotationX(0f)
                 .setDuration(620).setInterpolator(DecelerateInterpolator(1.5f)).start()
-            brandLogo.animate().rotationY(0f).rotationX(0f)
-                .setDuration(760).setInterpolator(DecelerateInterpolator(1.7f)).start()
         }
 
         contentArea = LinearLayout(this).apply {
