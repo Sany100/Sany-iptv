@@ -80,8 +80,8 @@ kotlin {
 
 dependencies {
     if (file("google-services.json").exists()) {
-        mobileImplementation(platform("com.google.firebase:firebase-bom:35.2.0"))
-        mobileImplementation("com.google.firebase:firebase-analytics")
+        add("mobileImplementation", platform("com.google.firebase:firebase-bom:35.2.0"))
+        add("mobileImplementation", "com.google.firebase:firebase-analytics")
     }
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
