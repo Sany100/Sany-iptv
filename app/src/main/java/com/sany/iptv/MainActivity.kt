@@ -178,7 +178,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        val logo = text("SANY", 46, Color.rgb(55, 145, 255), true).apply {
+        val logo = text("SANY", 62, Color.rgb(55, 145, 255), true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.20f
             setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(170, 55, 145, 255))
@@ -191,15 +191,17 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(22).toFloat()
         }
         center.addView(logo)
-        center.addView(text("IPTV", 15, Color.WHITE, true).apply {
+        center.addView(text("প্রিমিয়াম আইপি টিভি experience", 16, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
-            letterSpacing = 0.42f
+            letterSpacing = 0.015f
+            setPadding(0, dp(10), 0, 0)
             alpha = 0f
+            translationY = dp(12).toFloat()
         })
-        center.addView(text("YOUR ENTERTAINMENT. YOUR WAY.", 9, Color.rgb(145, 160, 180), true).apply {
+        center.addView(text("LIVE TV  •  MOVIES  •  ENTERTAINMENT", 9, Color.rgb(145, 175, 210), true).apply {
             gravity = Gravity.CENTER
-            letterSpacing = 0.12f
-            setPadding(0, dp(12), 0, 0)
+            letterSpacing = 0.10f
+            setPadding(0, dp(10), 0, 0)
             alpha = 0f
         })
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
@@ -212,8 +214,9 @@ class MainActivity : AppCompatActivity() {
             .setDuration(1350)
             .setInterpolator(DecelerateInterpolator(1.6f))
             .start()
-        center.getChildAt(1).animate().alpha(1f).setStartDelay(420).setDuration(500).start()
-        center.getChildAt(2).animate().alpha(1f).setStartDelay(620).setDuration(500).start()
+        center.getChildAt(1).animate().alpha(1f).translationY(0f).setStartDelay(420).setDuration(650)
+            .setInterpolator(DecelerateInterpolator()).start()
+        center.getChildAt(2).animate().alpha(1f).setStartDelay(720).setDuration(500).start()
         splash.animate().alpha(0f).setStartDelay(1550).setDuration(400).withEndAction {
             root.removeView(splash)
         }.start()
@@ -227,10 +230,14 @@ class MainActivity : AppCompatActivity() {
             background = glass(22)
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val brand = text("SANY", 32, accent, true).apply { letterSpacing = 0.12f; setShadowLayer(dp(10).toFloat(), 0f, 0f, Color.argb(90, 55, 145, 255)) }
+        val brand = text("SANY", 39, accent, true).apply { letterSpacing = 0.14f; setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(115, 55, 145, 255)) }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
+        top.addView(text("প্রিমিয়াম আইপি টিভি experience", 12, white, true).apply {
+            letterSpacing = 0.01f
+            setPadding(0, dp(1), 0, dp(5))
+        })
         top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         titleRow.addView(text(if (section == "Movies") "Video" else section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
