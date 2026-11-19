@@ -29,7 +29,7 @@ android {
     }
     defaultConfig {
         applicationId = "com.sany.iptv"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 35
         versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("2").get().toInt()
         versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.1").get()
