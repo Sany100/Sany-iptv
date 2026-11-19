@@ -1476,12 +1476,14 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             if (parsed.isEmpty()) toast("No channels found in file") else {
                                 channels = parsed; selectedGroup = "All"; searchQuery = ""
+                                streamChecks.clear()
                                 if (!detectedEpgUrl.isNullOrBlank()) {
                                     prefs.edit().putString("epg_url", detectedEpgUrl).apply()
                                     if (prefs.getBoolean("auto_add_epg", true)) updateEpgData(detectedEpgUrl, false)
                                 }
                                 renderHome()
-                                toast("Imported ${channels.size} items")
+                                startPlaylistCheck(false)
+                                toast("Imported ${channels.size} items — checking streams")
                             }
                         }
                     } catch (e: Exception) {
