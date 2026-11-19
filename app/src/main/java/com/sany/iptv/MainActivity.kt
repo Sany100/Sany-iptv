@@ -74,6 +74,9 @@ class MainActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences("sany_iptv", MODE_PRIVATE) }
     private val pickFile = 41
     private var channels = listOf<Channel>()
+    private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+    private var checkerRunning = false
+    private var checkerFilter = "All"
     private val playlistUrls = mutableListOf<String>()
     private var selectedGroup = "All"
     private var section = "Live TV"
@@ -137,6 +140,7 @@ class MainActivity : AppCompatActivity() {
                     .setDuration(420).start()
             }
         }
+        if (channels.isNotEmpty()) startPlaylistCheck(false)
         if (channels.isEmpty() && !savedPlaylist.isNullOrBlank()) loadFromUrl(savedPlaylist, false)
         else if (!resumeStream.isNullOrBlank() && channels.isNotEmpty()) {
             channels.firstOrNull { it.url == resumeStream }?.let { channel ->
@@ -275,6 +279,10 @@ class MainActivity : AppCompatActivity() {
         }
         if (section == "Series") {
             renderSeriesComingSoon()
+            return
+        }
+        if (section == "Checker") {
+            renderCheckerSection()
             return
         }
         if (channels.isEmpty()) {
@@ -471,6 +479,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun filteredChannels(): List<Channel> {
         return channels.filter { c ->
+            val status = streamChecks[c.url]?.first
+            if (section == "Live TV" && (checkerRunning || streamChecks.isNotEmpty()) && status != "Working") return@filter false
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
@@ -529,7 +539,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderBottomNav() {
         bottomNav.removeAllViews()
-        listOf("Live TV" to "▣", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
+        listOf("Live TV" to "▣", "Checker" to "✓", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
                 isFocusable = true
@@ -942,6 +952,7 @@ class MainActivity : AppCompatActivity() {
                     if (parsed.isEmpty()) toast("No playable entries found in this playlist")
                     else {
                         channels = parsed
+                        streamChecks.clear()
                         savePlaylistUrl(url)
                         selectedGroup = "All"; searchQuery = ""
                         if (!detectedEpgUrl.isNullOrBlank()) {
@@ -949,7 +960,8 @@ class MainActivity : AppCompatActivity() {
                             if (prefs.getBoolean("auto_add_epg", true)) updateEpgData(detectedEpgUrl, false)
                         }
                         renderHome()
-                        toast("Loaded " + channels.size + " items")
+                        startPlaylistCheck(false)
+                        toast("Loaded " + channels.size + " items — checking streams")
                     }
                 }
             } catch (e: Exception) {
