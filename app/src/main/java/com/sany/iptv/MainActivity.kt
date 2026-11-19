@@ -80,6 +80,9 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var checkerRunning = false
     private var checkerFilter = "All"
     private var checkerDisplayedLimit = 250
+    private var checkerSummaryView: TextView? = null
+    private var checkerRunButton: TextView? = null
+    private var checkerListAdapter: android.widget.BaseAdapter? = null
     private val checkerUiHandler = Handler(Looper.getMainLooper())
     private val checkerUiRefreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
     private val playlistUrls = mutableListOf<String>()
@@ -1120,41 +1123,60 @@ class MainActivity : AppCompatActivity() {
         checkerUiHandler.postDelayed({
             checkerUiRefreshQueued.set(false)
             if (!isFinishing && ::contentArea.isInitialized && section == "Checker") {
-                renderCheckerSection()
+                updateCheckerUi()
             }
-        }, 900L)
+        }, 500L)
     }
+
+    private fun updateCheckerUi() {
+        checkerSummaryView?.text = checkerSummaryText()
+        checkerListAdapter?.notifyDataSetChanged()
+        checkerRunButton?.text = if (checkerRunning) "CHECKING CHANNELS…" else "↻  CHECK ALL CHANNELS AGAIN"
+    }
+
+    private fun checkerSummaryText(): String =
+        if (checkerRunning) "Checking… ${streamChecks.size} / ${channels.size}"
+        else "Total ${channels.size} • Working ${streamChecks.values.count { it.first == "Working" }} • Not working ${streamChecks.values.count { it.first != "Working" }}"
 
     private fun startPlaylistCheck(showToast: Boolean) {
         if (channels.isEmpty() || checkerRunning) return
         val snapshot = channels.toList()
         checkerRunning = true
         streamChecks.clear()
+        checkerDisplayedLimit = 250
         if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
         if (::contentArea.isInitialized && section == "Checker") renderCheckerSection()
         if (::contentArea.isInitialized && section == "Live TV") renderListOnly()
 
-        // Keep network I/O off the main thread and limit concurrency to avoid
-        // exhausting sockets/CPU on low-memory Android phones and TV boxes.
-        val executor = java.util.concurrent.Executors.newFixedThreadPool(4)
-        snapshot.forEach { channel ->
-            executor.submit {
-                val result = probeStream(channel.url)
-                streamChecks[channel.url] = result
-                scheduleCheckerUiRefresh()
+        // A fixed number of workers pull the next channel from an atomic index.
+        // This avoids creating thousands of queued Runnables for huge playlists.
+        val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
+        val workerCount = minOf(6, snapshot.size)
+        val workers = (0 until workerCount).map { worker ->
+            thread(name = "SANY-Stream-Check-$worker") {
+                while (true) {
+                    val index = nextIndex.getAndIncrement()
+                    if (index >= snapshot.size || Thread.currentThread().isInterrupted) break
+                    val channel = snapshot[index]
+                    streamChecks[channel.url] = probeStream(channel.url)
+                    scheduleCheckerUiRefresh()
+                }
             }
         }
-        executor.shutdown()
-        thread(name = "SANY-Playlist-Check") {
-            try { executor.awaitTermination(15, java.util.concurrent.TimeUnit.MINUTES) }
-            catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+        thread(name = "SANY-Playlist-Check-Finish") {
+            workers.forEach { worker ->
+                try { worker.join() } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return@thread
+                }
+            }
             runOnUiThread {
                 checkerRunning = false
                 checkerUiRefreshQueued.set(false)
                 checkerUiHandler.removeCallbacksAndMessages(null)
-                if (section == "Checker" && ::contentArea.isInitialized) renderCheckerSection()
-                // Refresh Live TV once, after the scan, instead of rebuilding its
-                // channel list for every single HTTP response.
+                if (section == "Checker" && ::contentArea.isInitialized) {
+                    updateCheckerUi()
+                }
                 if (section == "Live TV" && ::contentArea.isInitialized) renderListOnly()
                 if (showToast) toast("Check complete: " + streamChecks.values.count { it.first == "Working" } + " / " + snapshot.size + " responding")
             }
@@ -1163,32 +1185,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCheckerSection() {
         contentArea.removeAllViews()
+        checkerSummaryView = null
+        checkerRunButton = null
+        checkerListAdapter = null
 
-        // Use one full-page ScrollView so the header, filters and every result row
-        // share a single reliable vertical scroll container on phones and tablets.
-        val pageScroll = ScrollView(this).apply {
-            isFillViewport = true
-            isVerticalScrollBarEnabled = true
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-        }
+        // Keep controls fixed and let ListView virtualize rows. Only visible rows
+        // are created; recycled row views prevent huge playlists from flooding RAM.
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(14))
+            setPadding(0, 0, 0, dp(8))
         }
-        pageScroll.addView(box, ScrollView.LayoutParams(-1, -2))
-
         box.addView(text("PLAYLIST HEALTH", 12, accent, true))
-        val summary = text(
-            if (checkerRunning) "Checking… " + streamChecks.size + " / " + channels.size
-            else "Total " + channels.size + " • Working " + streamChecks.values.count { it.first == "Working" } +
-                " • Not working " + streamChecks.values.count { it.first != "Working" },
-            13, muted
-        ).apply { setPadding(0, dp(7), 0, dp(12)) }
-        box.addView(summary)
-        box.addView(actionButton(if (checkerRunning) "CHECKING CHANNELS…" else "↻  CHECK ALL CHANNELS AGAIN") {
+        checkerSummaryView = text(checkerSummaryText(), 13, muted).apply {
+            setPadding(0, dp(7), 0, dp(12))
+        }
+        box.addView(checkerSummaryView)
+        checkerRunButton = actionButton(
+            if (checkerRunning) "CHECKING CHANNELS…" else "↻  CHECK ALL CHANNELS AGAIN"
+        ) {
             if (!checkerRunning) startPlaylistCheck(true)
-        }, LinearLayout.LayoutParams(-1, dp(46)).apply { bottomMargin = dp(10) })
+        }
+        box.addView(checkerRunButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
+            bottomMargin = dp(10)
+        })
 
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val filterScroll = HorizontalScrollView(this).apply {
@@ -1208,78 +1227,110 @@ class MainActivity : AppCompatActivity() {
                 background = if (checkerFilter == filter) rounded(accent, 24) else glass(24)
                 setOnClickListener {
                     checkerFilter = filter
-                    checkerDisplayedLimit = 250
                     renderCheckerSection()
                 }
             }, LinearLayout.LayoutParams(-2, dp(36)).apply { rightMargin = dp(6) })
         }
         box.addView(filterScroll, LinearLayout.LayoutParams(-1, dp(44)))
 
-        val selected = channels.filter { channel ->
-            val status = streamChecks[channel.url]?.first
-            when (checkerFilter) {
-                "All" -> true
-                "Checking" -> checkerRunning && status == null
-                else -> status == checkerFilter
+        val list = ListView(this).apply {
+            divider = null
+            dividerHeight = dp(5)
+            cacheColorHint = Color.TRANSPARENT
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            setOnItemClickListener { _, _, position, _ ->
+                val selected = checkerSelectedChannels()
+                selected.getOrNull(position)?.let { channel ->
+                    if (streamChecks[channel.url]?.first == "Working") play(channel)
+                }
             }
         }
-        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        selected.take(checkerDisplayedLimit).forEach { channel ->
-            val result = streamChecks[channel.url]
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                background = glass(12)
+        checkerListAdapter = object : android.widget.BaseAdapter() {
+            override fun getCount(): Int = checkerSelectedChannels().size
+            override fun getItem(position: Int): Any = checkerSelectedChannels()[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+            override fun hasStableIds(): Boolean = false
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val row: LinearLayout
+                val nameView: TextView
+                val statusView: TextView
+                val detailView: TextView
+                if (convertView is LinearLayout && convertView.tag is Array<*>) {
+                    row = convertView
+                    @Suppress("UNCHECKED_CAST")
+                    val views = convertView.tag as Array<TextView>
+                    nameView = views[0]
+                    statusView = views[1]
+                    detailView = views[2]
+                } else {
+                    row = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        background = glass(12)
+                    }
+                    val line = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+                    nameView = text("", 13, white, true)
+                    statusView = text("", 10, muted, true)
+                    line.addView(nameView, LinearLayout.LayoutParams(0, -2, 1f))
+                    line.addView(statusView)
+                    row.addView(line)
+                    detailView = text("", 10, muted).apply { setPadding(0, dp(4), 0, 0) }
+                    row.addView(detailView)
+                    row.tag = arrayOf(nameView, statusView, detailView)
+                }
+                val channel = checkerSelectedChannels().getOrNull(position)
+                    ?: return row
+                val result = streamChecks[channel.url]
+                val label = result?.first ?: if (checkerRunning) "Checking…" else "Not checked"
+                nameView.text = channel.name
+                statusView.text = label.uppercase()
+                statusView.setTextColor(when (label) {
+                    "Working" -> Color.rgb(35, 190, 120)
+                    "Offline" -> Color.rgb(245, 85, 85)
+                    "Restricted" -> Color.rgb(255, 170, 55)
+                    else -> muted
+                })
+                detailView.text = result?.second ?: channel.group
+                row.alpha = 1f
+                return row
             }
-            val line = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-            line.addView(text(channel.name, 13, white, true), LinearLayout.LayoutParams(0, -2, 1f))
-            val label = result?.first ?: if (checkerRunning) "Checking…" else "Not checked"
-            val color = when (label) {
-                "Working" -> Color.rgb(35, 190, 120)
-                "Offline" -> Color.rgb(245, 85, 85)
-                "Restricted" -> Color.rgb(255, 170, 55)
-                else -> muted
-            }
-            line.addView(text(label.uppercase(), 10, color, true))
-            row.addView(line)
-            row.addView(text(result?.second ?: channel.group, 10, muted).apply { setPadding(0, dp(4), 0, 0) })
-            if (result?.first == "Working") row.setOnClickListener { play(channel) }
-            rows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
         }
-        if (selected.isEmpty()) {
-            rows.addView(text("এই ফিল্টারে কোনো চ্যানেল নেই", 13, muted).apply {
-                gravity = Gravity.CENTER
-                setPadding(0, dp(30), 0, dp(30))
-            })
+        list.adapter = checkerListAdapter
+        box.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
+        contentArea.addView(box, LinearLayout.LayoutParams(-1, -1))
+        updateCheckerUi()
+    }
+
+    private fun checkerSelectedChannels(): List<Channel> = channels.filter { channel ->
+        val status = streamChecks[channel.url]?.first
+        when (checkerFilter) {
+            "All" -> true
+            "Checking" -> checkerRunning && status == null
+            else -> status == checkerFilter
         }
-        box.addView(rows, LinearLayout.LayoutParams(-1, -2))
-        if (selected.size > checkerDisplayedLimit) {
-            box.addView(actionButton("LOAD MORE  (${selected.size - checkerDisplayedLimit} LEFT)") {
-                checkerDisplayedLimit += 250
-                renderCheckerSection()
-            }, LinearLayout.LayoutParams(-1, dp(46)).apply {
-                topMargin = dp(8)
-                bottomMargin = dp(12)
-            })
-        }
-        contentArea.addView(pageScroll, LinearLayout.LayoutParams(-1, -1))
     }
 
     private fun probeStream(streamUrl: String): Pair<String, String> {
-        if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) return "Error" to "Invalid URL"
+        if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
+            return "Error" to "Invalid URL"
+        }
         var connection: HttpURLConnection? = null
         return try {
             connection = URL(streamUrl).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
-            connection.connectTimeout = 6000
-            connection.readTimeout = 6000
+            connection.connectTimeout = 3500
+            connection.readTimeout = 3500
             connection.instanceFollowRedirects = true
+            connection.useCaches = false
+            connection.defaultUseCaches = false
             connection.setRequestProperty("User-Agent", "SANY-IPTV-Android")
             connection.setRequestProperty("Accept", "*/*")
-            connection.setRequestProperty("Range", "bytes=0-1023")
+            connection.setRequestProperty("Range", "bytes=0-0")
+            connection.setRequestProperty("Connection", "close")
             val code = connection.responseCode
             when {
-                code in 200..299 -> "Working" to ("HTTP " + code)
+                code in 200..299 || code == 206 -> "Working" to ("HTTP " + code)
                 code == 401 || code == 403 -> "Restricted" to ("HTTP " + code)
                 code == 404 || code == 410 -> "Offline" to ("HTTP " + code)
                 else -> "Error" to ("HTTP " + code)
