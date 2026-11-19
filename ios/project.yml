@@ -1,0 +1,23 @@
+name: SANYIPTV
+options:
+  bundleIdPrefix: com.sany.iptv
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  SANYIPTV:
+    type: application
+    platform: iOS
+    sources:
+      - path: SANYIPTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sany.iptv.ios
+        PRODUCT_NAME: SANY IPTV
+        INFOPLIST_KEY_CFBundleDisplayName: SANY IPTV
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        SWIFT_VERSION: 5.0
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
