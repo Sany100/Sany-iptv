@@ -159,7 +159,6 @@ class MainActivity : AppCompatActivity() {
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
         checkMaintenanceMode()
-        showPreviousCrashReport()
         if (!restoringBackground) {
             home.alpha = 0f
             home.translationY = dp(14).toFloat()
@@ -565,10 +564,10 @@ class MainActivity : AppCompatActivity() {
         bottomNav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(5), dp(8), dp(5), dp(8))
+            setPadding(dp(5), dp(2), dp(5), dp(2))
             background = glass(18)
         }
-        home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 56 else 66)))
+        home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
         renderSection()
         renderBottomNav()
         if (isTvDevice) root.post { focusInitialTvControl() }
@@ -858,13 +857,9 @@ class MainActivity : AppCompatActivity() {
             logoFrame.rotationY = -72f
             logoFrame.scaleX = 0.82f
             logoFrame.scaleY = 0.82f
-            logoFrame.animate().rotationY(0f).scaleX(1f).scaleY(1f)
-                .setStartDelay((index % 8) * 45L)
-                .setDuration(620L)
-                .setInterpolator(DecelerateInterpolator(1.6f))
-                .start()
-            row.setOnClickListener {
-                row.animate().alpha(0.68f).scaleX(0.985f).scaleY(0.985f).setDuration(75).withEndAction { play(channel) }.start()
+            // Keep channel rows immediately interactive; avoid per-row entrance animations.
+            if (section == "Live TV") {
+                row.setOnClickListener { play(channel) }
             }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
         }
@@ -895,7 +890,7 @@ class MainActivity : AppCompatActivity() {
                     background = glass(16)
                     applyTvFocusStyle(this)
                     contentDescription = "Play ${channel.name}"
-                    setOnClickListener { play(channel) }
+                    if (section == "Live TV") setOnClickListener { play(channel) }
                 }
                 val topLine = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -1010,7 +1005,8 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 background = if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
-                setPadding(dp(3), dp(4), dp(3), dp(4))
+                setPadding(dp(3), 0, dp(3), 0)
+                translationY = -dp(3).toFloat()
                 setOnClickListener {
                     if (section == name) return@setOnClickListener
                     // Switch immediately; keep the transition animation lightweight.
@@ -1052,7 +1048,7 @@ class MainActivity : AppCompatActivity() {
                 item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
                 val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else name, 12, if (active) accent else muted, active).apply {
                     gravity = Gravity.CENTER
-                    setPadding(0, dp(3), 0, 0)
+                    setPadding(0, 0, 0, 0)
                 }
                 if (name == "Live TV") liveTvNavLabel = navLabel
                 item.addView(navLabel)
@@ -2030,12 +2026,9 @@ class MainActivity : AppCompatActivity() {
             cacheColorHint = Color.TRANSPARENT
             isVerticalScrollBarEnabled = true
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            setOnItemClickListener { _, _, position, _ ->
-                val selected = checkerSelectedChannels()
-                selected.getOrNull(position)?.let { channel ->
-                    if (streamChecks[channel.url]?.first == "Working") play(channel)
-                }
-            }
+            // Checker is diagnostic only: selecting a result never starts playback.
+            isClickable = false
+            isLongClickable = false
         }
         checkerListAdapter = object : android.widget.BaseAdapter() {
             override fun getCount(): Int = checkerSelectedChannels().size
@@ -2196,6 +2189,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun play(channel: Channel) {
+        if (section != "Live TV") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
