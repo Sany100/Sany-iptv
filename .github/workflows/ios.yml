@@ -1,0 +1,37 @@
+name: iOS Simulator Build
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios-simulator:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: |
+          cd ios
+          xcodegen generate
+      - name: Build iOS Simulator app
+        run: |
+          xcodebuild \
+            -project ios/SANYIPTV.xcodeproj \
+            -scheme SANYIPTV \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sany-iptv-ios-simulator
+          path: ios/build/Build/Products/Debug-iphonesimulator/SANY IPTV.app
