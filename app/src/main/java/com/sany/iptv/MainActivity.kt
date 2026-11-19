@@ -279,7 +279,7 @@ class MainActivity : AppCompatActivity() {
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
         center.addView(logo, LinearLayout.LayoutParams(dp(135), dp(135)).apply {
-            bottomMargin = dp(14)
+            bottomMargin = dp(4)
         })
 
         val welcomeText = android.text.SpannableString("Welcome to my SANY IPTV app").apply {
@@ -290,20 +290,20 @@ class MainActivity : AppCompatActivity() {
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
         }
-        val welcome = text(welcomeText.toString(), 23, Color.WHITE, false).apply {
+        val welcome = text(welcomeText.toString(), 20, Color.WHITE, false).apply {
             this.text = welcomeText
             gravity = Gravity.CENTER
-            letterSpacing = 0.015f
-            setPadding(dp(12), dp(4), dp(12), 0)
+            letterSpacing = 0.01f
+            setPadding(dp(8), 0, dp(8), 0)
             alpha = 0f
-            translationY = dp(16).toFloat()
+            translationY = dp(8).toFloat()
         }
         center.addView(welcome)
 
         center.addView(text("Thank you for choosing SANY IPTV", 12, Color.rgb(126, 220, 255), true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.025f
-            setPadding(0, dp(8), 0, dp(18))
+            setPadding(0, dp(4), 0, dp(12))
             alpha = 0f
         })
 
@@ -398,11 +398,11 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(12).toFloat()
         }
         brandLine.addView(brandLogo, LinearLayout.LayoutParams(dp(42), dp(42)))
-        val brand = text("SANY IPTV", 27, accent, true).apply {
-            letterSpacing = 0.10f
+        val brand = text("SANY IPTV", 24, accent, true).apply {
+            letterSpacing = 0.06f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
-            setPadding(dp(9), 0, 0, 0)
-            translationY = dp(6).toFloat()
+            setPadding(dp(8), 0, 0, 0)
+            gravity = Gravity.CENTER_VERTICAL
             translationZ = dp(10).toFloat()
         }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
