@@ -278,8 +278,8 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(18).toFloat()
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
-        center.addView(logo, LinearLayout.LayoutParams(dp(135), dp(135)).apply {
-            bottomMargin = dp(4)
+        center.addView(logo, LinearLayout.LayoutParams(dp(96), dp(96)).apply {
+            bottomMargin = dp(12)
         })
 
         val welcomeText = android.text.SpannableString("Welcome to my SANY IPTV app").apply {
@@ -300,12 +300,27 @@ class MainActivity : AppCompatActivity() {
         }
         center.addView(welcome)
 
-        center.addView(text("Thank you for choosing SANY IPTV", 12, Color.rgb(126, 220, 255), true).apply {
+        val thankYou = text("Thank you for choosing SANY IPTV", 12, Color.rgb(126, 220, 255), true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.025f
-            setPadding(0, dp(4), 0, dp(12))
+            setPadding(0, dp(7), 0, dp(14))
             alpha = 0f
-        })
+        }
+        center.addView(thankYou)
+
+        // Cycle through a cool electric-blue / cyan / violet palette on both welcome lines.
+        val welcomeColorAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 3200L
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+            addUpdateListener { animator ->
+                val hue = (animator.animatedValue as Float) * 300f + 175f
+                val color = Color.HSVToColor(floatArrayOf(hue % 360f, 0.62f, 1f))
+                welcome.setTextColor(color)
+                thankYou.setTextColor(color)
+            }
+            start()
+        }
 
         val loadingBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = false
@@ -359,6 +374,7 @@ class MainActivity : AppCompatActivity() {
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     logoGlow.cancel()
+                    welcomeColorAnimator.cancel()
                     splash.animate().alpha(0f).setDuration(350).withEndAction {
                         root.removeView(splash)
                         scheduleAutoUpdateCheck()
