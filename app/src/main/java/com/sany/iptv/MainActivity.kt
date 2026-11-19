@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
     @Volatile private var checkerRunning = false
     private var checkerFilter = "All"
+    private var checkerDisplayedLimit = 250
     private val checkerUiHandler = Handler(Looper.getMainLooper())
     private val checkerUiRefreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
     private val playlistUrls = mutableListOf<String>()
@@ -1162,7 +1163,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCheckerSection() {
         contentArea.removeAllViews()
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        // Use one full-page ScrollView so the header, filters and every result row
+        // share a single reliable vertical scroll container on phones and tablets.
+        val pageScroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, 0, dp(14))
+        }
+        pageScroll.addView(box, ScrollView.LayoutParams(-1, -2))
+
         box.addView(text("PLAYLIST HEALTH", 12, accent, true))
         val summary = text(
             if (checkerRunning) "Checking… " + streamChecks.size + " / " + channels.size
@@ -1174,8 +1189,13 @@ class MainActivity : AppCompatActivity() {
         box.addView(actionButton(if (checkerRunning) "CHECKING CHANNELS…" else "↻  CHECK ALL CHANNELS AGAIN") {
             if (!checkerRunning) startPlaylistCheck(true)
         }, LinearLayout.LayoutParams(-1, dp(46)).apply { bottomMargin = dp(10) })
+
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val filterScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(filters) }
+        val filterScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            isFillViewport = false
+            addView(filters)
+        }
         listOf("All", "Working", "Offline", "Restricted", "Error", "Checking").forEach { filter ->
             val count = when (filter) {
                 "All" -> channels.size
@@ -1186,13 +1206,15 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 setPadding(dp(12), 0, dp(12), 0)
                 background = if (checkerFilter == filter) rounded(accent, 24) else glass(24)
-                setOnClickListener { checkerFilter = filter; renderCheckerSection() }
+                setOnClickListener {
+                    checkerFilter = filter
+                    checkerDisplayedLimit = 250
+                    renderCheckerSection()
+                }
             }, LinearLayout.LayoutParams(-2, dp(36)).apply { rightMargin = dp(6) })
         }
         box.addView(filterScroll, LinearLayout.LayoutParams(-1, dp(44)))
-        val scroll = ScrollView(this)
-        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        scroll.addView(rows)
+
         val selected = channels.filter { channel ->
             val status = streamChecks[channel.url]?.first
             when (checkerFilter) {
@@ -1201,7 +1223,8 @@ class MainActivity : AppCompatActivity() {
                 else -> status == checkerFilter
             }
         }
-        selected.forEach { channel ->
+        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        selected.take(checkerDisplayedLimit).forEach { channel ->
             val result = streamChecks[channel.url]
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1223,12 +1246,23 @@ class MainActivity : AppCompatActivity() {
             if (result?.first == "Working") row.setOnClickListener { play(channel) }
             rows.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
         }
-        if (selected.isEmpty()) rows.addView(text("এই ফিল্টারে কোনো চ্যানেল নেই", 13, muted).apply {
-            gravity = Gravity.CENTER
-            setPadding(0, dp(30), 0, dp(30))
-        })
-        box.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        contentArea.addView(box, LinearLayout.LayoutParams(-1, -1))
+        if (selected.isEmpty()) {
+            rows.addView(text("এই ফিল্টারে কোনো চ্যানেল নেই", 13, muted).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, dp(30), 0, dp(30))
+            })
+        }
+        box.addView(rows, LinearLayout.LayoutParams(-1, -2))
+        if (selected.size > checkerDisplayedLimit) {
+            box.addView(actionButton("LOAD MORE  (${selected.size - checkerDisplayedLimit} LEFT)") {
+                checkerDisplayedLimit += 250
+                renderCheckerSection()
+            }, LinearLayout.LayoutParams(-1, dp(46)).apply {
+                topMargin = dp(8)
+                bottomMargin = dp(12)
+            })
+        }
+        contentArea.addView(pageScroll, LinearLayout.LayoutParams(-1, -1))
     }
 
     private fun probeStream(streamUrl: String): Pair<String, String> {
