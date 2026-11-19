@@ -231,7 +231,7 @@ class MainActivity : AppCompatActivity() {
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
-        top.addView(text("✦  PREMIUM IPTV EXPERIENCE  •  WELCOME TO SANY", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
+        top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         titleRow.addView(text(if (section == "Movies") "Video" else section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
         titleRow.addView(iconButton("#") { showChannelNumberDialog() })
@@ -1355,10 +1355,10 @@ class MainActivity : AppCompatActivity() {
     private fun glass(radius: Int) = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
         if (isLight) intArrayOf(Color.WHITE, Color.WHITE)
-        else intArrayOf(Color.argb(225, 30, 43, 64), Color.argb(205, 17, 27, 44))
+        else intArrayOf(Color.argb(238, 17, 34, 62), Color.argb(225, 8, 17, 34))
     ).apply {
         cornerRadius = dp(radius).toFloat()
-        setStroke(dp(1), if (isLight) Color.rgb(232, 236, 242) else Color.argb(75, 210, 235, 255))
+        setStroke(dp(1), if (isLight) Color.rgb(232, 236, 242) else Color.argb(88, 75, 155, 255))
     }
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
