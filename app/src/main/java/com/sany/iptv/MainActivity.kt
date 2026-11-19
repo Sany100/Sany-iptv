@@ -147,6 +147,10 @@ class MainActivity : AppCompatActivity() {
         if (cachedPlaylist?.exists() == true) {
             try { channels = M3uParser.parse(cachedPlaylist.readText()) } catch (_: Exception) { channels = emptyList() }
         }
+        // Android 15 (targetSdk 35) draws edge-to-edge by default. Keep the app
+        // inside the safe system-bar area where possible and paint all exposed
+        // system/decor regions with the currently selected theme color.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
         showPreviousCrashReport()
@@ -210,14 +214,21 @@ class MainActivity : AppCompatActivity() {
         // Keep the Activity window itself in sync with the selected theme; this
         // prevents dark gaps showing through behind transparent/scrolling views.
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
-        // Also paint the decor/root canvas: rounded cards and side insets can expose
-        // the theme's XML window background if only child views are themed.
+        // Android 15+ enforces edge-to-edge for targetSdk 35. Explicitly color
+        // the decor and system-bar surfaces so Day mode never reveals black gaps.
         window.decorView.setBackgroundColor(bg)
         window.statusBarColor = bg
         window.navigationBarColor = bg
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            window.navigationBarDividerColor = bg
+        }
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false
+        }
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = isLight
+            isAppearanceLightNavigationBars = isLight
         }
         if (android.os.Build.VERSION.SDK_INT >= 23) {
             @Suppress("DEPRECATION")
@@ -244,7 +255,8 @@ class MainActivity : AppCompatActivity() {
         val splash = FrameLayout(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.rgb(5, 15, 38), Color.rgb(13, 48, 91), Color.rgb(42, 22, 82))
+                if (isLight) intArrayOf(Color.WHITE, Color.rgb(245, 249, 255), Color.WHITE)
+                else intArrayOf(Color.rgb(5, 15, 38), Color.rgb(13, 48, 91), Color.rgb(42, 22, 82))
             )
             elevation = dp(30).toFloat()
         }
