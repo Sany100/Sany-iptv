@@ -1186,10 +1186,21 @@ class MainActivity : AppCompatActivity() {
                 checkerRunning = false
                 checkerUiRefreshQueued.set(false)
                 checkerUiHandler.removeCallbacksAndMessages(null)
-                if (section == "Checker" && ::contentArea.isInitialized) {
-                    updateCheckerUi()
+
+                // Once checking finishes, automatically switch to Live TV and
+                // refresh the complete screen/navigation so every checked channel
+                // is immediately visible without a manual tab change.
+                section = "Live TV"
+                selectedGroup = "All"
+                searchQuery = ""
+                if (::prefs.isInitialized) {
+                    prefs.edit()
+                        .putString("ui_section", "Live TV")
+                        .putString("ui_group", "All")
+                        .putString("ui_search", "")
+                        .apply()
                 }
-                if (section == "Live TV" && ::contentArea.isInitialized) renderListOnly()
+                if (::contentArea.isInitialized) renderHome()
                 if (showToast) toast("Check complete: " + streamChecks.values.count { it.first == "Working" } + " / " + snapshot.size + " responding")
             }
         }
