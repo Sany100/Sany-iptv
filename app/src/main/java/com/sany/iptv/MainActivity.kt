@@ -448,8 +448,10 @@ class MainActivity : AppCompatActivity() {
     private fun focusInitialTvControl() {
         val target = when {
             section == "Live TV" || section == "Movies" -> {
-                if (::listContainer.isInitialized && listContainer.childCount > 0) listContainer.getChildAt(0)
-                else bottomNav.getChildAt(0)
+                if (::listContainer.isInitialized && listContainer.childCount > 0) {
+                    val first = listContainer.getChildAt(0)
+                    if (isTvDevice && first is ViewGroup && first.childCount > 0) first.getChildAt(0) else first
+                } else bottomNav.getChildAt(0)
             }
             else -> bottomNav.getChildAt(
                 listOf("Live TV", "Checker", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
@@ -645,6 +647,10 @@ class MainActivity : AppCompatActivity() {
             container.addView(text("No items found", 15, muted).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
             return
         }
+        if (isTvDevice) {
+            renderTvChannelCards(container, filtered)
+            return
+        }
         filtered.take(displayedLimit).forEachIndexed { index, channel ->
             val row = LinearLayout(this).apply {
                 isFocusable = true
@@ -735,6 +741,65 @@ class MainActivity : AppCompatActivity() {
                 displayedLimit += 120
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8); bottomMargin = dp(12) })
+        }
+    }
+
+    // Android TV gets a two-column, remote-friendly card grid. Phone rows remain unchanged.
+    private fun renderTvChannelCards(container: LinearLayout, filtered: List<Channel>) {
+        val visible = filtered.take(displayedLimit)
+        visible.chunked(2).forEachIndexed { rowIndex, pair ->
+            val cardRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            pair.forEachIndexed { columnIndex, channel ->
+                val itemIndex = rowIndex * 2 + columnIndex
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    isFocusable = true
+                    isFocusableInTouchMode = false
+                    setPadding(dp(16), dp(15), dp(16), dp(15))
+                    background = glass(16)
+                    applyTvFocusStyle(this)
+                    contentDescription = "Play ${channel.name}"
+                    setOnClickListener { play(channel) }
+                }
+                val topLine = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                topLine.addView(text((itemIndex + 1).toString().padStart(2, '0'), 13, accent, true))
+                topLine.addView(text("  •  ${channel.group.ifBlank { "Other" }}", 11, muted))
+                card.addView(topLine)
+                card.addView(text(channel.name, 17, white, true).apply {
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(0, dp(8), 0, dp(4))
+                })
+                card.addView(text("▶  PLAY CHANNEL", 10, accent, true).apply {
+                    letterSpacing = 0.06f
+                    setPadding(0, dp(5), 0, 0)
+                })
+                cardRow.addView(card, LinearLayout.LayoutParams(0, dp(112), 1f).apply {
+                    if (columnIndex == 0) rightMargin = dp(8) else leftMargin = dp(8)
+                })
+            }
+            if (pair.size == 1) {
+                cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(112), 1f).apply { leftMargin = dp(8) })
+            }
+            container.addView(cardRow, LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(12)
+            })
+        }
+        if (filtered.size > displayedLimit) {
+            container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
+                displayedLimit += 120
+                renderChannelRows(container)
+            }, LinearLayout.LayoutParams(-1, dp(50)).apply {
+                topMargin = dp(8)
+                bottomMargin = dp(12)
+            })
         }
     }
 
