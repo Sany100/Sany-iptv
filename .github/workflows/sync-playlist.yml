@@ -1,0 +1,48 @@
+name: Sync SANY IPTV Playlist
+
+on:
+  schedule:
+    - cron: "15 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sany-playlist-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download and validate upstream playlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE="https://raw.githubusercontent.com/abusaeeidx/Mrgify-BDIX-IPTV/main/playlist.m3u"
+          curl --location --fail --silent --show-error --retry 3 --retry-delay 5 --connect-timeout 20 --max-time 240 "$SOURCE" -o playlist.m3u.tmp
+          test -s playlist.m3u.tmp
+          grep -q '^#EXTM3U' playlist.m3u.tmp
+          grep -q '^#EXTINF' playlist.m3u.tmp
+          mv playlist.m3u.tmp playlist.m3u
+          echo "Downloaded $(wc -l < playlist.m3u) lines ($(du -h playlist.m3u | cut -f1))."
+
+      - name: Commit only when changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- playlist.m3u; then
+            echo "Playlist is unchanged; no commit needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add playlist.m3u
+          git commit -m "chore: sync SANY IPTV playlist"
+          git push
