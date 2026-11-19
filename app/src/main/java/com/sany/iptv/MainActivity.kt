@@ -318,9 +318,21 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(12))
             background = glass(22)
+            // Premium 3D glass header: perspective, depth and a soft raised-card finish.
+            cameraDistance = 11000f * resources.displayMetrics.density
+            rotationX = 2.2f
+            translationZ = dp(10).toFloat()
+            elevation = dp(14).toFloat()
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val brand = text("SANY", 39, accent, true).apply { letterSpacing = 0.14f; setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(115, 55, 145, 255)) }
+        val brand = text("SANY", 39, accent, true).apply {
+            letterSpacing = 0.14f
+            setShadowLayer(dp(16).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
+            cameraDistance = 9000f * resources.displayMetrics.density
+            rotationY = -24f
+            rotationX = 9f
+            translationZ = dp(18).toFloat()
+        }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
@@ -340,6 +352,15 @@ class MainActivity : AppCompatActivity() {
         titleRow.addView(iconButton("⋮") { showQuickMenu() })
         top.addView(titleRow)
         home.addView(top, LinearLayout.LayoutParams(-1, -2))
+        // Animate the header into a front-facing 3D position when the home screen opens.
+        top.alpha = 0f
+        top.translationY = dp(-8).toFloat()
+        top.post {
+            top.animate().alpha(1f).translationY(0f).rotationX(0f)
+                .setDuration(620).setInterpolator(DecelerateInterpolator(1.5f)).start()
+            brand.animate().rotationY(0f).rotationX(0f)
+                .setDuration(760).setInterpolator(DecelerateInterpolator(1.7f)).start()
+        }
 
         contentArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
