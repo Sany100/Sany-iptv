@@ -211,6 +211,9 @@ class MainActivity : AppCompatActivity() {
         // Keep the Activity window itself in sync with the selected theme; this
         // prevents dark gaps showing through behind transparent/scrolling views.
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
+        // Also paint the decor/root canvas: rounded cards and side insets can expose
+        // the theme's XML window background if only child views are themed.
+        window.decorView.setBackgroundColor(bg)
         window.statusBarColor = bg
         window.navigationBarColor = bg
         if (android.os.Build.VERSION.SDK_INT >= 23) {
@@ -223,8 +226,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildShell(showSplash: Boolean = true) {
-        root = FrameLayout(this).apply { background = premiumBackdrop() }
-        home = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = premiumBackdrop() }
+        root = FrameLayout(this).apply { setBackgroundColor(bg) }
+        home = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
         renderHome()
@@ -1392,6 +1398,7 @@ class MainActivity : AppCompatActivity() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 0, 0, dp(8))
+            setBackgroundColor(bg)
         }
         box.addView(text("PLAYLIST HEALTH", 12, accent, true))
         checkerSummaryView = text(checkerSummaryText(), 13, muted).apply {
@@ -1411,6 +1418,7 @@ class MainActivity : AppCompatActivity() {
         val filterScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             isFillViewport = false
+            setBackgroundColor(bg)
             addView(filters)
         }
         listOf("All", "Working", "Offline", "Restricted", "Error", "Checking").forEach { filter ->
