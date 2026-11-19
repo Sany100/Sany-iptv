@@ -122,7 +122,6 @@ class MainActivity : AppCompatActivity() {
         }
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
-        loadArchiveWatchPlaylist()
         if (!restoringBackground) {
             home.alpha = 0f
             home.translationY = dp(14).toFloat()
@@ -826,39 +825,6 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread { toast("Server connection failed: " + (e.message ?: "network error")) }
-            }
-        }
-    }
-
-    // Load a free, public-domain M3U catalogue and split its VOD entries into
-    // the app's existing Movies and Series sections. TVmaze metadata is not used.
-    private fun loadArchiveWatchPlaylist() {
-        val sourceUrl = "https://archivewatch.org/feeds/archivewatch.m3u"
-        thread {
-            try {
-                val content = URL(sourceUrl).openConnection().apply {
-                    connectTimeout = 15000
-                    readTimeout = 30000
-                }.getInputStream().bufferedReader().use { it.readText() }
-                val parsed = M3uParser.parse(content)
-                val movieItems = parsed.filter { isMovie(it) }
-                    .map { it.copy(group = "Archive Watch • Movies • " + it.group) }
-                val seriesItems = parsed.filter { !isMovie(it) && isSeries(it) }
-                    .map { it.copy(group = "Archive Watch • Series • " + it.group) }
-                val catalogue = movieItems + seriesItems
-                if (catalogue.isNotEmpty()) {
-                    try { playlistCacheFile(sourceUrl).writeText(content) } catch (_: Exception) { }
-                    runOnUiThread {
-                        channels = (channels + catalogue).distinctBy { it.url }
-                        if (::home.isInitialized) renderHome()
-                        toast("Archive Watch: ${movieItems.size} movies, ${seriesItems.size} series")
-                    }
-                } else {
-                    runOnUiThread { toast("Archive Watch playlist-এ playable Movies/Series পাওয়া যায়নি") }
-                }
-            } catch (_: Exception) {
-                // Keep the app usable offline; a previously cached catalogue can still be imported later.
-                runOnUiThread { /* Existing playlists remain available. */ }
             }
         }
     }
