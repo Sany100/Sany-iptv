@@ -2057,27 +2057,22 @@ class MainActivity : AppCompatActivity() {
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         playerScreen = screen
-        if (isTvDevice) {
+        val tvRemoteHint: TextView? = if (isTvDevice) TextView(this).apply {
             // TV-friendly channel switch hint stays visible when the player controls fade.
-            val remoteHint = TextView(this).apply {
-                text = "▲ / ▼  CHANGE CHANNEL     BACK  •  EXIT"
-                textSize = 11f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                background = GradientDrawable().apply {
-                    setColor(0xB8000000.toInt())
-                    cornerRadius = dp(18).toFloat()
-                    setStroke(dp(1), 0x6688BBFF)
-                }
-                isFocusable = false
-                contentDescription = "Use Up or Down on the TV remote to change channel"
+            text = "▲ / ▼  CHANGE CHANNEL     BACK  •  EXIT"
+            textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = GradientDrawable().apply {
+                setColor(0xB8000000.toInt())
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), 0x6688BBFF)
             }
-            screen.addView(remoteHint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = dp(18)
-            })
-        }
+            isFocusable = false
+            contentDescription = "Use Up or Down on the TV remote to change channel"
+        } else null
         isPlayerFullscreen = keepFullscreenMode
         playerHeader = null
         val view = PlayerView(this).apply {
@@ -2095,6 +2090,11 @@ class MainActivity : AppCompatActivity() {
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(230), Gravity.TOP).apply {
             leftMargin = dp(0); rightMargin = dp(0)
         })
+        tvRemoteHint?.let { hint ->
+            screen.addView(hint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                bottomMargin = dp(18)
+            })
+        }
 
         val swipeDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             private val threshold = dp(65)
