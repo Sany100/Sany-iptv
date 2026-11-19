@@ -166,8 +166,15 @@ class MainActivity : AppCompatActivity() {
             home.scaleX = 0.985f
             home.scaleY = 0.985f
             home.post {
-                home.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
-                    .setDuration(420).start()
+                if (prefs.getBoolean("reduce_ui_motion", false)) {
+                    home.alpha = 1f
+                    home.translationY = 0f
+                    home.scaleX = 1f
+                    home.scaleY = 1f
+                } else {
+                    home.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                        .setDuration(420).start()
+                }
             }
         }
         restoreStreamCheckResults()
@@ -1085,6 +1092,7 @@ class MainActivity : AppCompatActivity() {
                 }.setNegativeButton("CANCEL", null).show()
         }
         settingsToggleCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data", "low_data_mode", true)
+        settingsToggleCard(box, "Reduce UI animations", "Use simpler transitions for a quicker, calmer interface", "reduce_ui_motion", false)
         settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
             val modes = arrayOf("Day mode", "Night mode", "System default")
             val values = arrayOf("light", "dark", "system")
@@ -1095,6 +1103,20 @@ class MainActivity : AppCompatActivity() {
                     dialog.dismiss()
                     applySystemBars()
                     renderHome()
+                }.setNegativeButton("CANCEL", null).show()
+        }
+        box.addView(text("PLAYBACK SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        settingsCard(box, "Playback speed", "Choose normal or faster/slower video playback") {
+            val labels = arrayOf("0.75×", "1.0× (Normal)", "1.25×", "1.5×", "2.0×")
+            val values = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+            val current = prefs.getFloat("playback_speed", 1.0f)
+            val selected = values.indices.minByOrNull { kotlin.math.abs(values[it] - current) } ?: 1
+            AlertDialog.Builder(this).setTitle("Playback speed")
+                .setSingleChoiceItems(labels, selected) { dialog, which ->
+                    prefs.edit().putFloat("playback_speed", values[which]).apply()
+                    try { exoPlayer?.setPlaybackSpeed(values[which]) } catch (_: Exception) { }
+                    dialog.dismiss()
+                    toast("Playback speed saved")
                 }.setNegativeButton("CANCEL", null).show()
         }
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
@@ -2430,6 +2452,7 @@ class MainActivity : AppCompatActivity() {
                 itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
         }
         p.setMediaItem(itemBuilder.build())
+        p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
         p.prepare()
         p.playWhenReady = true
         prefs.edit().putString("last_channel", streamUrl).apply()
