@@ -936,7 +936,9 @@ class MainActivity : AppCompatActivity() {
         // then the full working set after the checker reaches 100%.
         val liveCandidates = if (section == "Live TV" && streamChecks.isNotEmpty()) {
             val working = channels.filter { streamChecks[it.url]?.first == "Working" }
-            if (checkerRunning) working.take(30) else working
+            if (checkerRunning) {
+                if (checkerProgressCount.get() * 2 >= channels.size) working.take(60) else emptyList()
+            } else working
         } else channels
         return liveCandidates.filter { c ->
             val typeMatch = when (section) {
@@ -1698,7 +1700,7 @@ class MainActivity : AppCompatActivity() {
                 connection.useCaches = false
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) SANY-IPTV/1.0")
                 connection.setRequestProperty("Accept", "application/vnd.apple.mpegurl, audio/x-mpegurl, text/plain, */*")
-                connection.setRequestProperty("Connection", "close")
+                connection.setRequestProperty("Connection", "keep-alive")
                 val code = connection.responseCode
                 if (code !in 200..299) throw java.io.IOException("HTTP $code")
                 val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -1865,8 +1867,9 @@ class MainActivity : AppCompatActivity() {
                 updateLiveTvProgress()
                 if (::contentArea.isInitialized && section == "Checker") updateCheckerUi()
                 if (::contentArea.isInitialized && section == "Live TV") {
-                    val readyCount = streamChecks.values.count { it.first == "Working" }.coerceAtMost(30)
-                    if (readyCount > liveTvPublishedCount) {
+                    val halfChecked = checkerRunning && checkerProgressCount.get() * 2 >= channels.size
+                    val readyCount = if (halfChecked) channels.count { streamChecks[it.url]?.first == "Working" }.coerceAtMost(60) else 0
+                    if (readyCount > liveTvPublishedCount || (!halfChecked && liveTvPublishedCount > 0)) {
                         liveTvPublishedCount = readyCount
                         renderListOnly()
                     }
@@ -1932,7 +1935,7 @@ class MainActivity : AppCompatActivity() {
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        val workerCount = minOf(8, snapshot.size)
+        val workerCount = minOf(12, snapshot.size)
         val workers = (0 until workerCount).map { worker ->
             thread(name = "SANY-Stream-Check-$worker") {
                 while (true) {
@@ -2147,15 +2150,15 @@ class MainActivity : AppCompatActivity() {
         return try {
             connection = URL(streamUrl).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
-            connection.connectTimeout = 2500
-            connection.readTimeout = 2500
+            connection.connectTimeout = 1800
+            connection.readTimeout = 2200
             connection.instanceFollowRedirects = true
             connection.useCaches = false
             connection.defaultUseCaches = false
             connection.setRequestProperty("User-Agent", "SANY-IPTV-Android")
             connection.setRequestProperty("Accept", "*/*")
             connection.setRequestProperty("Range", "bytes=0-0")
-            connection.setRequestProperty("Connection", "close")
+            connection.setRequestProperty("Connection", "keep-alive")
             val code = connection.responseCode
             when {
                 code in 200..299 || code == 206 -> "Working" to ("HTTP " + code)
@@ -2227,8 +2230,8 @@ class MainActivity : AppCompatActivity() {
                 "Accept" to "*/*",
                 "Connection" to "keep-alive"
             ))
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(30000)
+            .setConnectTimeoutMs(8000)
+            .setReadTimeoutMs(20000)
             .setAllowCrossProtocolRedirects(true)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -2244,24 +2247,24 @@ class MainActivity : AppCompatActivity() {
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         when (prefs.getString("network_buffer_size", "balanced")) {
+                            "low" -> 2500
+                            "high" -> 6000
+                            else -> 4000
+                        },
+                        when (prefs.getString("network_buffer_size", "balanced")) {
                             "low" -> 5000
-                            "high" -> 20000
-                            else -> 10000
+                            "high" -> 12000
+                            else -> 8000
                         },
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 10000
-                            "high" -> 40000
-                            else -> 20000
+                            "low" -> 750
+                            "high" -> 1000
+                            else -> 1000
                         },
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 1000
-                            "high" -> 2000
-                            else -> 1500
-                        },
-                        when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 2000
-                            "high" -> 5000
-                            else -> 3000
+                            "low" -> 1500
+                            "high" -> 2500
+                            else -> 2000
                         }
                     )
                     .build()
