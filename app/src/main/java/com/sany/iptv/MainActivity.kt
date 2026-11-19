@@ -402,6 +402,7 @@ class MainActivity : AppCompatActivity() {
             letterSpacing = 0.10f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(9), 0, 0, 0)
+            translationY = dp(6).toFloat()
             translationZ = dp(10).toFloat()
         }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
@@ -415,13 +416,7 @@ class MainActivity : AppCompatActivity() {
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         headerTitleView = text(if (section == "Movies") "Movies" else section, 23, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
-        titleRow.addView(iconButton("#") { showChannelNumberDialog() })
-        titleRow.addView(iconButton("↶") {
-            val previous = previousChannel
-            if (previous == null) toast("আগের কোনো চ্যানেল নেই") else play(previous)
-        })
-        if (section != "Movies") titleRow.addView(iconButton("＋") { showPlaylistDialog() })
-        titleRow.addView(iconButton("⋮") { showQuickMenu() })
+        // Keep the Home header clean: the four quick-action controls are hidden as requested.
         top.addView(titleRow)
         home.addView(top, LinearLayout.LayoutParams(-1, -2))
         // Animate the header into a front-facing 3D position when the home screen opens.
