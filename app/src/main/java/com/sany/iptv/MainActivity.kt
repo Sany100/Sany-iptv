@@ -1193,13 +1193,11 @@ class MainActivity : AppCompatActivity() {
                 section = "Live TV"
                 selectedGroup = "All"
                 searchQuery = ""
-                if (::prefs.isInitialized) {
-                    prefs.edit()
-                        .putString("ui_section", "Live TV")
-                        .putString("ui_group", "All")
-                        .putString("ui_search", "")
-                        .apply()
-                }
+                prefs.edit()
+                    .putString("ui_section", "Live TV")
+                    .putString("ui_group", "All")
+                    .putString("ui_search", "")
+                    .apply()
                 if (::contentArea.isInitialized) renderHome()
                 if (showToast) toast("Check complete: " + streamChecks.values.count { it.first == "Working" } + " / " + snapshot.size + " responding")
             }
