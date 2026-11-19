@@ -13,6 +13,13 @@ Android IPTV player for user-provided M3U/M3U8 playlists.
 ## Build
 Requires JDK 17, Android SDK 35, and Gradle 8.9.
 
-Run `gradle assembleDebug`. APK: `app/build/outputs/apk/debug/app-debug.apk`.
+The project builds two separate APK variants:
+
+- Mobile: `gradle assembleMobileDebug` or `gradle assembleMobileRelease`
+- Android TV: `gradle assembleTvDebug` or `gradle assembleTvRelease`
+
+The TV edition has its own application ID (`com.sany.iptv.tv`), a Leanback launcher entry, and a two-column channel-card layout with remote-control focus navigation. The existing mobile application ID (`com.sany.iptv`) and phone layout remain unchanged.
+
+GitHub Actions builds both variants and publishes both signed APKs when the Android release workflow succeeds.
 
 Use only playlists and streams you are authorized to access.
