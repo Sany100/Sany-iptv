@@ -1046,6 +1046,7 @@ class MainActivity : AppCompatActivity() {
         streamChecks.clear()
         if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
         if (::contentArea.isInitialized && section == "Checker") renderCheckerSection()
+        if (::contentArea.isInitialized && section == "Live TV") renderListOnly()
         val executor = java.util.concurrent.Executors.newFixedThreadPool(6)
         snapshot.forEach { channel ->
             executor.submit {
