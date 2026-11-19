@@ -699,7 +699,34 @@ class MainActivity : AppCompatActivity() {
             val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0) }
             details.addView(text(channel.name, 14, white, true))
             details.addView(text(channel.group.ifBlank { "Other" }, 11, muted).apply { setPadding(0, dp(4), 0, 0) })
+            // Subtle channel watermark beneath each channel label.
+            val watermarkLine = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                alpha = 0.42f
+                setPadding(0, dp(4), 0, 0)
+            }
+            watermarkLine.addView(ImageView(this).apply {
+                setImageResource(com.sany.iptv.R.drawable.sany_logo_icon)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                contentDescription = "SANY IPTV watermark"
+            }, LinearLayout.LayoutParams(dp(11), dp(11)))
+            watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
+                letterSpacing = 0.12f
+                setPadding(dp(4), 0, 0, 0)
+            })
+            details.addView(watermarkLine)
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            // A gentle 3D flip gives the actual channel logo a premium animated entrance.
+            logoFrame.cameraDistance = 9000f * resources.displayMetrics.density
+            logoFrame.rotationY = -72f
+            logoFrame.scaleX = 0.82f
+            logoFrame.scaleY = 0.82f
+            logoFrame.animate().rotationY(0f).scaleX(1f).scaleY(1f)
+                .setStartDelay((index % 8) * 45L)
+                .setDuration(620L)
+                .setInterpolator(DecelerateInterpolator(1.6f))
+                .start()
             row.setOnClickListener {
                 row.animate().alpha(0.68f).scaleX(0.985f).scaleY(0.985f).setDuration(75).withEndAction { play(channel) }.start()
             }
