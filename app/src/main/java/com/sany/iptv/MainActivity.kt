@@ -948,7 +948,7 @@ class MainActivity : AppCompatActivity() {
     private fun extractEpgUrl(m3uContent: String): String? {
         val header = m3uContent.lineSequence().firstOrNull { it.trimStart().startsWith("#EXTM3U", true) }
             ?: return null
-        val match = Regex("""(?i)(?:url-tvg|x-tvg-url)\\s*=\\s*["']?([^"'\\s,]+)""").find(header)
+        val match = Regex("""(?i)(?:url-tvg|x-tvg-url)\s*=\s*["']?([^"'\s,]+)""").find(header)
         return match?.groupValues?.getOrNull(1)?.trim()?.takeIf {
             it.startsWith("http://", true) || it.startsWith("https://", true)
         }
