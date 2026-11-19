@@ -104,6 +104,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        EpgRepository.scheduleDaily(this)
+        val lastEpgUpdate = prefs.getString("epg_last_updated", "0")?.toLongOrNull() ?: 0L
+        if (System.currentTimeMillis() - lastEpgUpdate >= 24L * 60L * 60L * 1000L) {
+            refreshEpgSources(false)
+        }
         // Keep automatic update checks enabled for every installation; there is no user-facing switch.
         prefs.edit().putBoolean("auto_update_check", true).apply()
         // Apply the refreshed Electric Blue identity once, without overriding later user choices.
@@ -610,13 +615,13 @@ class MainActivity : AppCompatActivity() {
         box.addView(text("APP UPDATES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Check for updates", "Look for the latest version and download it") { checkForAppUpdate(true) }
         box.addView(text("ADDITIONAL SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Update EPG data", "Refresh the saved XMLTV programme guide") {
-            val epgUrl = prefs.getString("epg_url", null)
-            if (epgUrl.isNullOrBlank()) showEpgUrlDialog()
-            else updateEpgData(epgUrl)
+        settingsCard(box, "Update EPG data", "Manually refresh all 3 XMLTV sources now") {
+            refreshEpgSources(true)
         }
-        settingsToggleCard(box, "Auto add EPG data", "Detect EPG URL from a playlist and download it automatically", "auto_add_epg", true)
-        settingsCard(box, "EPG source", "Add or change your XMLTV / EPG URL") { showEpgUrlDialog() }
+        settingsToggleCard(box, "Auto add EPG data", "Detect playlist EPG URL automatically; daily EPG refresh remains scheduled", "auto_add_epg", true)
+        settingsCard(box, "EPG sources (3)", "View the 3 built-in feeds and daily update schedule") {
+            showBuiltInEpgSources()
+        }
         settingsCard(box, "Network buffer size", "Choose buffering for unstable or slower internet") {
             val labels = arrayOf("Low — 10 seconds (faster start)", "Balanced — 20 seconds (recommended)", "High — 40 seconds (more buffering)")
             val values = arrayOf("low", "balanced", "high")
@@ -1006,6 +1011,31 @@ class MainActivity : AppCompatActivity() {
                 toast("EPG source removed")
             }
             .setNegativeButton("CANCEL", null).show()
+    }
+
+    private fun showBuiltInEpgSources() {
+        val details = EpgRepository.defaultSources.joinToString("\n\n") { it } +
+            "\n\nAutomatic update: once every 24 hours when internet is available."
+        AlertDialog.Builder(this)
+            .setTitle("SANY IPTV — EPG sources")
+            .setMessage(details)
+            .setPositiveButton("UPDATE NOW") { _, _ -> refreshEpgSources(true) }
+            .setNegativeButton("CLOSE", null)
+            .show()
+    }
+
+    private fun refreshEpgSources(showStatus: Boolean) {
+        if (showStatus) toast("তিনটি EPG source আপডেট হচ্ছে…")
+        thread(name = "SANY-EPG-Update") {
+            try {
+                val result = EpgRepository.update(this)
+                runOnUiThread { if (!isFinishing) toast("$result successfully") }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (!isFinishing) toast("EPG update failed: " + (e.message ?: "network error").take(100))
+                }
+            }
+        }
     }
 
     private fun updateEpgData(url: String, showStatus: Boolean = true) {
