@@ -63,7 +63,7 @@ class MainActivity : AppCompatActivity() {
     private val panel get() = if (isLight) Color.WHITE else Color.rgb(18, 25, 39)
     private val panel2 get() = if (isLight) Color.WHITE else Color.rgb(25, 34, 51)
     private val accent: Int
-        get() = when (prefs.getString("accent_color", "teal")) {
+        get() = when (prefs.getString("accent_color", "blue")) {
             "blue" -> Color.rgb(55, 145, 255)
             "purple" -> Color.rgb(165, 105, 255)
             "orange" -> Color.rgb(255, 145, 55)
@@ -101,6 +101,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         // Keep automatic update checks enabled for every installation; there is no user-facing switch.
         prefs.edit().putBoolean("auto_update_check", true).apply()
+        // Apply the refreshed Electric Blue identity once, without overriding later user choices.
+        if (!prefs.getBoolean("blue_ui_refresh_v1", false)) {
+            prefs.edit().putString("accent_color", "blue").putBoolean("blue_ui_refresh_v1", true).apply()
+        }
         // Remove assistant-added demo playlists while preserving all other user-saved playlists.
         val rejectedSources = setOf(
             "https://iptv-org.github.io/iptv/categories/animation.m3u",
@@ -174,10 +178,10 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        val logo = text("SANY", 46, Color.rgb(0, 220, 175), true).apply {
+        val logo = text("SANY", 46, Color.rgb(55, 145, 255), true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.20f
-            setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(170, 0, 220, 175))
+            setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(170, 55, 145, 255))
             alpha = 0f
             scaleX = 0.68f
             scaleY = 0.68f
@@ -223,7 +227,7 @@ class MainActivity : AppCompatActivity() {
             background = glass(22)
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val brand = text("SANY", 32, accent, true).apply { letterSpacing = 0.12f; setShadowLayer(dp(10).toFloat(), 0f, 0f, Color.argb(75, 0, 220, 180)) }
+        val brand = text("SANY", 32, accent, true).apply { letterSpacing = 0.12f; setShadowLayer(dp(10).toFloat(), 0f, 0f, Color.argb(90, 55, 145, 255)) }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
         top.addView(brandLine)
@@ -314,13 +318,13 @@ class MainActivity : AppCompatActivity() {
         }
         val emblem = text("▥", 58, accent, true).apply {
             gravity = Gravity.CENTER
-            setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(115, 0, 220, 180))
+            setShadowLayer(dp(18).toFloat(), 0f, 0f, Color.argb(125, 55, 145, 255))
         }
         page.addView(emblem, LinearLayout.LayoutParams(-1, dp(82)))
         val title = text("COMING SOON", 36, accent, true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.07f
-            setShadowLayer(dp(16).toFloat(), 0f, 0f, Color.argb(125, 0, 220, 180))
+            setShadowLayer(dp(16).toFloat(), 0f, 0f, Color.argb(145, 55, 145, 255))
         }
         page.addView(title, LinearLayout.LayoutParams(-1, -2).apply {
             topMargin = dp(16)
@@ -551,10 +555,10 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(box)
         box.addView(text("APPEARANCE", 11, accent, true).apply { setPadding(0, dp(10), 0, dp(12)) })
         settingsCard(box, "Customize accent color", "Change the app highlight color") {
-            val labels = arrayOf("Teal", "Blue", "Purple", "Orange")
-            val values = arrayOf("teal", "blue", "purple", "orange")
+            val labels = arrayOf("Blue", "Teal", "Purple", "Orange")
+            val values = arrayOf("blue", "teal", "purple", "orange")
             AlertDialog.Builder(this).setTitle("Accent color")
-                .setSingleChoiceItems(labels, values.indexOf(prefs.getString("accent_color", "teal")).coerceAtLeast(0)) { dialog, which ->
+                .setSingleChoiceItems(labels, values.indexOf(prefs.getString("accent_color", "blue")).coerceAtLeast(0)) { dialog, which ->
                     prefs.edit().putString("accent_color", values[which]).apply()
                     dialog.dismiss()
                     renderHome()
