@@ -38,7 +38,7 @@ android {
     defaultConfig {
         applicationId = "com.sany.iptv"
         // Android 6.0 (Marshmallow), API 23, is the minimum installable version.
-        // There is no maximum Android version cap; newer versions still require device testing.
+        // Newer Android versions are not capped here; test on actual devices.
         minSdk = 23
         targetSdk = 35
         versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("2").get().toInt()
@@ -82,7 +82,9 @@ kotlin {
 
 dependencies {
     if (file("google-services.json").exists()) {
-        add("mobileImplementation", platform("com.google.firebase:firebase-bom:35.2.0"))
+        // BoM 34.14.1 maps Firebase Analytics to 23.2.0, avoiding the API 24
+        // minimum introduced by Analytics 24.0.0 and retaining Android 6 support.
+        add("mobileImplementation", platform("com.google.firebase:firebase-bom:34.14.1"))
         add("mobileImplementation", "com.google.firebase:firebase-analytics")
     }
     implementation("androidx.work:work-runtime-ktx:2.10.0")
