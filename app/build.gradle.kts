@@ -26,8 +26,8 @@ android {
         applicationId = "com.sany.iptv"
         minSdk = 23
         targetSdk = 35
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("1").get().toInt()
-        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.0").get()
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("2").get().toInt()
+        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.1").get()
     }
 
     buildTypes {
