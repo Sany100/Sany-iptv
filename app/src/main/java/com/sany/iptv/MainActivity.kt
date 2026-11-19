@@ -79,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private var channels = listOf<Channel>()
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
     @Volatile private var checkerRunning = false
+    @Volatile private var checkerProgressCount = 0
     private var checkerFilter = "All"
     private var checkerDisplayedLimit = 250
     private var checkerSummaryView: TextView? = null
@@ -1836,7 +1837,7 @@ class MainActivity : AppCompatActivity() {
     private fun liveTvProgressLabel(): String {
         if (channels.isEmpty()) return "Live TV"
         if (!checkerRunning && streamChecks.isEmpty()) return "Live TV"
-        val percent = if (channels.isEmpty()) 100 else (streamChecks.size * 100 / channels.size).coerceIn(0, 100)
+        val percent = if (channels.isEmpty()) 100 else ((if (checkerRunning) checkerProgressCount else streamChecks.size) * 100 / channels.size).coerceIn(0, 100)
         return if (checkerRunning) "Live TV $percent%" else "Live TV"
     }
 
@@ -1865,13 +1866,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkerSummaryText(): String =
-        if (checkerRunning) "Checking… ${streamChecks.size} / ${channels.size}"
+        if (checkerRunning) "Checking… $checkerProgressCount / ${channels.size}"
         else "Total ${channels.size} • Working ${streamChecks.values.count { it.first == "Working" }} • Not working ${streamChecks.values.count { it.first != "Working" }}"
 
     private fun startPlaylistCheck(showToast: Boolean) {
         if (channels.isEmpty() || checkerRunning) return
         val snapshot = channels.toList()
         checkerRunning = true
+        checkerProgressCount = 0
+        updateLiveTvProgress()
         // Keep the last known health snapshot visible in Checker while refreshing.
         checkerDisplayedLimit = 250
         if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
@@ -1881,7 +1884,7 @@ class MainActivity : AppCompatActivity() {
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        val workerCount = minOf(6, snapshot.size)
+        val workerCount = minOf(8, snapshot.size)
         val workers = (0 until workerCount).map { worker ->
             thread(name = "SANY-Stream-Check-$worker") {
                 while (true) {
@@ -1889,6 +1892,7 @@ class MainActivity : AppCompatActivity() {
                     if (index >= snapshot.size || Thread.currentThread().isInterrupted) break
                     val channel = snapshot[index]
                     streamChecks[channel.url] = probeStream(channel.url)
+                    checkerProgressCount++
                     scheduleCheckerUiRefresh()
                 }
             }
@@ -1902,7 +1906,9 @@ class MainActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 checkerRunning = false
+                checkerProgressCount = snapshot.size
                 saveStreamCheckResults()
+                updateLiveTvProgress()
                 checkerUiRefreshQueued.set(false)
                 checkerUiHandler.removeCallbacksAndMessages(null)
 
@@ -2053,6 +2059,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val offlineRecheckRunnable = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed || channels.isEmpty() || checkerRunning) return
+            val retry = channels.filter { streamChecks[it.url]?.first != "Working" }
+            if (retry.isNotEmpty()) {
+                thread(name = "SANY-Offline-Recheck") {
+                    retry.forEach { channel ->
+                        streamChecks[channel.url] = probeStream(channel.url)
+                    }
+                    saveStreamCheckResults()
+                    runOnUiThread {
+                        if (!isFinishing && section == "Live TV") renderHome()
+                        else updateLiveTvProgress()
+                    }
+                }
+            }
+            checkerUiHandler.postDelayed(this, 5 * 60 * 1000L)
+        }
+    }
+
+    private fun scheduleOfflineChannelRecheck() {
+        checkerUiHandler.removeCallbacks(offlineRecheckRunnable)
+        checkerUiHandler.postDelayed(offlineRecheckRunnable, 5 * 60 * 1000L)
+    }
+
     private fun probeStream(streamUrl: String): Pair<String, String> {
         if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
             return "Error" to "Invalid URL"
@@ -2061,8 +2092,8 @@ class MainActivity : AppCompatActivity() {
         return try {
             connection = URL(streamUrl).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
-            connection.connectTimeout = 3500
-            connection.readTimeout = 3500
+            connection.connectTimeout = 2500
+            connection.readTimeout = 2500
             connection.instanceFollowRedirects = true
             connection.useCaches = false
             connection.defaultUseCaches = false
@@ -2488,6 +2519,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        scheduleOfflineChannelRecheck()
         if (pausedForBackground) {
             pausedForBackground = false
             player?.play()
@@ -2510,6 +2542,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        checkerUiHandler.removeCallbacks(offlineRecheckRunnable)
         val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
         if (closingPip) {
             // Android's PiP close (X) dismisses the Activity; explicitly stop playback
