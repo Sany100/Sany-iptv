@@ -321,7 +321,7 @@ class MainActivity : AppCompatActivity() {
         })
         top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        titleRow.addView(text(if (section == "Movies") "Video" else section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
+        titleRow.addView(text(if (section == "Movies") "Movies" else section, 23, white, true), LinearLayout.LayoutParams(0, -2, 1f))
         titleRow.addView(iconButton("#") { showChannelNumberDialog() })
         titleRow.addView(iconButton("↶") {
             val previous = previousChannel
@@ -1983,14 +1983,14 @@ class MainActivity : AppCompatActivity() {
     }
     private fun premiumBackdrop() = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
-        if (isLight) intArrayOf(Color.rgb(242, 248, 255), Color.rgb(250, 246, 255), Color.WHITE)
-        else intArrayOf(Color.rgb(4, 13, 34), Color.rgb(10, 23, 52), Color.rgb(30, 15, 55))
+        if (isLight) intArrayOf(Color.WHITE, Color.WHITE, Color.WHITE)
+        else intArrayOf(Color.BLACK, Color.BLACK, Color.BLACK)
     )
 
     private fun glass(radius: Int) = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
-        if (isLight) intArrayOf(Color.argb(238, 255, 255, 255), Color.argb(226, 239, 246, 255))
-        else intArrayOf(Color.argb(178, 22, 48, 88), Color.argb(158, 13, 27, 58), Color.argb(174, 39, 24, 75))
+        if (isLight) intArrayOf(Color.WHITE, Color.WHITE)
+        else intArrayOf(Color.rgb(12, 12, 12), Color.rgb(12, 12, 12))
     ).apply {
         cornerRadius = dp(radius).toFloat()
         setStroke(dp(1), if (isLight) Color.argb(190, 125, 165, 220) else Color.argb(145, 83, 157, 255))
