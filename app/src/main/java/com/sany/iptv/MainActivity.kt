@@ -1038,15 +1038,14 @@ class MainActivity : AppCompatActivity() {
                     isIndeterminate = true
                     indeterminateTintList = android.content.res.ColorStateList.valueOf(if (active) accent else Color.rgb(64, 170, 255))
                 }
-                loadingRow.addView(spinner, LinearLayout.LayoutParams(dp(17), dp(17)).apply { rightMargin = dp(5) })
+                loadingRow.addView(spinner, LinearLayout.LayoutParams(dp(17), dp(17)).apply {
+                    rightMargin = dp(5)
+                })
                 val navLabel = text(liveTvProgressLabel(), 13, if (active) accent else Color.rgb(64, 170, 255), true).apply {
                     gravity = Gravity.CENTER
                     setPadding(0, dp(2), 0, 0)
                 }
                 liveTvNavLabel = navLabel
-                loadingRow.addView(spinner, LinearLayout.LayoutParams(dp(14), dp(14)).apply {
-                    rightMargin = dp(5)
-                })
                 loadingRow.addView(navLabel)
                 item.addView(loadingRow, LinearLayout.LayoutParams(-1, -2))
             } else {
