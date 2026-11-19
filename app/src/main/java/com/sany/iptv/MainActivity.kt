@@ -264,6 +264,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(24), dp(20), dp(24), dp(20))
+            translationY = dp(18).toFloat()
         }
         val logo = ImageView(this).apply {
             setImageResource(com.sany.iptv.R.drawable.sany_logo_icon)
@@ -278,9 +279,9 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(18).toFloat()
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
-        center.addView(logo, LinearLayout.LayoutParams(dp(184), dp(184)).apply {
-            topMargin = dp(24)
-            bottomMargin = dp(12)
+        center.addView(logo, LinearLayout.LayoutParams(dp(220), dp(220)).apply {
+            topMargin = dp(16)
+            bottomMargin = dp(10)
         })
 
         val welcomeText = android.text.SpannableString("Welcome to my SANY IPTV app").apply {
