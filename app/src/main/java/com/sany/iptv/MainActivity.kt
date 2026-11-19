@@ -931,50 +931,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkForAppUpdate(showUpToDate: Boolean) {
-        thread {
+        thread(name = "SANY-App-Update-Check") {
+            var connection: java.net.HttpURLConnection? = null
             try {
-                val connection = URL("https://api.github.com/repos/Sany100/Sany-iptv/releases/latest")
-                    .openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-                connection.setRequestProperty("Accept", "application/vnd.github+json")
-                connection.setRequestProperty("User-Agent", "SANY-IPTV-Android")
-                val code = connection.responseCode
-                if (code == 404) {
-                    runOnUiThread { if (showUpToDate) toast("এখনো কোনো update release প্রকাশ করা হয়নি") }
-                    connection.disconnect()
-                    return@thread
+                // Use GitHub's latest-release redirect instead of the Releases API,
+                // which can return HTTP 403 when its unauthenticated rate limit is reached.
+                connection = (URL("https://github.com/Sany100/Sany-iptv/releases/latest")
+                    .openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    instanceFollowRedirects = true
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "SANY-IPTV-Android")
+                    setRequestProperty("Accept", "text/html")
                 }
+                val code = connection.responseCode
                 if (code !in 200..299) throw IllegalStateException("GitHub HTTP " + code)
-                val json = connection.inputStream.bufferedReader().use { it.readText() }
+                val finalUrl = connection.url.toString()
                 connection.disconnect()
-                val release = org.json.JSONObject(json)
-                val tagVersion = release.optString("tag_name").trim().removePrefix("v").removePrefix("V")
-                // Some releases have a title like "SANY IPTV v1.2" while the tag is still V1.1.
-                // Prefer the explicit version in the release title when it is newer than the tag.
-                val titleVersion = Regex("(?i)\\bv?([0-9]+(?:\\.[0-9]+){1,3})\\b")
-                    .find(release.optString("name"))?.groupValues?.getOrNull(1).orEmpty()
-                val tag = if (titleVersion.isNotBlank() && compareVersions(titleVersion, tagVersion) > 0)
-                    titleVersion else tagVersion
+                connection = null
+
+                val tag = Regex("/releases/tag/([^/?#]+)", RegexOption.IGNORE_CASE)
+                    .find(finalUrl)?.groupValues?.getOrNull(1)
+                    ?.trim()?.removePrefix("v")?.removePrefix("V").orEmpty()
+                if (tag.isBlank()) throw IllegalStateException("Latest release version পাওয়া যায়নি")
+
                 val current = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
-                val apkUrl = release.optJSONArray("assets")?.let { assets ->
-                    (0 until assets.length()).map { assets.optJSONObject(it) }
-                        .firstOrNull { it?.optString("name")?.endsWith(".apk", true) == true }
-                        ?.optString("browser_download_url")
-                }.orEmpty()
-                if (tag.isBlank() || apkUrl.isBlank()) throw IllegalStateException("Release APK পাওয়া যায়নি")
+                val apkUrl = "https://github.com/Sany100/Sany-iptv/releases/latest/download/app-release.apk"
                 val newer = compareVersions(tag, current) > 0
                 runOnUiThread {
                     if (!newer) {
-                        // Clear the update reminder once this release is installed.
                         prefs.edit().remove("last_prompted_update_version").apply()
                     }
-                    // Keep the download/install choice visible on every automatic check
-                    // until the user installs the latest release. Download still requires a tap.
                     if (newer) {
                         prefs.edit().putString("last_prompted_update_version", tag).apply()
-                        val notes = release.optString("body").take(1200)
-                        showSanyUpdateDialog(current, tag, notes, apkUrl)
+                        showSanyUpdateDialog(current, tag, "নতুন সংস্করণ উপলব্ধ।", apkUrl)
                     } else if (showUpToDate) {
                         AlertDialog.Builder(this).setTitle("You're up to date")
                             .setMessage("বর্তমান ভার্সন: " + current)
@@ -982,7 +973,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: Exception) {
-                runOnUiThread { if (showUpToDate) toast("Update check failed: " + (e.message ?: "network error")) }
+                connection?.disconnect()
+                runOnUiThread {
+                    if (showUpToDate) toast("Update check failed: " + (e.message ?: "network error"))
+                }
             }
         }
     }
