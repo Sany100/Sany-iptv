@@ -596,6 +596,14 @@ class MainActivity : AppCompatActivity() {
         }
         box.addView(text("APP UPDATES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Check for updates", "Look for the latest version and download it") { checkForAppUpdate(true) }
+        box.addView(text("ADDITIONAL SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        settingsCard(box, "Update EPG data", "Refresh the saved XMLTV programme guide") {
+            val epgUrl = prefs.getString("epg_url", null)
+            if (epgUrl.isNullOrBlank()) showEpgUrlDialog()
+            else updateEpgData(epgUrl)
+        }
+        settingsToggleCard(box, "Auto add EPG data", "Detect EPG URL from a playlist and download it automatically", "auto_add_epg", true)
+        settingsCard(box, "EPG source", "Add or change your XMLTV / EPG URL") { showEpgUrlDialog() }
         box.addView(text("ABOUT", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
             setPadding(dp(15), dp(16), dp(15), dp(16)); background = rounded(panel, 12)
@@ -912,6 +920,7 @@ class MainActivity : AppCompatActivity() {
                 val content = URL(url).openConnection().apply { connectTimeout = 15000; readTimeout = 25000 }
                     .getInputStream().bufferedReader().use { it.readText() }
                 val parsed = M3uParser.parse(content)
+                val detectedEpgUrl = extractEpgUrl(content)
                 if (parsed.isNotEmpty()) {
                     // Write the cache on the worker thread, not the UI thread.
                     try { playlistCacheFile(url).writeText(content) } catch (_: Exception) { /* Keep the live playlist usable if caching fails. */ }
@@ -922,12 +931,78 @@ class MainActivity : AppCompatActivity() {
                         channels = parsed
                         savePlaylistUrl(url)
                         selectedGroup = "All"; searchQuery = ""
+                        if (!detectedEpgUrl.isNullOrBlank()) {
+                            prefs.edit().putString("epg_url", detectedEpgUrl).apply()
+                            if (prefs.getBoolean("auto_add_epg", true)) updateEpgData(detectedEpgUrl, false)
+                        }
                         renderHome()
                         toast("Loaded " + channels.size + " items")
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread { toast("Playlist load failed: ${e.message ?: "network error"}") }
+            }
+        }
+    }
+
+    private fun extractEpgUrl(m3uContent: String): String? {
+        val header = m3uContent.lineSequence().firstOrNull { it.trimStart().startsWith("#EXTM3U", true) }
+            ?: return null
+        val match = Regex("""(?i)(?:url-tvg|x-tvg-url)\\s*=\\s*["']?([^"'\\s,]+)""").find(header)
+        return match?.groupValues?.getOrNull(1)?.trim()?.takeIf {
+            it.startsWith("http://", true) || it.startsWith("https://", true)
+        }
+    }
+
+    private fun showEpgUrlDialog() {
+        val input = EditText(this).apply {
+            hint = "https://example.com/epg.xml"
+            setSingleLine(true)
+            setText(prefs.getString("epg_url", ""))
+            setTextColor(white); setHintTextColor(muted)
+        }
+        val wrap = LinearLayout(this).apply {
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(input, LinearLayout.LayoutParams(-1, dp(52)))
+        }
+        AlertDialog.Builder(this).setTitle("EPG source URL").setView(wrap)
+            .setPositiveButton("SAVE & UPDATE") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
+                    prefs.edit().putString("epg_url", url).apply()
+                    updateEpgData(url)
+                } else toast("সঠিক HTTP/HTTPS EPG URL দিন")
+            }
+            .setNeutralButton("REMOVE") { _, _ ->
+                prefs.edit().remove("epg_url").apply()
+                try { java.io.File(filesDir, "epg_data.xml").delete() } catch (_: Exception) {}
+                toast("EPG source removed")
+            }
+            .setNegativeButton("CANCEL", null).show()
+    }
+
+    private fun updateEpgData(url: String, showStatus: Boolean = true) {
+        if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) {
+            if (showStatus) toast("সঠিক EPG URL সেট করুন")
+            return
+        }
+        if (showStatus) toast("Updating EPG data…")
+        thread {
+            try {
+                val connection = URL(url).openConnection().apply {
+                    connectTimeout = 15000
+                    readTimeout = 30000
+                    setRequestProperty("User-Agent", "SANY-IPTV-Android")
+                }
+                val xml = connection.getInputStream().bufferedReader().use { it.readText() }
+                if (!xml.contains("<tv", true) || !xml.contains("</tv>", true)) {
+                    throw IllegalStateException("এটি valid XMLTV EPG data নয়")
+                }
+                java.io.File(filesDir, "epg_data.xml").writeText(xml)
+                prefs.edit().putString("epg_last_updated", System.currentTimeMillis().toString()).apply()
+                runOnUiThread { toast("EPG data updated successfully") }
+            } catch (e: Exception) {
+                runOnUiThread { toast("EPG update failed: " + (e.message ?: "network error")) }
             }
         }
     }
