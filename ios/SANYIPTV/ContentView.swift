@@ -1,363 +1,162 @@
-import SwiftUI
+import UIKit
 import AVKit
 
-private struct TVChannel: Identifiable, Hashable {
+private struct TVChannel {
     let name: String
     let url: String
     let group: String
     let logo: String?
-
-    var id: String { url }
 }
 
-struct ContentView: View {
+final class ChannelListViewController: UITableViewController, UISearchBarDelegate {
     private let playlistURL = URL(string: "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u")!
+    private var channels: [TVChannel] = []
+    private var filtered: [TVChannel] = []
+    private var favorites = Set<String>(UserDefaults.standard.stringArray(forKey: "sany.ios.favorites") ?? [])
+    private var selectedGroup = "All"
+    private var groups: [String] { return ["All", "Favorites"] + Array(Set(channels.map { $0.group })).sorted() }
+    private let searchBar = UISearchBar()
+    private let groupControl = UISegmentedControl(items: ["All", "Favorites"])
+    private let refresh = UIRefreshControl()
 
-    @State private var channels: [TVChannel] = []
-    @State private var selectedGroup = "All"
-    @State private var searchText = ""
-    @State private var favorites: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "sany.ios.favorites") ?? [])
-    @State private var selectedChannel: TVChannel?
-    @State private var isLoading = false
-    @State private var errorMessage: String?
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "SANY IPTV"
+        view.backgroundColor = UIColor(red: 0.015, green: 0.035, blue: 0.09, alpha: 1)
+        tableView.backgroundColor = view.backgroundColor
+        tableView.separatorColor = UIColor.white.withAlphaComponent(0.10)
+        tableView.rowHeight = 68
+        tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Channel")
+        navigationController?.navigationBar.barTintColor = UIColor(red: 0.02, green: 0.07, blue: 0.15, alpha: 1)
+        navigationController?.navigationBar.titleTextAttributes = [.foregroundColor: UIColor.cyan, .font: UIFont.boldSystemFont(ofSize: 20)]
+        navigationController?.navigationBar.tintColor = .cyan
 
-    private var groups: [String] {
-        ["All", "Favorites"] + Array(Set(channels.map(\.group))).sorted()
+        searchBar.placeholder = "Search channels"
+        searchBar.delegate = self
+        searchBar.barStyle = .black
+        searchBar.searchBarStyle = .minimal
+        searchBar.tintColor = .cyan
+        tableView.tableHeaderView = searchBar
+
+        refresh.tintColor = .cyan
+        refresh.addTarget(self, action: #selector(loadPlaylist), for: .valueChanged)
+        tableView.refreshControl = refresh
+
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Refresh", style: .plain, target: self, action: #selector(loadPlaylist))
+        loadPlaylist()
     }
 
-    private var visibleChannels: [TVChannel] {
-        channels.filter { channel in
-            let matchesGroup = selectedGroup == "All" ||
-                (selectedGroup == "Favorites" ? favorites.contains(channel.id) : channel.group == selectedGroup)
-            let matchesSearch = searchText.isEmpty ||
-                channel.name.localizedCaseInsensitiveContains(searchText) ||
-                channel.group.localizedCaseInsensitiveContains(searchText)
-            return matchesGroup && matchesSearch
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                LinearGradient(colors: [Color(red: 0.015, green: 0.035, blue: 0.09), Color(red: 0.025, green: 0.08, blue: 0.17), .black], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    .ignoresSafeArea()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        header
-
-                        HStack(spacing: 10) {
-                            Image(systemName: "magnifyingglass")
-                                .foregroundStyle(.cyan.opacity(0.8))
-                            TextField("Search channels", text: $searchText)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .foregroundStyle(.white)
-                        }
-                        .padding(14)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
-                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.12), lineWidth: 1))
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 9) {
-                                ForEach(groups, id: \.self) { group in
-                                    Button {
-                                        selectedGroup = group
-                                    } label: {
-                                        Text(group)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(selectedGroup == group ? Color.black : Color.white.opacity(0.82))
-                                            .padding(.horizontal, 15)
-                                            .padding(.vertical, 10)
-                                            .background(selectedGroup == group ? Color.cyan : Color.white.opacity(0.08), in: Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(selectedGroup == "All" ? "Live TV" : selectedGroup)
-                                    .font(.title2.bold())
-                                    .foregroundStyle(.white)
-                                Text("\(visibleChannels.count) channels")
-                                    .font(.caption)
-                                    .foregroundStyle(.white.opacity(0.55))
-                            }
-                            Spacer()
-                            Button {
-                                Task { await loadPlaylist() }
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 15, weight: .bold))
-                                    .foregroundStyle(.cyan)
-                                    .padding(11)
-                                    .background(.cyan.opacity(0.12), in: Circle())
-                            }
-                            .accessibilityLabel("Refresh playlist")
-                        }
-
-                        if isLoading && channels.isEmpty {
-                            ProgressView("Loading SANY IPTV…")
-                                .tint(.cyan)
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 45)
-                        } else if let errorMessage, channels.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "wifi.exclamationmark")
-                                    .font(.system(size: 30))
-                                    .foregroundStyle(.cyan)
-                                Text("Could not load playlist")
-                                    .font(.headline)
-                                    .foregroundStyle(.white)
-                                Text(errorMessage)
-                                    .font(.caption)
-                                    .foregroundStyle(.white.opacity(0.65))
-                                    .multilineTextAlignment(.center)
-                                Button("Try Again") { Task { await loadPlaylist() } }
-                                    .buttonStyle(.borderedProminent)
-                                    .tint(.cyan)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 35)
-                        } else if visibleChannels.isEmpty {
-                            VStack(spacing: 10) {
-                                Image(systemName: "tv")
-                                    .font(.system(size: 30))
-                                    .foregroundStyle(.cyan)
-                                Text("No channels found")
-                                    .font(.headline)
-                                    .foregroundStyle(.white)
-                                Text("Try another category or search term.")
-                                    .font(.caption)
-                                    .foregroundStyle(.white.opacity(0.6))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 35)
-                        } else {
-                            LazyVStack(spacing: 10) {
-                                ForEach(visibleChannels) { channel in
-                                    channelRow(channel)
-                                }
-                            }
-                        }
-
-                        Text("SANY IPTV • PREMIUM IPTV EXPERIENCE")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
-                            .tracking(1.4)
-                            .foregroundStyle(.white.opacity(0.3))
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 12)
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 14)
-                    .padding(.bottom, 28)
+    @objc private func loadPlaylist() {
+        refresh.beginRefreshing()
+        var request = URLRequest(url: playlistURL)
+        request.timeoutInterval = 30
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.refresh.endRefreshing()
+                if let error = error {
+                    self.showMessage("Playlist could not load: " + error.localizedDescription)
+                    return
                 }
-            }
-            .toolbar(.hidden, for: .navigationBar)
-            .task {
-                if channels.isEmpty { await loadPlaylist() }
-            }
-            .fullScreenCover(item: $selectedChannel) { channel in
-                PlayerScreen(channel: channel)
-            }
-        }
-        .tint(.cyan)
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(LinearGradient(colors: [.cyan, Color.blue.opacity(0.65)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                Image(systemName: "play.tv.fill")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 48, height: 48)
-            .shadow(color: .cyan.opacity(0.28), radius: 12)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("SANY IPTV")
-                    .font(.system(size: 25, weight: .heavy, design: .rounded))
-                    .tracking(1.1)
-                    .foregroundStyle(.cyan)
-                Text("PREMIUM IPTV EXPERIENCE")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(1.2)
-                    .foregroundStyle(.white.opacity(0.66))
-            }
-            Spacer()
-            Circle()
-                .fill(channels.isEmpty ? Color.orange : Color.green)
-                .frame(width: 8, height: 8)
-                .accessibilityLabel(channels.isEmpty ? "Not connected" : "Connected")
-        }
-        .padding(16)
-        .background(.ultraThinMaterial.opacity(0.45), in: RoundedRectangle(cornerRadius: 22))
-        .overlay(RoundedRectangle(cornerRadius: 22).stroke(.white.opacity(0.13), lineWidth: 1))
-    }
-
-    private func channelRow(_ channel: TVChannel) -> some View {
-        HStack(spacing: 13) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.cyan.opacity(0.10))
-                if let logo = channel.logo, let url = URL(string: logo) {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFit().padding(5)
-                    } placeholder: {
-                        Image(systemName: "tv.fill").foregroundStyle(.cyan)
-                    }
-                } else {
-                    Image(systemName: "tv.fill").font(.system(size: 20)).foregroundStyle(.cyan)
+                guard let data = data, let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                      let text = String(data: data, encoding: .utf8) else {
+                    self.showMessage("Playlist response was invalid. Please try again.")
+                    return
                 }
+                let parsed = self.parseM3U(text)
+                guard !parsed.isEmpty else {
+                    self.showMessage("No channels found in the playlist.")
+                    return
+                }
+                self.channels = parsed
+                self.applyFilters()
             }
-            .frame(width: 48, height: 48)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(channel.name)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(channel.group)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .lineLimit(1)
-            }
-            Spacer()
-            Button {
-                toggleFavorite(channel)
-            } label: {
-                Image(systemName: favorites.contains(channel.id) ? "star.fill" : "star")
-                    .foregroundStyle(favorites.contains(channel.id) ? .yellow : .white.opacity(0.55))
-                    .frame(width: 36, height: 42)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(favorites.contains(channel.id) ? "Remove favorite" : "Add favorite")
-
-            Image(systemName: "play.circle.fill")
-                .font(.system(size: 25))
-                .foregroundStyle(.cyan)
-        }
-        .padding(12)
-        .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 17))
-        .overlay(RoundedRectangle(cornerRadius: 17).stroke(.white.opacity(0.09), lineWidth: 1))
-        .contentShape(Rectangle())
-        .onTapGesture { selectedChannel = channel }
-    }
-
-    private func toggleFavorite(_ channel: TVChannel) {
-        if favorites.contains(channel.id) {
-            favorites.remove(channel.id)
-        } else {
-            favorites.insert(channel.id)
-        }
-        UserDefaults.standard.set(Array(favorites), forKey: "sany.ios.favorites")
-    }
-
-    @MainActor
-    private func loadPlaylist() async {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        do {
-            var request = URLRequest(url: playlistURL)
-            request.timeoutInterval = 30
-            request.setValue("SANY IPTV iOS", forHTTPHeaderField: "User-Agent")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-                throw URLError(.badServerResponse)
-            }
-            guard let text = String(data: data, encoding: .utf8) else {
-                throw URLError(.cannotDecodeContentData)
-            }
-            let parsed = parseM3U(text)
-            guard !parsed.isEmpty else { throw URLError(.zeroByteResource) }
-            channels = parsed
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        }.resume()
     }
 
     private func parseM3U(_ text: String) -> [TVChannel] {
-        var result: [TVChannel] = []
+        var output: [TVChannel] = []
         var name = ""
         var group = "Other"
         var logo: String?
-
-        for rawLine in text.components(separatedBy: .newlines) {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        for raw in text.components(separatedBy: .newlines) {
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if line.lowercased().hasPrefix("#extinf") {
                 let pattern = #"([\w-]+)="([^"]*)""#
                 if let regex = try? NSRegularExpression(pattern: pattern) {
                     let range = NSRange(line.startIndex..<line.endIndex, in: line)
-                    var attributes: [String: String] = [:]
+                    var attrs: [String: String] = [:]
                     for match in regex.matches(in: line, range: range) where match.numberOfRanges == 3 {
-                        if let keyRange = Range(match.range(at: 1), in: line),
-                           let valueRange = Range(match.range(at: 2), in: line) {
-                            attributes[String(line[keyRange]).lowercased()] = String(line[valueRange])
+                        if let kr = Range(match.range(at: 1), in: line), let vr = Range(match.range(at: 2), in: line) {
+                            attrs[String(line[kr]).lowercased()] = String(line[vr])
                         }
                     }
-                    group = attributes["group-title"].flatMap { $0.isEmpty ? nil : $0 } ?? "Other"
-                    logo = attributes["tvg-logo"]
+                    group = attrs["group-title"].flatMap { $0.isEmpty ? nil : $0 } ?? "Other"
+                    logo = attrs["tvg-logo"]
                 }
                 name = line.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? "Unknown channel"
-                if name.isEmpty { name = "Unknown channel" }
             } else if !line.isEmpty && !line.hasPrefix("#") {
-                let fallback = line.split(separator: "/").last.map(String.init) ?? "Channel \(result.count + 1)"
-                result.append(TVChannel(name: name.isEmpty ? fallback : name, url: line, group: group, logo: logo))
+                let fallback = line.split(separator: "/").last.map(String.init) ?? "Channel \(output.count + 1)"
+                output.append(TVChannel(name: name.isEmpty ? fallback : name, url: line, group: group, logo: logo))
                 name = ""
                 group = "Other"
                 logo = nil
             }
         }
         var seen = Set<String>()
-        return result.filter { seen.insert($0.url).inserted }
+        return output.filter { seen.insert($0.url).inserted }
     }
-}
 
-private struct PlayerScreen: View {
-    let channel: TVChannel
-    @Environment(\.dismiss) private var dismiss
-    @State private var player: AVPlayer?
+    private func applyFilters() {
+        let query = searchBar.text ?? ""
+        filtered = channels.filter { channel in
+            let groupMatch = selectedGroup == "All" || (selectedGroup == "Favorites" ? favorites.contains(channel.url) : channel.group == selectedGroup)
+            let searchMatch = query.isEmpty || channel.name.localizedCaseInsensitiveContains(query) || channel.group.localizedCaseInsensitiveContains(query)
+            return groupMatch && searchMatch
+        }
+        tableView.reloadData()
+    }
 
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black.ignoresSafeArea()
-            if let player {
-                VideoPlayer(player: player)
-                    .ignoresSafeArea()
-            } else {
-                ProgressView("Connecting to \(channel.name)…")
-                    .tint(.cyan)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            Button {
-                player?.pause()
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(13)
-                    .background(.black.opacity(0.55), in: Circle())
-            }
-            .padding(.top, 12)
-            .padding(.leading, 16)
-        }
-        .onAppear {
-            guard let url = URL(string: channel.url) else { return }
-            let newPlayer = AVPlayer(url: url)
-            player = newPlayer
-            newPlayer.play()
-        }
-        .onDisappear {
-            player?.pause()
-            player = nil
-        }
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) { applyFilters() }
+
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { return filtered.count }
+
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let channel = filtered[indexPath.row]
+        let cell = tableView.dequeueReusableCell(withIdentifier: "Channel", for: indexPath)
+        cell.backgroundColor = UIColor.white.withAlphaComponent(0.045)
+        cell.textLabel?.text = channel.name + "\n" + channel.group
+        cell.textLabel?.numberOfLines = 2
+        cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        cell.textLabel?.textColor = .white
+        cell.detailTextLabel?.textColor = .lightGray
+        cell.accessoryType = favorites.contains(channel.url) ? .detailButton : .disclosureIndicator
+        cell.tintColor = .cyan
+        return cell
+    }
+
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let channel = filtered[indexPath.row]
+        guard let url = URL(string: channel.url) else { return }
+        let player = AVPlayerViewController()
+        player.player = AVPlayer(url: url)
+        present(player, animated: true) { player.player?.play() }
+    }
+
+    override func tableView(_ tableView: UITableView, accessoryButtonTappedForRowWith indexPath: IndexPath) {
+        toggleFavorite(filtered[indexPath.row])
+    }
+
+    private func toggleFavorite(_ channel: TVChannel) {
+        if favorites.contains(channel.url) { favorites.remove(channel.url) } else { favorites.insert(channel.url) }
+        UserDefaults.standard.set(Array(favorites), forKey: "sany.ios.favorites")
+        applyFilters()
+    }
+
+    private func showMessage(_ message: String) {
+        let alert = UIAlertController(title: "SANY IPTV", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }
