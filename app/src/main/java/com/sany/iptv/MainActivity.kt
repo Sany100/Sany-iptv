@@ -780,25 +780,21 @@ class MainActivity : AppCompatActivity() {
                 }.orEmpty()
                 if (tag.isBlank() || apkUrl.isBlank()) throw IllegalStateException("Release APK পাওয়া যায়নি")
                 val newer = compareVersions(tag, current) > 0
-                val lastPrompted = prefs.getString("last_prompted_update_version", "")
                 runOnUiThread {
                     if (!newer) {
-                        // Once the installed app reaches the release version, clear the reminder.
+                        // Clear the update reminder once this release is installed.
                         prefs.edit().remove("last_prompted_update_version").apply()
                     }
-                    // Automatic checks show a given release only once. Manual checks can still
-                    // display the available update whenever the user explicitly asks.
-                    if (newer && lastPrompted != tag) {
+                    // Keep the download/install choice visible on every automatic check
+                    // until the user installs the latest release. Download still requires a tap.
+                    if (newer) {
                         prefs.edit().putString("last_prompted_update_version", tag).apply()
                         val notes = release.optString("body").take(1200)
                         showSanyUpdateDialog(current, tag, notes, apkUrl)
-                    } else if (showUpToDate && !newer) {
+                    } else if (showUpToDate) {
                         AlertDialog.Builder(this).setTitle("You're up to date")
                             .setMessage("বর্তমান ভার্সন: " + current)
                             .setPositiveButton("OK", null).show()
-                    } else if (showUpToDate && newer) {
-                        // Do not repeat the same release notification after it has already been shown.
-                        toast("এই আপডেটের নোটিফিকেশন আগে দেখানো হয়েছে: " + tag)
                     }
                 }
             } catch (e: Exception) {
