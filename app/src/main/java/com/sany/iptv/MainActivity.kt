@@ -586,6 +586,7 @@ class MainActivity : AppCompatActivity() {
         }
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
+        settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
         settingsToggleCard(box, "Background video playback", "Keep video playing in a floating window when you leave the app", "background_playback", true)
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             val url = prefs.getString("playlist_url", null)
@@ -1016,6 +1017,103 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 runOnUiThread { toast("EPG update failed: " + (e.message ?: "network error")) }
             }
+        }
+    }
+
+    private fun checkPlaylistStreams() {
+        if (channels.isEmpty()) { toast("আগে একটি playlist যোগ করুন"); return }
+        val snapshot = channels.toList()
+        val done = java.util.concurrent.atomic.AtomicInteger(0)
+        val counts = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.atomic.AtomicInteger>()
+        listOf("Working", "Offline", "Restricted", "Error").forEach { counts[it] = java.util.concurrent.atomic.AtomicInteger(0) }
+        val lines = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val executor = java.util.concurrent.Executors.newFixedThreadPool(6)
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = snapshot.size }
+        val status = text("Checking 0 / " + snapshot.size + " channels…", 13, muted)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(10), dp(20), dp(10))
+            addView(status)
+            addView(progress, LinearLayout.LayoutParams(-1, dp(8)).apply { topMargin = dp(12) })
+        }
+        val dialog = AlertDialog.Builder(this).setTitle("Playlist Checker")
+            .setView(content).setNegativeButton("CANCEL", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener {
+                cancelled.set(true)
+                executor.shutdownNow()
+                dialog.dismiss()
+            }
+        }
+        dialog.setOnCancelListener { cancelled.set(true); executor.shutdownNow() }
+        dialog.show()
+        snapshot.forEachIndexed { index, channel ->
+            executor.submit {
+                val result = probeStream(channel.url)
+                counts[result.first]?.incrementAndGet()
+                lines.add((index + 1).toString() + ". " + channel.name + " — " + result.first + " (" + result.second + ")")
+                val number = done.incrementAndGet()
+                runOnUiThread {
+                    if (!cancelled.get() && dialog.isShowing) {
+                        progress.progress = number
+                        status.text = "Checking " + number + " / " + snapshot.size +
+                            "  •  Working " + counts["Working"]?.get() +
+                            "  •  Offline " + counts["Offline"]?.get() +
+                            "  •  Restricted " + counts["Restricted"]?.get() +
+                            "  •  Error " + counts["Error"]?.get()
+                        if (number == snapshot.size) {
+                            executor.shutdown()
+                            dialog.dismiss()
+                            val report = "Total: " + snapshot.size +
+                                "\nWorking: " + counts["Working"]?.get() +
+                                "\nOffline: " + counts["Offline"]?.get() +
+                                "\nRestricted: " + counts["Restricted"]?.get() +
+                                "\nError: " + counts["Error"]?.get() +
+                                "\n\nHTTP endpoint check only; playback is not guaranteed.\n\n" +
+                                lines.sortedBy { it.substringBefore(".").toIntOrNull() ?: 0 }.joinToString(System.lineSeparator())
+                            val reportView = TextView(this).apply {
+                                text = report
+                                textSize = 12f
+                                setTextColor(white)
+                                setPadding(dp(18), dp(12), dp(18), dp(12))
+                            }
+                            val reportScroll = ScrollView(this).apply { addView(reportView) }
+                            AlertDialog.Builder(this).setTitle("Playlist Check Results")
+                                .setView(reportScroll).setPositiveButton("DONE", null).show()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun probeStream(streamUrl: String): Pair<String, String> {
+        if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) return "Error" to "Invalid URL"
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = URL(streamUrl).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 6000
+            connection.readTimeout = 6000
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty("User-Agent", "SANY-IPTV-Android")
+            connection.setRequestProperty("Accept", "*/*")
+            connection.setRequestProperty("Range", "bytes=0-1023")
+            val code = connection.responseCode
+            when {
+                code in 200..299 -> "Working" to ("HTTP " + code)
+                code == 401 || code == 403 -> "Restricted" to ("HTTP " + code)
+                code == 404 || code == 410 -> "Offline" to ("HTTP " + code)
+                else -> "Error" to ("HTTP " + code)
+            }
+        } catch (e: Exception) {
+            val message = if (e is java.net.SocketTimeoutException) "Timeout"
+                else if (e is java.net.UnknownHostException) "Host not found"
+                else (e.message ?: "Connection failed").take(34)
+            "Error" to message
+        } finally {
+            connection?.disconnect()
         }
     }
 
