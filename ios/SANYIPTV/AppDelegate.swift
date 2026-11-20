@@ -237,6 +237,21 @@ private final class LiveTVViewController: BaseViewController, UITableViewDataSou
         present(player, animated: true) { player.player?.play() }
     }
 
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let channel = visible[indexPath.row]
+        let key = channel.streamURL.absoluteString
+        let isFavorite = favorites.contains(key)
+        let action = UIContextualAction(style: .normal, title: isFavorite ? "Remove" : "Favorite") { [weak self] _, _, done in
+            guard let self = self else { done(false); return }
+            if self.favorites.contains(key) { self.favorites.remove(key) } else { self.favorites.insert(key) }
+            UserDefaults.standard.set(Array(self.favorites), forKey: "sany.ios.favorites")
+            self.applyFilters()
+            done(true)
+        }
+        action.backgroundColor = SANYStyle.accent
+        return UISwipeActionsConfiguration(actions: [action])
+    }
+
     func tableView(_ tableView: UITableView, accessoryButtonTappedForRowWith indexPath: IndexPath) {
         let key = visible[indexPath.row].streamURL.absoluteString
         if favorites.contains(key) { favorites.remove(key) } else { favorites.insert(key) }
