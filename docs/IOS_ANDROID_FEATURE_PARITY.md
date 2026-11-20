@@ -27,9 +27,9 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 | Add playlist URL | Partial | Playlist store accepts URLs; verify Settings action and persistence. |
 | Import M3U file | Partial | iOS document picker/import path exists; test provider formats and errors. |
 | M3U/M3U8 parsing | Partial | Basic EXTINF/group/logo parsing exists; compare attributes, quoted commas, URL schemes and edge cases. |
-| Playlist manager / switch playlist | Partial | Active playlist persistence exists; verify multiple saved playlists and switching UI. |
+| Playlist manager / switch playlist | Partial | Multiple remote/imported playlists can be selected and removed; active-source persistence and fallback on removal are implemented. Rapid switching during an in-flight request still needs testing. |
 | Reload active playlist | Partial | Refresh/load exists; test offline/cache behavior. |
-| Playlist caching / offline recovery | Partial | Some source state is persisted; compare Android cache and restore semantics. |
+| Playlist caching / offline recovery | Implemented in source; CI/device validation pending | Successful remote M3U downloads are cached per URL; network/HTTP failure falls back to the saved cache. Imported playlists are stored locally and added to the saved list. |
 
 ## Checker
 
@@ -49,12 +49,12 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 | HLS/live playback | Partial | AVPlayerViewController is used; validate HLS, redirects, headers, codecs and DRM limitations. |
 | Auto Play ON/OFF | Implemented (basic) | UserDefaults preference is read before playback. |
 | Video quality Auto/480p/720p/1080p | Partial | preferredPeakBitRate is set; this is a bitrate hint, not guaranteed exact resolution. |
-| Hardware Decoder ON/OFF | Missing / not implemented | Setting row exists, but iOS does not expose a direct AVPlayer hardware/software decoder switch. Replace with an honest supported capability/status rather than a nonfunctional toggle. |
+| Hardware Decoder ON/OFF | No direct iOS equivalent | The fake switch was removed. The Settings row explains that AVPlayer selects a supported decoder automatically; there is no public hardware/software decoder switch. |
 | Buffer Control Low/Balanced/High | Partial | preferredForwardBufferDuration is set; validate actual behavior and avoid promising exact buffer duration. |
 | Auto Retry on Failure | Partial | Retry observer exists with limited retry count; compare all error paths and retry policy. |
 | Playback speed | Partial | Speed preference exists; test controls and rate changes during playback. |
 | Background video playback | Partial / platform-limited | Setting row exists; verify AVAudioSession/background modes and App Store policy. |
-| Picture-in-Picture | Implemented in source; latest build pending | Added a Picture-in-Picture setting and enabled AVPlayerViewController PiP when the setting is ON. iPhone PiP availability depends on iOS version/device and must be device-tested (not available on iOS 12 iPhone). |
+| Picture-in-Picture | Implemented in source; CI/device validation pending | Added a Picture-in-Picture setting and enabled AVPlayerViewController PiP when ON. Device/iOS support still requires testing; iOS 12 does not support iPhone PiP. |
 | Fullscreen / channel navigation | Partial / not verified | AVPlayerViewController is used; compare adjacent-channel and orientation behavior. |
 
 ## EPG
@@ -75,12 +75,12 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 | Day / Night / System theme | Partial | iOS has theme storage/styles; verify System option and apply-to-all-screens. |
 | Accent colour | Partial | iOS style supports several accents; compare Android choices and live refresh. |
 | Low internet mode | Partial | iOS low-data preference affects Auto quality bitrate; compare all Android effects. |
-| Reduce UI animations | Missing / not verified | iOS setting row exists; verify it actually changes transitions. |
+| Reduce UI animations | Implemented in source; CI/device validation pending | Toggle disables/enables UIKit animations. Verify visual behavior and accessibility interaction on device. |
 | Hardware Decoder | Missing / unsupported direct equivalent | Do not leave a misleading nonfunctional switch. |
 | Buffer Control | Partial | Player hint exists. |
 | Auto Retry | Partial | Limited retry implementation. |
-| Auto update check | Partial / not verified | Android update checker exists; iOS update distribution must use App Store/TestFlight policy. |
-| Manual update check | Partial / not verified | iOS Settings row exists; implement a compliant App Store version check. |
+| Auto update check | Partial / platform-limited | App Store is the only supported public update channel; automatic install is controlled by iOS/App Store settings. |
+| Manual update check | Implemented in source; App Store listing required | Queries Apple App Store Lookup API by bundle ID, compares versions and opens the official Store listing. No result is expected until published under this bundle ID. |
 | Maintenance mode | Partial | iOS reads maintenance.json and has an allow-list screen. Verify server schema, refresh and admin workflow. |
 | Copy Device ID | Partial | iOS generates installation UUID; it is not a hardware ID. |
 | About/version | Partial | Basic iPhone Edition row exists; match version/build and author information. |
@@ -91,7 +91,7 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 | Requirement | iOS status | Evidence / remaining work |
 |---|---|---|
 | iPhone-only target | Implemented in config | TARGETED_DEVICE_FAMILY is 1. |
-| iPhone 6 / iOS 12.5.8 baseline | Build target corrected to iOS 12.0 | Must still compile and test on iOS 12 simulator/device; modern Xcode SDK compatibility must be checked. |
+| iPhone 6 / iOS 12.5.8 baseline | Deployment target set to iOS 12.0 | Earlier iOS 12 target build passed; newest source changes still need CI and iOS 12 simulator/device validation. |
 | iPad / Apple TV excluded | Implemented in config | Device family 1 only. |
 | App Store signing/distribution | Not done | Current artifact is unsigned; requires signing, App Store Connect metadata and review. |
 | Real-device validation | Not done | No physical iPhone test evidence. |
@@ -99,9 +99,9 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 ## Immediate priority queue
 
 1. Build the iOS target with deployment target iOS 12.0 and resolve any availability/compiler errors.
-2. Port missing Android screen/navigation features and playlist/checker result persistence.
+2. Port missing Android screen/navigation features; validate playlist cache/offline recovery and checker result persistence.
 3. Verify all settings against real iPhone playback: playback speed, Auto Play, quality bitrate hints, buffer hints, retry, background audio and PiP. Hardware decoder is informational because AVPlayer does not expose an equivalent public switch.
-4. Implement/verify EPG guide UI, retry behavior, PiP and update-check workflow.
+4. Validate EPG channel mapping/search, retry behavior, PiP and App Store version-check workflow.
 5. Add automated tests for M3U parsing, playlist cache fallback, settings persistence, checker classifications/rechecks, XMLTV channel mapping and App Store version comparison. Automated test coverage remains.
 6. Compare Android and iOS feature-by-feature with screenshots and behavior tests; update this checklist with verified results.
 7. Sign and distribute through TestFlight/App Store only after device and review checks.
