@@ -715,7 +715,6 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         if section == 1 {
             switch row {
             case 1: return ("sany.ios.autoPlay", true)
-            case 3: return ("sany.ios.hardwareDecoder", true)
             case 5: return ("sany.ios.autoRetry", true)
             case 6: return ("sany.ios.backgroundPlayback", true)
             case 7: return ("sany.ios.pictureInPicture", true)
@@ -751,6 +750,8 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         case "Playback speed": return String(format: "%.2fx", d.object(forKey: "sany.ios.speed") as? Double ?? 1.0)
         case "Video Quality": return d.string(forKey: "sany.ios.quality") ?? "Auto"
         case "Buffer Control": return d.string(forKey: "sany.ios.buffer") ?? "Balanced"
+        case "Hardware Decoder": return "iOS selects decoder automatically"
+        case "Background video playback": return "iOS background audio; PiP is separate"
         case "Playlist manager": return "Saved playlists: \(savedPlaylists().count)"
         case "Permanent SANY playlist": return "Owner playlist • locked"
         case "EPG sources (3)": return "3 built-in XMLTV feeds"
@@ -771,6 +772,8 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
                 SANYStyle.applyTheme(value)
                 self?.table.reloadData()
             }
+        case "Hardware Decoder":
+            showMessage("Android ExoPlayer-এর মতো hardware/software decoder বেছে নেওয়ার public API iOS AVPlayer দেয় না। iOS নিরাপদ ও সমর্থিত decoder নিজে নির্বাচন করে; তাই ভুয়া ON/OFF সুইচ দেখানো হচ্ছে না।")
         case "Playback speed":
             choose(title: "Playback speed", options: ["0.75x", "1.0x", "1.25x", "1.5x", "2.0x"], key: "sany.ios.speed", values: ["0.75", "1.0", "1.25", "1.5", "2.0"])
         case "Video Quality":
@@ -916,14 +919,45 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     }
 
     private func checkForUpdates() {
-        guard let url = URL(string: "https://github.com/Sany100/Sany-iptv/releases/latest") else { return }
-        URLSession.shared.dataTask(with: url) { _, response, error in
+        // App Store lookup is the source of truth for public iOS updates.
+        guard let url = URL(string: "https://itunes.apple.com/lookup?bundleId=com.sany.iptv.ios&entity=software") else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
-                if let error = error { self.showMessage("Update check failed: \(error.localizedDescription)"); return }
-                let finalURL = (response as? HTTPURLResponse)?.url?.absoluteString ?? url.absoluteString
-                self.showMessage("GitHub latest release page reached. iOS version checking and signed update delivery are not configured yet.\n\(finalURL)")
+                if let error = error { self.showMessage("App Store update check failed: \(error.localizedDescription)"); return }
+                guard let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let count = json["resultCount"] as? Int, count > 0,
+                      let item = (json["results"] as? [[String: Any]])?.first,
+                      let storeVersion = item["version"] as? String,
+                      let storeURLString = item["trackViewUrl"] as? String,
+                      let storeURL = URL(string: storeURLString) else {
+                    self.showMessage("SANY IPTV iOS App Store listing এখনও পাওয়া যায়নি। App Store-এ প্রকাশিত হলে এখান থেকে ভার্সন চেক ও Store update করা যাবে। Unsigned IPA দিয়ে App Store update করা যাবে না.")
+                    return
+                }
+                let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+                if self.compareVersion(storeVersion, isNewerThan: current) {
+                    let alert = UIAlertController(title: "Update available", message: "Installed: \(current)\nApp Store: \(storeVersion)\nনতুন সংস্করণটি App Store থেকে ইনস্টল করুন।", preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "Open App Store", style: .default) { _ in UIApplication.shared.open(storeURL) })
+                    alert.addAction(UIAlertAction(title: "Later", style: .cancel))
+                    self.present(alert, animated: true)
+                } else {
+                    self.showMessage("আপনার SANY IPTV সর্বশেষ App Store সংস্করণে আছে। Version: \(current)")
+                }
             }
         }.resume()
+    }
+
+    private func compareVersion(_ candidate: String, isNewerThan current: String) -> Bool {
+        let lhs = candidate.split(separator: ".").compactMap { Int($0) }
+        let rhs = current.split(separator: ".").compactMap { Int($0) }
+        for index in 0..<max(lhs.count, rhs.count) {
+            let a = index < lhs.count ? lhs[index] : 0
+            let b = index < rhs.count ? rhs[index] : 0
+            if a != b { return a > b }
+        }
+        return false
     }
 
     private func copyDeviceID() {
