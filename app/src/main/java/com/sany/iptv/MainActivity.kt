@@ -164,6 +164,8 @@ class MainActivity : AppCompatActivity() {
         val restoringBackground = savedInstanceState != null
         section = savedInstanceState?.getString("ui_section") ?: prefs.getString("ui_section", "Live TV") ?: "Live TV"
         selectedGroup = savedInstanceState?.getString("ui_group") ?: prefs.getString("ui_group", "All") ?: "All"
+        // Keep the Live TV channel list empty until the user opens a category.
+        if (section == "Live TV" && selectedGroup == "All") selectedGroup = "Select category"
         searchQuery = savedInstanceState?.getString("ui_search") ?: prefs.getString("ui_search", "") ?: ""
         val resumeStream = if (restoringBackground) prefs.getString("resume_stream", null) else null
         prefs.edit().putBoolean("resume_without_splash", false).apply()
@@ -860,7 +862,7 @@ class MainActivity : AppCompatActivity() {
         val filtered = filteredChannels()
         countLabel.text = "${filtered.size} ITEMS  •  ${channels.size} IN PLAYLIST"
         if (filtered.isEmpty()) {
-            val message = if (section == "Live TV" && checkerRunning) "Checking channels… ${liveTvProgressLabel()}" else "No working channels found"
+            val message = if (section == "Live TV" && selectedGroup == "Select category") "একটি Category নির্বাচন করুন — সেই Category-র চ্যানেল এখানে দেখাবে" else if (section == "Live TV" && checkerRunning) "Checking channels… ${liveTvProgressLabel()}" else "No working channels found"
             container.addView(text(message, 15, muted, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
             return
         }
@@ -1040,6 +1042,7 @@ class MainActivity : AppCompatActivity() {
                 else -> !isMovie(c) && !isSeries(c)
             }
             val groupMatch = when {
+                section == "Live TV" && selectedGroup == "Select category" -> false
                 selectedGroup == "All" -> true
                 section == "Series" && selectedGroup == "Anime" -> isAnime(c)
                 section == "Movies" && selectedGroup in movieCategories -> matchesMovieCategory(c, selectedGroup)
