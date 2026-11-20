@@ -703,6 +703,12 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(3), 0, 0)
         })
         playlistSelector.addView(playlistText, LinearLayout.LayoutParams(0, -2, 1f))
+        val searchAction = text("⌕", 25, accent, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(10), 0)
+            setOnClickListener { showChannelSearchDialog() }
+        }
+        playlistSelector.addView(searchAction)
         playlistSelector.addView(text("⌄", 25, accent, true))
         contentArea.addView(playlistSelector, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 50 else 58)))
 
@@ -777,6 +783,31 @@ class MainActivity : AppCompatActivity() {
             override fun onViewAttachedToWindow(view: View) { pulse.start() }
             override fun onViewDetachedFromWindow(view: View) { pulse.cancel() }
         })
+    }
+
+    private fun showChannelSearchDialog() {
+        val input = EditText(this).apply {
+            hint = "Search channels, movies, series..."
+            setTextColor(white)
+            setHintTextColor(muted)
+            setSingleLine(true)
+            setText(searchQuery)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Search channels")
+            .setView(input)
+            .setPositiveButton("SEARCH") { _, _ ->
+                searchQuery = input.text.toString().trim()
+                displayedLimit = 60
+                renderListOnly()
+            }
+            .setNeutralButton("CLEAR") { _, _ ->
+                searchQuery = ""
+                displayedLimit = 60
+                renderListOnly()
+            }
+            .setNegativeButton("CLOSE", null)
+            .show()
     }
 
     private fun renderCategories() {
