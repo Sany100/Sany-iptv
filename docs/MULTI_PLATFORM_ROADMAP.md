@@ -1,57 +1,65 @@
-# SANY IPTV multi-platform roadmap
+# SANY IPTV iPhone support roadmap
 
-## Goal
+## Scope
 
-Deliver SANY IPTV across Android phones/tablets, Android TV/TV boxes, iPhone, iPad, and Apple TV with a consistent visual identity, shared playlist/account data, and equivalent core IPTV features.
+Build an iPhone version only. iPad and Apple TV are explicitly out of scope. Keep the existing Android app working and in the same GitHub repository.
+
+## Target iPhone range
+
+- Oldest target: iPhone 6 running iOS 12.5.8.
+- Newest requested target: iPhone 18 Pro Max.
+- Support must be verified by iOS version and device testing, not inferred from model names alone.
+- iPhone 6 is limited to the iOS 12 generation; it cannot run apps that require iOS 13 or later. Apple lists iOS 12.5.8 updates for legacy devices including iPhone 6. See https://support.apple.com/en-us/118387.
+- To retain iPhone 6 compatibility, start with a UIKit-based iOS app and set the deployment target to iOS 12. SwiftUI cannot be the only UI framework because it requires iOS 13 or later.
+- Use AVPlayer for native HLS playback, while validating supported stream formats and codecs on the oldest device.
 
 ## Current implementation (audited)
 
-- The existing application is a native Android app written in Kotlin.
-- Android UI is built with Android Views and AndroidX AppCompat.
+- The existing app is a native Android app written in Kotlin.
+- Android UI uses Android Views and AndroidX AppCompat.
 - Video playback uses AndroidX Media3 / ExoPlayer.
-- Android-specific integrations include Android Activity lifecycle, SharedPreferences, Android file picker, Android Picture-in-Picture, Android TV Leanback detection, and Android system APIs.
-- There is currently no Flutter, Kotlin Multiplatform, Swift, iOS, or tvOS project in the repository.
-- The current Android APK cannot be installed on iOS or Apple TV.
+- Android-specific integrations include Activity lifecycle, SharedPreferences, Android file picker, Picture-in-Picture, Android TV Leanback detection, and Android system APIs.
+- There is currently no iOS/Swift project in this repository.
+- The Android APK cannot be installed on an iPhone. The iPhone version needs its own iOS build (IPA distributed through Apple's supported signing, TestFlight, or App Store processes).
 
-## Target delivery model
+## Delivery model
 
-Keep one GitHub repository and one SANY IPTV product, with platform-specific installable builds:
+One SANY IPTV repository and product, with separate native platform builds:
 
-| Platform | Deliverable | UI / playback technology |
+| Platform | Deliverable | Implementation |
 | --- | --- | --- |
-| Android phone / tablet | APK / AAB | Existing Kotlin app initially |
-| Android TV / TV box | Android APK / AAB | Existing Kotlin app with D-pad navigation |
-| iPhone / iPad | iOS app (IPA via Xcode signing / TestFlight / App Store) | SwiftUI and AVPlayer |
-| Apple TV | tvOS app | SwiftUI tvOS interface and AVPlayer |
+| Android phones/tablets/Android TV/TV boxes | APK / AAB | Existing Kotlin Android app |
+| iPhone 6 through iPhone 18 Pro Max | iOS app | Swift + UIKit (iOS 12-compatible baseline) + AVPlayer |
 
-An APK, iOS IPA, and tvOS app are different platform binaries. A single repository and shared product experience are achievable; one binary for every operating system is not.
+A single repository and shared product experience are achievable; one installable binary for Android and iOS is not.
 
-## Recommended implementation architecture
+## iPhone feature parity
 
-1. Preserve the working Android application while the Apple versions are developed.
-2. Define platform-neutral product behavior and data contracts for playlists, channel groups, favorites, EPG, playback preferences, maintenance status, and app update announcements.
-3. Implement iOS and iPadOS with SwiftUI, AVPlayer, native document import, and touch-first navigation.
-4. Implement tvOS as a dedicated target using SwiftUI focus navigation and the Apple TV remote. Reuse the same data and playback services where supported, but adapt layouts for television.
-5. Move shared remote configuration and user data to a documented backend/API so settings and favorites can synchronize across platforms. Do not embed private admin credentials or signing secrets in client apps.
-6. Add separate CI build jobs: Android APK/AAB on Android runners and iOS/tvOS builds on macOS runners. Apple distribution requires Apple signing credentials and provisioning.
-7. Test playlist import, HLS playback, EPG, search, favorites, maintenance mode, update notices, remote/touch navigation, and background/PiP behavior on real devices.
-
-## Feature parity checklist
-
-- [ ] Shared SANY IPTV branding and visual design
-- [ ] M3U/M3U8 URL and file import
+- [ ] SANY IPTV branding and matching visual design
+- [ ] M3U/M3U8 playlist URL import
+- [ ] Local playlist file import using iOS document picker
 - [ ] Channel list, categories, and search
 - [ ] Stream checking / channel status
 - [ ] Favorites
 - [ ] HLS playback and playback controls
 - [ ] EPG
-- [ ] Playback quality and buffering preferences
+- [ ] Playback quality and buffering preferences where supported by the stream
 - [ ] Maintenance mode and remote announcements
-- [ ] Cross-device account/settings synchronization
-- [ ] Touch navigation for iPhone/iPad
-- [ ] Siri Remote / focus navigation for Apple TV
-- [ ] Platform-specific build and release automation
+- [ ] Safe update/version notices
+- [ ] Touch-first navigation for all supported iPhone screen sizes
+- [ ] Memory/performance tuning for iPhone 6
+- [ ] Verify playback and UI on iPhone 6 and representative newer devices through iPhone 18 Pro Max
+
+## Engineering and release plan
+
+1. Preserve the current Android project and its existing features.
+2. Add a separate iOS project/target in this repository; do not try to package Android Kotlin code as an iPhone app.
+3. Reimplement the iPhone UI and platform integrations in Swift/UIKit. Reuse the same design system, data formats, playlist parsing rules, and backend endpoints where practical.
+4. Define shared data contracts for playlists, categories, favorites, EPG, playback preferences, maintenance status, and update announcements.
+5. Use AVPlayer for HLS and test real-world playlist URLs, redirects, headers, codecs, and older-device performance.
+6. Add iOS build automation on macOS runners. Apple signing, provisioning, TestFlight, or App Store distribution requires the appropriate Apple developer setup.
+7. Test on physical devices and supported iOS versions. A successful compile alone does not establish compatibility.
 
 ## Release status
 
-Apple platform support is **planned, not implemented**. The existing Android app remains the only implemented client until the iOS and tvOS targets are built and tested. Do not advertise iPhone, iPad, or Apple TV compatibility before those builds pass device testing and are distributed through Apple's supported channels.
+iPhone support is **planned, not implemented**. Android remains the only implemented client at this point. Do not advertise iPhone compatibility or distribute an iOS build until the iOS target has been implemented, signed, and tested.
