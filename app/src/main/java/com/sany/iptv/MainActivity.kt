@@ -121,14 +121,27 @@ class MainActivity : AppCompatActivity() {
     private var maintenanceOverlay: View? = null
     private val maintenanceHandler = Handler(Looper.getMainLooper())
     private val maintenanceConfigUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/maintenance.json"
+    // A small bounded pool prevents one thread per channel logo on low-memory phones.
+    private val logoExecutor by lazy {
+        java.util.concurrent.Executors.newFixedThreadPool(
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
         val lastEpgUpdate = prefs.getString("epg_last_updated", "0")?.toLongOrNull() ?: 0L
+        // On Android 6, defer the non-essential EPG refresh until the UI has settled.
         if (System.currentTimeMillis() - lastEpgUpdate >= 24L * 60L * 60L * 1000L) {
-            refreshEpgSources(false)
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (!isFinishing && !isDestroyed) refreshEpgSources(false)
+                }, 12_000L)
+            } else {
+                refreshEpgSources(false)
+            }
         }
         // Keep automatic update checks enabled for every installation; there is no user-facing switch.
         prefs.edit().putBoolean("auto_update_check", true).apply()
@@ -166,19 +179,20 @@ class MainActivity : AppCompatActivity() {
         buildShell(showSplash = !restoringBackground)
         checkMaintenanceMode()
         if (!restoringBackground) {
-            home.alpha = 0f
-            home.translationY = dp(14).toFloat()
-            home.scaleX = 0.985f
-            home.scaleY = 0.985f
-            home.post {
-                if (prefs.getBoolean("reduce_ui_motion", false)) {
-                    home.alpha = 1f
-                    home.translationY = 0f
-                    home.scaleX = 1f
-                    home.scaleY = 1f
-                } else {
+            // Avoid costly first-frame transforms on Android 6 devices.
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
+                home.alpha = 1f
+                home.translationY = 0f
+                home.scaleX = 1f
+                home.scaleY = 1f
+            } else {
+                home.alpha = 0f
+                home.translationY = dp(14).toFloat()
+                home.scaleX = 0.985f
+                home.scaleY = 0.985f
+                home.post {
                     home.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
-                        .setDuration(420).start()
+                        .setDuration(300).start()
                 }
             }
         }
@@ -560,12 +574,18 @@ class MainActivity : AppCompatActivity() {
         // Keep the Home header clean: the four quick-action controls are hidden as requested.
         top.addView(titleRow)
         home.addView(top, LinearLayout.LayoutParams(-1, -2))
-        // Animate the header into a front-facing 3D position when the home screen opens.
-        top.alpha = 0f
-        top.translationY = dp(-8).toFloat()
-        top.post {
-            top.animate().alpha(1f).translationY(0f).rotationX(0f)
-                .setDuration(620).setInterpolator(DecelerateInterpolator(1.5f)).start()
+        // Keep Android 6 rendering simple; newer devices retain the header transition.
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
+            top.alpha = 1f
+            top.translationY = 0f
+            top.rotationX = 0f
+        } else {
+            top.alpha = 0f
+            top.translationY = dp(-8).toFloat()
+            top.post {
+                top.animate().alpha(1f).translationY(0f).rotationX(0f)
+                    .setDuration(320).setInterpolator(DecelerateInterpolator()).start()
+            }
         }
 
         contentArea = LinearLayout(this).apply {
@@ -827,17 +847,24 @@ class MainActivity : AppCompatActivity() {
             }
             channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
                 logo.tag = logoUrl
-                thread {
+                logoExecutor.execute {
                     try {
                         val connection = URL(logoUrl).openConnection().apply {
-                            connectTimeout = 8000
-                            readTimeout = 8000
+                            connectTimeout = 4000
+                            readTimeout = 4000
                         }
-                        val bitmap = connection.getInputStream().use { BitmapFactory.decodeStream(it) }
+                        val bitmap = connection.getInputStream().use { input ->
+                            BitmapFactory.Options().run {
+                                inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                                BitmapFactory.decodeStream(input, null, this)
+                            }
+                        }
                         if (bitmap != null) runOnUiThread {
-                            if (logo.tag == logoUrl) {
+                            if (!isFinishing && logo.tag == logoUrl) {
                                 logo.setImageBitmap(bitmap)
                                 fallbackLogo.visibility = View.GONE
+                            } else {
+                                bitmap.recycle()
                             }
                         }
                     } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
@@ -1994,7 +2021,9 @@ class MainActivity : AppCompatActivity() {
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        val workerCount = minOf(12, snapshot.size)
+        // Android 6 devices often have limited RAM/CPU; keep stream probes bounded.
+        val maxWorkers = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 3 else 8
+        val workerCount = minOf(maxWorkers, snapshot.size)
         val workers = (0 until workerCount).map { worker ->
             thread(name = "SANY-Stream-Check-$worker") {
                 while (true) {
@@ -2174,7 +2203,8 @@ class MainActivity : AppCompatActivity() {
             if (retry.isNotEmpty()) {
                 thread(name = "SANY-Offline-Recheck") {
                     val next = java.util.concurrent.atomic.AtomicInteger(0)
-                    val workers = (0 until minOf(6, retry.size)).map { worker ->
+                    val retryWorkers = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
+                    val workers = (0 until minOf(retryWorkers, retry.size)).map { worker ->
                         thread(name = "SANY-Offline-Recheck-$worker") {
                             while (true) {
                                 val index = next.getAndIncrement()
@@ -2725,6 +2755,7 @@ class MainActivity : AppCompatActivity() {
         }
         playerView?.player = null
         player?.release(); player = null
+        logoExecutor.shutdownNow()
         super.onDestroy()
     }
 
