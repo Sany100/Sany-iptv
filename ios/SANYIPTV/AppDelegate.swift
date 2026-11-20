@@ -639,10 +639,10 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
             } catch { showMessage("Background audio session চালু করা যায়নি: \(error.localizedDescription)") }
         }
         if key == "sany.ios.hardwareDecoder" {
-            showMessage("iOS-এর AVPlayer hardware/software decoder নির্বাচন নিজে নিয়ন্ত্রণ করতে দেয় না। এই পছন্দটি সংরক্ষণ করা হয়েছে, কিন্তু playback engine-এ জোর করে প্রয়োগ করা সম্ভব নয়।")
+            showMessage("iOS AVPlayer hardware/software decoder নির্বাচন করার API দেয় না। তাই সেটিংসটি সংরক্ষিত থাকে, কিন্তু iOS নিজেই decoder নির্বাচন করে।")
         }
         if key == "sany.ios.autoAddEPG" {
-            showMessage("Playlist-এর EPG URL auto-detect করার সমর্থন পরবর্তী EPG integration ধাপে যুক্ত হবে।")
+            showMessage("Auto add EPG চালু: M3U playlist-এর url-tvg / x-tvg-url পাওয়া গেলে সেটি সংরক্ষণ করা হবে এবং পরবর্তী EPG update-এ যুক্ত হবে।")
         }
     }
 
@@ -836,7 +836,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
             UserDefaults.standard.set(id, forKey: key)
         }
         UIPasteboard.general.string = id
-        showMessage("এই iPhone app-এর installation ID কপি হয়েছে। এটি Android Device ID নয় এবং বর্তমান Android maintenance allow-list-এর সঙ্গে সরাসরি কাজ করবে না।")
+        showMessage("এই iPhone-এর Installation ID কপি হয়েছে। Maintenance ON অবস্থায় iPhone-কে অনুমতি দিতে maintenance.json-এর allowed_ios_devices তালিকায় এই ID যোগ করুন। Android-এর allowed_devices তালিকা অপরিবর্তিত থাকবে।")
     }
 
     private func checkMaintenance() {
