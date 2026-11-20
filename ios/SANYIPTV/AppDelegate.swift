@@ -1,5 +1,7 @@
 import UIKit
 import AVKit
+import BackgroundTasks
+import zlib
 
 private struct SANYChannel {
     let name: String
@@ -11,6 +13,10 @@ private struct SANYChannel {
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
+    private var mainTabs: UITabBarController?
+    private var maintenanceTimer: Timer?
+    private let maintenanceURL = URL(string: "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/maintenance.json")!
+    private let backgroundEPGTaskID = "com.sany.iptv.ios.epg-refresh"
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         let window = UIWindow(frame: UIScreen.main.bounds)
@@ -26,8 +32,84 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         window.rootViewController = tabs
         window.makeKeyAndVisible()
         self.window = window
+        self.mainTabs = tabs
+        if #available(iOS 13.0, *) {
+            BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundEPGTaskID, using: nil) { task in
+                self.handleBackgroundEPG(task: task as! BGAppRefreshTask)
+            }
+            scheduleBackgroundEPG()
+        }
+        checkMaintenanceAccess()
+        maintenanceTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.checkMaintenanceAccess() }
         return true
     }
+
+    private func checkMaintenanceAccess() {
+        var request = URLRequest(url: maintenanceURL)
+        request.timeoutInterval = 8
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            guard let self = self, error == nil, let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            let enabled = json["enabled"] as? Bool ?? false
+            let message = json["message"] as? String ?? "আমাদের অ্যাপে উন্নয়নমূলক কাজ চলছে। পরে আবার চেষ্টা করুন।"
+            let allowed = json["allowed_ios_devices"] as? [String] ?? []
+            let deviceID = Self.installationID()
+            DispatchQueue.main.async {
+                guard let window = self.window else { return }
+                if enabled && !allowed.contains(deviceID) {
+                    if !(window.rootViewController is MaintenanceViewController) {
+                        window.rootViewController = MaintenanceViewController(message: message, deviceID: deviceID)
+                    }
+                } else if window.rootViewController is MaintenanceViewController {
+                    window.rootViewController = self.mainTabs
+                }
+            }
+        }.resume()
+    }
+
+    private static func installationID() -> String {
+        let key = "sany.ios.installationID"
+        if let value = UserDefaults.standard.string(forKey: key) { return value }
+        let value = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(value, forKey: key)
+        return value
+    }
+
+    @available(iOS 13.0, *)
+    private func scheduleBackgroundEPG() {
+        let request = BGAppRefreshTaskRequest(identifier: backgroundEPGTaskID)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 24 * 60 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    @available(iOS 13.0, *)
+    private func handleBackgroundEPG(task: BGAppRefreshTask) {
+        scheduleBackgroundEPG()
+        let operation = EPGRepository.update { result in
+            task.setTaskCompleted(success: (try? result.get()) != nil)
+        }
+        task.expirationHandler = { operation.cancel() }
+    }
+}
+
+private final class MaintenanceViewController: UIViewController {
+    private let message: String
+    private let deviceID: String
+    init(message: String, deviceID: String) { self.message = message; self.deviceID = deviceID; super.init(nibName: nil, bundle: nil) }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor(red: 0.018, green: 0.035, blue: 0.085, alpha: 1)
+        let heading = UILabel(); heading.text = "SANY IPTV — MAINTENANCE"; heading.textColor = .white; heading.font = .boldSystemFont(ofSize: 22); heading.textAlignment = .center
+        let detail = UILabel(); detail.text = message; detail.textColor = .white; detail.numberOfLines = 0; detail.textAlignment = .center
+        let id = UILabel(); id.text = "iPhone Installation ID\\n\\(deviceID)"; id.textColor = .lightGray; id.numberOfLines = 0; id.textAlignment = .center; id.font = .systemFont(ofSize: 12)
+        let copy = UIButton(type: .system); copy.setTitle("COPY DEVICE ID (ADMIN)", for: .normal); copy.addTarget(self, action: #selector(copyID), for: .touchUpInside)
+        let stack = UIStackView(arrangedSubviews: [heading, detail, id, copy]); stack.axis = .vertical; stack.spacing = 22; stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+        NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 26), stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -26), stack.centerYAnchor.constraint(equalTo: view.centerYAnchor)])
+    }
+    @objc private func copyID() { UIPasteboard.general.string = deviceID; let alert = UIAlertController(title: "Copied", message: "Add this ID to allowed_ios_devices in maintenance.json to allow this iPhone during maintenance.", preferredStyle: .alert); alert.addAction(UIAlertAction(title: "OK", style: .default)); present(alert, animated: true) }
 }
 
 private enum SANYStyle {
@@ -776,26 +858,15 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     ]
 
     private func showEPGSources() {
-        showMessage(epgSources.enumerated().map { "Source \( $0.offset + 1): \( $0.element)" }.joined(separator: "\n\n") + "\n\nAndroid refreshes these feeds daily. Full iOS XMLTV merge and scheduled refresh are still pending.")
+        let last = UserDefaults.standard.string(forKey: "sany.ios.epgLastUpdated") ?? "Never"
+        showMessage(epgSources.enumerated().map { "Source \\( $0.offset + 1): \\( $0.element)" }.joined(separator: "\\n\\n") + "\\n\\nLast successful update: \\(last)\\niOS background refresh is best-effort; iOS controls when it runs.")
     }
 
     private func updateEPG() {
-        let group = DispatchGroup()
-        var results: [String] = []
-        for source in epgSources {
-            guard let url = URL(string: source) else { continue }
-            group.enter()
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 30
-            URLSession.shared.dataTask(with: request) { data, response, error in
-                let status = (response as? HTTPURLResponse)?.statusCode
-                let label = error == nil && (200...299).contains(status ?? 0) && data != nil ? "reachable" : "failed"
-                results.append("\(source): \(label)")
-                group.leave()
-            }.resume()
+        _ = EPGRepository.update { result in
+            switch result {
+            case .success(let summary): self.showMessage(summary)
+            case .failure(let error): self.showMessage("EPG update failed: \\(error.localizedDescription)")
+            }
         }
-        group.notify(queue: .main) {
-            self.showMessage("EPG source connectivity check:\n" + results.joined(separator: "\n") + "\n\nএটি feed merge/download নয়; full XMLTV integration এখনও বাকি।")
-        }
-    }
-}
+    }}
