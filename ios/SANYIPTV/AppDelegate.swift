@@ -984,12 +984,17 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
     private let searchBar = UISearchBar()
     private let timeFilter = UISegmentedControl(items: ["All", "Now", "Upcoming"])
     private var programmes: [EPGProgramme] = []
-    private var currentChannel = ""
-    private var currentChannelID = ""
     private var channelNames: [String: String] = [:]
+    private var currentChannelID = ""
+    private var currentChannel = ""
+    private var currentTitle = ""
+    private var currentStart: Date?
+    private var currentStop: Date?
+    private var captureTitle = false
     private var captureDisplayName = false
     private var displayNameText = ""
     private var searchText = ""
+
     private var visibleProgrammes: [EPGProgramme] {
         let now = Date()
         return programmes.filter { item in
@@ -1003,11 +1008,6 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
             return matchesText && matchesTime
         }
     }
-    private var currentTitle = ""
-    private var currentStart: Date?
-    private var currentStop: Date?
-    private var captureTitle = false
-    private var xmlError: String?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -1015,20 +1015,20 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
         view.backgroundColor = SANYStyle.background
         table.backgroundColor = SANYStyle.background
         table.dataSource = self
+        table.rowHeight = UITableView.automaticDimension
+        table.estimatedRowHeight = 64
+        table.register(UITableViewCell.self, forCellReuseIdentifier: "programme")
         searchBar.delegate = self
         searchBar.placeholder = "Search channel or programme"
         searchBar.barStyle = .black
         timeFilter.selectedSegmentIndex = 0
         timeFilter.addTarget(self, action: #selector(filtersChanged), for: .valueChanged)
-        table.rowHeight = UITableView.automaticDimension
-        table.estimatedRowHeight = 64
-        table.register(UITableViewCell.self, forCellReuseIdentifier: "programme")
+        searchBar.translatesAutoresizingMaskIntoConstraints = false
+        timeFilter.translatesAutoresizingMaskIntoConstraints = false
         table.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(searchBar)
         view.addSubview(timeFilter)
         view.addSubview(table)
-        searchBar.translatesAutoresizingMaskIntoConstraints = false
-        timeFilter.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -1064,7 +1064,7 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
                     self.programmes.sort { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
                     self.table.reloadData()
                     self.navigationItem.prompt = "\(self.programmes.count) programmes"
-                    if self.programmes.isEmpty { self.showGuideError("EPG ফাইলে programme entry পাওয়া যায়নি।") }
+                    if self.programmes.isEmpty { self.showGuideError("EPG programme পাওয়া যায়নি।") }
                 } else {
                     self.showGuideError(parser.parserError?.localizedDescription ?? "EPG XML parse failed")
                 }
@@ -1083,9 +1083,15 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
         table.backgroundView = label
     }
 
-    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
-        if elementName == "programme" {
-            currentChannel = attributeDict["channel"] ?? "Unknown channel"
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
+        if elementName == "channel" {
+            currentChannelID = attributeDict["id"] ?? ""
+        } else if elementName == "display-name" {
+            captureDisplayName = true
+            displayNameText = ""
+        } else if elementName == "programme" {
+            let identifier = attributeDict["channel"] ?? ""
+            currentChannel = channelNames[identifier] ?? identifier
             currentStart = parseXMLTVDate(attributeDict["start"])
             currentStop = parseXMLTVDate(attributeDict["stop"])
             currentTitle = ""
@@ -1095,11 +1101,18 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        if captureTitle { currentTitle += string }\n        if captureDisplayName { displayNameText += string }
+        if captureTitle { currentTitle += string }
+        if captureDisplayName { displayNameText += string }
     }
 
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
-        if elementName == "title" { captureTitle = false }\n        if elementName == "display-name" { captureDisplayName = false; if !currentChannelID.isEmpty && channelNames[currentChannelID] == nil { channelNames[currentChannelID] = displayNameText.trimmingCharacters(in: .whitespacesAndNewlines) } }
+        if elementName == "title" { captureTitle = false }
+        if elementName == "display-name" {
+            captureDisplayName = false
+            if !currentChannelID.isEmpty && channelNames[currentChannelID] == nil {
+                channelNames[currentChannelID] = displayNameText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
         if elementName == "programme" {
             let name = currentTitle.trimmingCharacters(in: .whitespacesAndNewlines)
             if !name.isEmpty {
@@ -1117,7 +1130,14 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
         return formatter.date(from: String(value.prefix(20)))
     }
 
-    @objc private func filtersChanged() { table.reloadData() }\n    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) { self.searchText = searchText; table.reloadData() }\n    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) { searchBar.resignFirstResponder() }\n\n    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { visibleProgrammes.count }
+    @objc private func filtersChanged() { table.reloadData() }
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        self.searchText = searchText
+        table.reloadData()
+    }
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) { searchBar.resignFirstResponder() }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { visibleProgrammes.count }
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "programme", for: indexPath)
         let item = visibleProgrammes[indexPath.row]
@@ -1130,7 +1150,7 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
         cell.backgroundColor = SANYStyle.panel
         cell.textLabel?.textColor = .white
         cell.textLabel?.numberOfLines = 0
-        cell.textLabel?.text = "\(period)  •  \(item.channel)\n\(item.title)"
+        cell.textLabel?.text = "\(period) • \(item.channel)\n\(item.title)"
         cell.textLabel?.font = .systemFont(ofSize: 13, weight: .medium)
         return cell
     }
