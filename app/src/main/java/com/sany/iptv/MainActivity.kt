@@ -267,8 +267,7 @@ class MainActivity : AppCompatActivity() {
                 val config = JSONObject(body)
                 if (!config.optBoolean("enabled", true)) return@thread
                 val minimumCode = config.optInt("minimum_version_code", 0)
-                val currentCode = if (Build.VERSION.SDK_INT >= 28) packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
-                    else @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionCode
+                val currentCode = packageManager.getPackageInfo(packageName, 0).versionCode
                 val required = currentCode < minimumCode
                 val version = config.optString("latest_version", "নতুন সংস্করণ")
                 val apkUrl = config.optString("apk_url", "")
