@@ -25,9 +25,6 @@ jobs:
           python3 -m venv .venv
           .venv/bin/pip install cairosvg
           .venv/bin/python ios/generate_app_icon.py
-          brew install xcodegen
-          cd ios
-          xcodegen generate
       - name: Show Xcode version
         run: xcodebuild -version
       - name: Build iPhone Simulator app
