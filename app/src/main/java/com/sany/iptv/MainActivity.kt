@@ -966,7 +966,7 @@ class MainActivity : AppCompatActivity() {
             visibility = View.VISIBLE
         }
         contentArea.addView(categoryHeaderContainer, LinearLayout.LayoutParams(-1, dp(42)).apply {
-            topMargin = dp(2)
+            topMargin = dp(10)
         })
         val categoriesScroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
