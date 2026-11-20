@@ -925,7 +925,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val directoryChannels = if (section == "Live TV") liveTvVisibleCandidates() else channels
+        val directoryChannels = if (section == "Live TV") {
+            liveTvVisibleCandidates().filter { !isMovie(it) && !isSeries(it) }
+        } else channels
         val groups = listOf("All") + directoryChannels.asSequence().map { it.group }
             .distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
         val options = when (section) {
@@ -967,6 +969,17 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(12), 0, 0, 0)
             })
             categoryCards += card
+        }
+        if (section == "Live TV" && categoryDirectory && categoryCards.isEmpty()) {
+            val emptyMessage = if (checkerRunning) {
+                "চ্যানেল পরীক্ষা চলছে… ${liveTvProgressLabel()}"
+            } else {
+                "কোনো Working Channel পাওয়া যায়নি"
+            }
+            categoryRow.addView(text(emptyMessage, 14, muted, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(30), dp(12), dp(30))
+            }, LinearLayout.LayoutParams(-1, -2))
         }
         if (prefs.getString("channel_view_mode", "list") == "grid") {
             categoryCards.chunked(2).forEach { pair ->
