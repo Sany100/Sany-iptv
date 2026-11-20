@@ -1389,7 +1389,7 @@ class MainActivity : AppCompatActivity() {
                         cornerRadius = dp(12).toFloat()
                         setStroke(dp(1), 0xFF9BCBFF.toInt())
                     }
-                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                    setPadding(dp(7), dp(2), dp(7), dp(2))
                     val pulse = ValueAnimator.ofFloat(0.72f, 1f).apply {
                         duration = 750L
                         repeatCount = ValueAnimator.INFINITE
@@ -3110,11 +3110,11 @@ class MainActivity : AppCompatActivity() {
         listOf(previousButton, playPauseButton, nextButton).forEachIndexed { index, button ->
             button.textSize = if (index == 1) 21f else 19f
             button.typeface = if (index == 1) Typeface.create("sans-serif-light", Typeface.NORMAL) else Typeface.DEFAULT
-            transportRow.addView(button, LinearLayout.LayoutParams(0, dp(32), 1f).apply {
+            transportRow.addView(button, LinearLayout.LayoutParams(0, dp(27), 1f).apply {
                 if (index == 1) { leftMargin = dp(4); rightMargin = dp(4) }
             })
         }
-        controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(32)))
+        controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(27)))
 
         val progressBar = SeekBar(this).apply {
             max = 1000
@@ -3123,7 +3123,7 @@ class MainActivity : AppCompatActivity() {
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x668899AA)
             setPadding(dp(2), 0, dp(2), 0)
         }
-        controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(20)))
+        controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(15)))
         val infoRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -3221,8 +3221,8 @@ class MainActivity : AppCompatActivity() {
         playerControlsPanel = controlsPanel
         infoRow.addView(settingsButton, LinearLayout.LayoutParams(dp(42), dp(40)))
         infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(52), dp(44)))
-        controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(30)))
-        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(94), Gravity.TOP).apply {
+        controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(29)))
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(80), Gravity.TOP).apply {
             topMargin = dp(232)
             leftMargin = dp(8); rightMargin = dp(8)
         })
@@ -3328,6 +3328,13 @@ class MainActivity : AppCompatActivity() {
             (listContainer.parent as? ScrollView)?.scrollTo(0, 0)
         }
 
+        // Reserve the dock area below the inline video so channel cards never sit behind controls.
+        if (::listContainer.isInitialized) {
+            listContainer.setPadding(
+                listContainer.paddingLeft, dp(80),
+                listContainer.paddingRight, listContainer.paddingBottom
+            )
+        }
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
         setPlayerFullscreen(keepFullscreenMode)
         val lowerUrl = streamUrl.substringBefore("?").substringBefore("#").lowercase()
@@ -3435,6 +3442,12 @@ class MainActivity : AppCompatActivity() {
         playerHeader = null
         playerFullscreenButton = null
         playerControlsPanel = null
+        if (::listContainer.isInitialized) {
+            listContainer.setPadding(
+                listContainer.paddingLeft, 0,
+                listContainer.paddingRight, listContainer.paddingBottom
+            )
+        }
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
         playerView?.player = null
