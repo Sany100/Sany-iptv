@@ -2461,14 +2461,13 @@ class MainActivity : AppCompatActivity() {
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
         // Scale checker concurrency by Android version.
-        // Android 14+ uses 68 workers; Android 10-13 uses 48.
-        // Android 7-9 uses 32; Android 6 and below use 4.
+        // Android 14+ uses 48 workers; Android 10-13 uses 32.
+        // Android 6-9 uses 8 workers.
         // Actual throughput still depends on device resources and server throttling.
         val maxWorkers = when {
-            Build.VERSION.SDK_INT >= 34 -> 68
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 48
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.N -> 32
-            else -> 4
+            Build.VERSION.SDK_INT >= 34 -> 48
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 32
+            else -> 8
         }
         val workerCount = minOf(maxWorkers, snapshot.size)
         val workers = (0 until workerCount).map { worker ->
