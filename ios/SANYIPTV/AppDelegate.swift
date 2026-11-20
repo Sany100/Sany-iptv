@@ -119,7 +119,7 @@ private enum SANYStyle {
             : UIColor(red: 0.018, green: 0.035, blue: 0.085, alpha: 1)
     }
     static var panel: UIColor {
-        (UserDefaults.standard.string(forKey: "sany.ios.theme") == "Day" || (UserDefaults.standard.string(forKey: "sany.ios.theme") == "System default" && UITraitCollection.current.userInterfaceStyle == .light))
+        (UserDefaults.standard.string(forKey: "sany.ios.theme") == "Day" || (UserDefaults.standard.string(forKey: "sany.ios.theme") == "System default" && UIScreen.main.traitCollection.userInterfaceStyle == .light))
             ? .white : UIColor(red: 0.045, green: 0.075, blue: 0.14, alpha: 1)
     }
     static var accent: UIColor {
