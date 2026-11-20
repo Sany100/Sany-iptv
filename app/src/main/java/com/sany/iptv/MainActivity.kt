@@ -2460,12 +2460,14 @@ class MainActivity : AppCompatActivity() {
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        // Keep network probes bounded while increasing throughput for large playlists.
-        // Android 6 devices have tighter resource limits; newer devices can handle more I/O workers.
-        // 48 workers improve large-playlist throughput on Android 7+ while keeping concurrency bounded.
-        // Android 6 remains at 4 workers due to tighter device and runtime resource limits.
+        // Keep older Android devices on a lower concurrency level.
+        // Android 10+ uses 48 workers; Android 7-9 uses 32; Android 6 uses 4.
         // Actual throughput depends on device, network, and IPTV server response times.
-        val maxWorkers = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 4 else 48
+        val maxWorkers = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 48
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.N -> 32
+            else -> 4
+        }
         val workerCount = minOf(maxWorkers, snapshot.size)
         val workers = (0 until workerCount).map { worker ->
             thread(name = "SANY-Stream-Check-$worker") {
