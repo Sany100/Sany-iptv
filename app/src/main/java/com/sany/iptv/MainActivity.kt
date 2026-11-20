@@ -93,8 +93,10 @@ class MainActivity : AppCompatActivity() {
     private val permanentPlaylistUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
     private val playlistUrls = mutableListOf<String>()
     private var selectedGroup = "All"
+    private var liveTvSelectedGroup = "Select category"
     private var section = "Live TV"
     private var searchQuery = ""
+    private var liveTvSearchQuery = ""
     private var player: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
@@ -166,10 +168,16 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putString("playlist_url", permanentPlaylistUrl).apply()
         val restoringBackground = savedInstanceState != null
         section = savedInstanceState?.getString("ui_section") ?: prefs.getString("ui_section", "Live TV") ?: "Live TV"
+        liveTvSelectedGroup = savedInstanceState?.getString("live_tv_group") ?: prefs.getString("live_tv_group", "Select category") ?: "Select category"
+        liveTvSearchQuery = savedInstanceState?.getString("live_tv_search") ?: prefs.getString("live_tv_search", "") ?: ""
         selectedGroup = savedInstanceState?.getString("ui_group") ?: prefs.getString("ui_group", "All") ?: "All"
+        if (section == "Live TV") {
+            selectedGroup = liveTvSelectedGroup
+            searchQuery = liveTvSearchQuery
+        } else {
+            searchQuery = savedInstanceState?.getString("ui_search") ?: prefs.getString("ui_search", "") ?: ""
+        }
         // Keep the Live TV channel list empty until the user opens a category.
-        if (section == "Live TV" && selectedGroup == "All") selectedGroup = "Select category"
-        searchQuery = savedInstanceState?.getString("ui_search") ?: prefs.getString("ui_search", "") ?: ""
         val resumeStream = if (restoringBackground) prefs.getString("resume_stream", null) else null
         prefs.edit().putBoolean("resume_without_splash", false).apply()
         val cachedPlaylist = savedPlaylist?.let { playlistCacheFile(it) }
@@ -595,25 +603,7 @@ class MainActivity : AppCompatActivity() {
         headerTitleView = text(if (section == "Movies") "Movies" else section, 19, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         if (section == "Live TV") {
-            // Compact view-mode switch occupies the small square beside LIVE TV.
-            val viewModeBox = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(dp(3), dp(3), dp(3), dp(3))
-                background = glass(10)
-            }
-            fun viewModeButton(label: String, mode: String) = text(label, 18, if ((prefs.getString("channel_view_mode", "list") ?: "list") == mode) accent else muted, true).apply {
-                gravity = Gravity.CENTER
-                isFocusable = true
-                setPadding(dp(7), 0, dp(7), 0)
-                minWidth = dp(34)
-                tag = "channel_view_mode_$mode"
-                contentDescription = if (mode == "list") "List view" else "Grid view"
-                setOnClickListener { setChannelViewMode(mode) }
-            }
-            viewModeBox.addView(viewModeButton("☷", "list"))
-            viewModeBox.addView(viewModeButton("▦", "grid"))
-            titleRow.addView(viewModeBox, LinearLayout.LayoutParams(-2, dp(40)).apply { rightMargin = dp(8) })
+            titleRow.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(40)).apply { rightMargin = dp(8) })
 
             val playlistButton = text("Sany iptv Channel  ▾", 10, accent, true).apply {
                 gravity = Gravity.CENTER
@@ -889,25 +879,14 @@ class MainActivity : AppCompatActivity() {
                 applyTvFocusStyle(this)
                 setOnClickListener {
                     selectedGroup = "Select category"
+                    liveTvSelectedGroup = selectedGroup
+                    prefs.edit().putString("live_tv_group", liveTvSelectedGroup).apply()
                     displayedLimit = 60
                     renderListOnly()
                 }
             }
             back.addView(categoryTitle, LinearLayout.LayoutParams(0, -1, 1f))
-            listOf("list" to "☷", "grid" to "▦").forEach { (mode, glyph) ->
-                val modeButton = text(
-                    glyph, 16,
-                    if ((prefs.getString("channel_view_mode", "list") ?: "list") == mode) accent else muted,
-                    true
-                ).apply {
-                    tag = "channel_view_mode_$mode"
-                    gravity = Gravity.CENTER
-                    isFocusable = true
-                    contentDescription = if (mode == "list") "List view" else "Grid view"
-                    setOnClickListener { setChannelViewMode(mode) }
-                }
-                back.addView(modeButton, LinearLayout.LayoutParams(dp(30), dp(42)))
-            }
+            back.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(42)).apply { leftMargin = dp(6) })
             val categorySearch = EditText(this).apply {
                 tag = "category_inline_search"
                 hint = "⌕  Search"
@@ -925,6 +904,8 @@ class MainActivity : AppCompatActivity() {
                 isFocusableInTouchMode = true
                 addTextChangedListener(SimpleTextWatcher { value ->
                     searchQuery = value.trim()
+                    liveTvSearchQuery = searchQuery
+                    prefs.edit().putString("live_tv_search", liveTvSearchQuery).apply()
                     displayedLimit = 60
                     renderChannelRows(listContainer)
                 })
@@ -958,6 +939,10 @@ class MainActivity : AppCompatActivity() {
                 applyTvFocusStyle(this)
                 setOnClickListener {
                     selectedGroup = item
+                    if (section == "Live TV") {
+                        liveTvSelectedGroup = item
+                        prefs.edit().putString("live_tv_group", liveTvSelectedGroup).apply()
+                    }
                     displayedLimit = 60
                     renderListOnly()
                 }
@@ -981,6 +966,31 @@ class MainActivity : AppCompatActivity() {
         renderChannelRows(listContainer)
     }
 
+    private fun createViewModeDropdown(): TextView {
+        val currentMode = prefs.getString("channel_view_mode", "list") ?: "list"
+        return text(if (currentMode == "grid") "▦  Grid  ▾" else "☷  List  ▾", 12, accent, true).apply {
+            tag = "channel_view_mode_dropdown"
+            gravity = Gravity.CENTER
+            minWidth = dp(92)
+            setPadding(dp(10), 0, dp(10), 0)
+            background = glass(10)
+            isFocusable = true
+            contentDescription = "Channel layout: $currentMode. Choose List or Grid."
+            setOnClickListener {
+                val popup = android.widget.PopupMenu(this@MainActivity, this)
+                popup.menu.add("☷  List").setOnMenuItemClickListener {
+                    setChannelViewMode("list")
+                    true
+                }
+                popup.menu.add("▦  Grid").setOnMenuItemClickListener {
+                    setChannelViewMode("grid")
+                    true
+                }
+                popup.show()
+            }
+        }
+    }
+
     private fun setChannelViewMode(mode: String) {
         if (mode != "list" && mode != "grid") return
         prefs.edit().putString("channel_view_mode", mode).apply()
@@ -998,6 +1008,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (::root.isInitialized) refreshButtons(root)
+        val label = if (mode == "grid") "▦  Grid  ▾" else "☷  List  ▾"
+        if (::home.isInitialized) {
+            fun refreshDropdowns(view: View) {
+                if (view.tag == "channel_view_mode_dropdown") (view as? TextView)?.text = label
+                if (view is ViewGroup) for (i in 0 until view.childCount) refreshDropdowns(view.getChildAt(i))
+            }
+            refreshDropdowns(home)
+        }
     }
 
     private fun renderChannelRows(container: LinearLayout) {
@@ -1258,11 +1276,18 @@ class MainActivity : AppCompatActivity() {
                     if (section == name) return@setOnClickListener
                     // Switch immediately; keep the transition animation lightweight.
                     val previousSection = section
+                    if (previousSection == "Live TV") {
+                        liveTvSelectedGroup = selectedGroup
+                        liveTvSearchQuery = searchQuery
+                        prefs.edit().putString("live_tv_group", liveTvSelectedGroup)
+                            .putString("live_tv_search", liveTvSearchQuery).apply()
+                    }
                     section = name
-                    // Preserve the exact Live TV category and search when opening
-                    // Settings and when returning from Settings to Live TV.
-                    if (name != "Settings" && previousSection != "Settings") {
-                        selectedGroup = if (name == "Live TV") "Select category" else "All"
+                    if (name == "Live TV") {
+                        selectedGroup = liveTvSelectedGroup
+                        searchQuery = liveTvSearchQuery
+                    } else {
+                        selectedGroup = "All"
                         searchQuery = ""
                     }
                     displayedLimit = 60
@@ -2922,6 +2947,8 @@ class MainActivity : AppCompatActivity() {
         outState.putString("ui_section", section)
         outState.putString("ui_group", selectedGroup)
         outState.putString("ui_search", searchQuery)
+        outState.putString("live_tv_group", liveTvSelectedGroup)
+        outState.putString("live_tv_search", liveTvSearchQuery)
         super.onSaveInstanceState(outState)
     }
 
@@ -2938,6 +2965,8 @@ class MainActivity : AppCompatActivity() {
             .putString("ui_section", section)
             .putString("ui_group", selectedGroup)
             .putString("ui_search", searchQuery)
+            .putString("live_tv_group", liveTvSelectedGroup)
+            .putString("live_tv_search", liveTvSearchQuery)
             .putBoolean("resume_without_splash", true)
             .putString("resume_stream", if (!closingPip && player?.isPlaying == true) currentChannel?.url else null)
             .apply()
