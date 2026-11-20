@@ -824,22 +824,30 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         present(alert, animated: true)
     }
 
+    private let builtInPermanentPlaylist = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
+
+    private func permanentPlaylists() -> Set<String> {
+        Set([builtInPermanentPlaylist] + (UserDefaults.standard.stringArray(forKey: "sany.ios.permanentPlaylists") ?? []))
+    }
+
     private func savedPlaylists() -> [String] {
-        let permanent = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
         let saved = UserDefaults.standard.stringArray(forKey: "sany.ios.playlists") ?? []
-        return [permanent] + saved.filter { $0 != permanent }
+        return [builtInPermanentPlaylist] + saved.filter { $0 != builtInPermanentPlaylist }
     }
 
     private func showPlaylistManager() {
         let items = savedPlaylists()
-        let labels = items.enumerated().map { index, value in index == 0 ? "★ SANY IPTV — PERMANENT / LOCKED" : "\(index). \(value)" }
+        let locked = permanentPlaylists()
+        let labels = items.map { value in
+            locked.contains(value) ? "🔒 PERMANENT — \(value == builtInPermanentPlaylist ? "SANY IPTV" : value)" : value
+        }
         let alert = UIAlertController(title: "Playlist manager", message: "Select a saved playlist to load. The built-in SANY playlist cannot be removed.", preferredStyle: .actionSheet)
         for (index, label) in labels.enumerated() {
             alert.addAction(UIAlertAction(title: label, style: .default) { [weak self] _ in self?.loadPlaylist(items[index], locked: index == 0) })
         }
         alert.addAction(UIAlertAction(title: "＋ Add playlist URL", style: .default) { [weak self] _ in self?.addPlaylist() })
         alert.addAction(UIAlertAction(title: "Import M3U file", style: .default) { [weak self] _ in self?.presentDocumentPicker() })
-        if items.count > 1 {
+        if items.contains(where: { !locked.contains($0) }) {
             alert.addAction(UIAlertAction(title: "Remove a saved playlist", style: .destructive) { [weak self] _ in self?.removePlaylist() })
         }
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
@@ -851,27 +859,47 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         let alert = UIAlertController(title: "Add playlist URL", message: "Enter an M3U or M3U8 HTTP/HTTPS URL.", preferredStyle: .alert)
         alert.addTextField { field in field.placeholder = "https://example.com/playlist.m3u"; field.keyboardType = .URL; field.autocapitalizationType = .none }
         alert.addAction(UIAlertAction(title: "Add & Load", style: .default) { [weak self, weak alert] _ in
-            guard let self = self, let value = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines), value.hasPrefix("http") else { self?.showMessage("সঠিক HTTP/HTTPS URL দিন"); return }
-            var saved = UserDefaults.standard.stringArray(forKey: "sany.ios.playlists") ?? []
-            if !saved.contains(value) { saved.append(value) }
-            UserDefaults.standard.set(saved, forKey: "sany.ios.playlists")
-            self.loadPlaylist(value, locked: false)
+            self?.savePlaylistFromAlert(alert, permanent: false)
+        })
+        alert.addAction(UIAlertAction(title: "Add PERMANENTLY & Load 🔒", style: .default) { [weak self, weak alert] _ in
+            self?.savePlaylistFromAlert(alert, permanent: true)
         })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         present(alert, animated: true)
     }
 
+    private func savePlaylistFromAlert(_ alert: UIAlertController?, permanent: Bool) {
+        guard let value = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
+            showMessage("সঠিক HTTP/HTTPS URL দিন")
+            return
+        }
+        var saved = UserDefaults.standard.stringArray(forKey: "sany.ios.playlists") ?? []
+        if !saved.contains(value) { saved.append(value) }
+        UserDefaults.standard.set(saved, forKey: "sany.ios.playlists")
+        if permanent {
+            var locked = UserDefaults.standard.stringArray(forKey: "sany.ios.permanentPlaylists") ?? []
+            if !locked.contains(value) { locked.append(value) }
+            UserDefaults.standard.set(locked, forKey: "sany.ios.permanentPlaylists")
+        }
+        loadPlaylist(value, locked: permanent)
+    }
+
     private func removePlaylist() {
-        let saved = savedPlaylists()
-        let removable = Array(saved.dropFirst())
-        let alert = UIAlertController(title: "Remove playlist", message: nil, preferredStyle: .actionSheet)
+        let locked = permanentPlaylists()
+        let removable = savedPlaylists().filter { !locked.contains($0) }
+        guard !removable.isEmpty else {
+            showMessage("সব Playlist স্থায়ীভাবে Lock করা আছে। এগুলো Delete করা যাবে না।")
+            return
+        }
+        let alert = UIAlertController(title: "Remove playlist", message: "শুধু অস্থায়ী Playlist মুছতে পারবেন। Permanent Playlist তালিকায় থাকবে।", preferredStyle: .actionSheet)
         for value in removable {
             alert.addAction(UIAlertAction(title: value, style: .destructive) { [weak self] _ in
                 var current = UserDefaults.standard.stringArray(forKey: "sany.ios.playlists") ?? []
                 current.removeAll { $0 == value }
                 UserDefaults.standard.set(current, forKey: "sany.ios.playlists")
                 if PlaylistStore.shared.activePlaylist == value {
-                    let fallback = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
+                    let fallback = self?.builtInPermanentPlaylist ?? "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
                     UserDefaults.standard.set(fallback, forKey: "sany.ios.activePlaylist")
                     PlaylistStore.shared.load(from: fallback, forceRefresh: true) { _ in }
                 }
