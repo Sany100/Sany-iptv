@@ -578,8 +578,9 @@ class MainActivity : AppCompatActivity() {
         // Android 15+ enforces edge-to-edge for targetSdk 35. Explicitly color
         // the decor and system-bar surfaces so Day mode never reveals black gaps.
         window.decorView.setBackgroundColor(bg)
-        window.statusBarColor = bg
-        window.navigationBarColor = bg
+        // Use fully opaque system bars in both Day and Night themes.
+        window.statusBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
+        window.navigationBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             window.navigationBarDividerColor = bg
         }
@@ -757,8 +758,16 @@ class MainActivity : AppCompatActivity() {
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(6))
-            background = glass(22)
-            // Premium 3D glass header: perspective, depth and a soft raised-card finish.
+            // Opaque theme-matched header: no translucent grey tint in either theme.
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                if (isLight) intArrayOf(Color.WHITE, Color.rgb(246, 250, 255))
+                else intArrayOf(Color.rgb(7, 22, 45), Color.rgb(10, 28, 55))
+            ).apply {
+                cornerRadius = dp(22).toFloat()
+                setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
+            }
+            // Premium raised header; opaque fill prevents the content behind it tinting the surface.
             cameraDistance = 11000f * resources.displayMetrics.density
             rotationX = 2.2f
             translationZ = dp(10).toFloat()
@@ -841,7 +850,15 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(2), dp(5), dp(2))
-            background = glass(18)
+            // Solid bottom dock keeps the gesture/navigation area visually consistent.
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                if (isLight) intArrayOf(Color.WHITE, Color.rgb(245, 249, 255))
+                else intArrayOf(Color.rgb(6, 18, 38), Color.rgb(9, 25, 49))
+            ).apply {
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
+            }
         }
         home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
         renderSection()
