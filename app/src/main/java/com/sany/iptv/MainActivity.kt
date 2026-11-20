@@ -1921,9 +1921,9 @@ class MainActivity : AppCompatActivity() {
                         streamChecks.clear()
                         savePlaylistUrl(url)
                         section = "Live TV"
-                        selectedGroup = "All"; searchQuery = ""
+                        selectedGroup = "Select category"; searchQuery = ""
                         prefs.edit().putString("ui_section", "Live TV")
-                            .putString("ui_group", "All").putString("ui_search", "").apply()
+                            .putString("ui_group", "Select category").putString("ui_search", "").apply()
                         if (!detectedEpgUrl.isNullOrBlank()) {
                             prefs.edit().putString("epg_url", detectedEpgUrl).apply()
                             if (prefs.getBoolean("auto_add_epg", true)) updateEpgData(detectedEpgUrl, false)
