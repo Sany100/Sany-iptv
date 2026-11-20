@@ -2792,10 +2792,6 @@ class MainActivity : AppCompatActivity() {
         box.addView(checkerRunButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
             bottomMargin = dp(8)
         })
-        box.addView(actionButton("↻  RETRY OFFLINE CHANNELS") {
-            if (!checkerRunning) startPlaylistCheck(true, onlyOffline = true)
-            else toast("আগে চলমান পরীক্ষা Pause বা শেষ করুন")
-        }, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(10) })
 
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val filterScroll = HorizontalScrollView(this).apply {
