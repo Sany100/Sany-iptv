@@ -1,0 +1,50 @@
+name: Unsigned iPhone IPA
+
+on:
+  push:
+    branches: [ios-bootstrap]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-unsigned-ipa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build for physical iPhone (unsigned)
+        run: |
+          xcodebuild \
+            -project ios/SANYIPTV.xcodeproj \
+            -scheme SANYIPTV \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/SANYIPTV.app"
+          test -d "$APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/SANYIPTV.app
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent Payload SANY-IPTV-unsigned.ipa
+          test -s SANY-IPTV-unsigned.ipa
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SANY-IPTV-unsigned-IPA
+          path: SANY-IPTV-unsigned.ipa
+          if-no-files-found: error
