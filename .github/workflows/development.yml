@@ -1,0 +1,38 @@
+name: Development APK Build
+on:
+  push:
+    branches: [ development ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.4'
+      - name: Configure Firebase Analytics
+        env:
+          FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}
+        run: |
+          if [ -n "$FIREBASE_JSON" ]; then
+            printf '%s' "$FIREBASE_JSON" > app/google-services.json
+            echo "Firebase Analytics configured."
+          else
+            echo "Firebase Analytics not configured; building without analytics."
+          fi
+      - name: Build development debug APK
+        run: gradle assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sany-iptv-development-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
