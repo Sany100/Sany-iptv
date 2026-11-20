@@ -688,25 +688,37 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        search = EditText(this).apply {
-            hint = "⌕   Search channels, movies, series..."
-            setTextColor(white); setHintTextColor(muted); textSize = 14f
-            isSingleLine = true
-            setPadding(dp(14), 0, dp(14), 0)
+        // Playlist selector occupies the former search-control position.
+        val playlistSelector = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(15), dp(10), dp(14), dp(10))
             background = glass(12)
-            setText(searchQuery)
+            isFocusable = true
+            setOnClickListener { showPlaylistDialog() }
         }
-        contentArea.addView(search, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 42 else 48)))
-        search.addTextChangedListener(SimpleTextWatcher { searchQuery = it; displayedLimit = 60; renderListOnly() })
+        val playlistText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        playlistText.addView(text("Sany iptv Channel", 14, white, true))
+        playlistText.addView(text("Tap to switch playlist  •  " + channels.size + " channels", 10, muted).apply {
+            setPadding(0, dp(3), 0, 0)
+        })
+        playlistSelector.addView(playlistText, LinearLayout.LayoutParams(0, -2, 1f))
+        playlistSelector.addView(text("⌄", 25, accent, true))
+        contentArea.addView(playlistSelector, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 50 else 58)))
 
-        val categoriesScroll = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
+        val categoriesScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
             setBackgroundColor(bg)
             overScrollMode = View.OVER_SCROLL_NEVER
         }
-        categoryRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        categoryRow = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(7), 0, dp(4))
+        }
         categoriesScroll.addView(categoryRow)
-        contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 42 else 52)).apply { topMargin = dp(if (isTvDevice) 4 else 8) })
+        contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 135 else 160)).apply {
+            topMargin = dp(5)
+        })
         renderCategories()
 
         countLabel = text("", 12, muted).apply { setPadding(dp(2), dp(4), 0, dp(8)) }
@@ -769,29 +781,39 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCategories() {
         categoryRow.removeAllViews()
-        val groups = listOf("All") + channels.asSequence().map { it.group }.distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
+        val groups = listOf("All") + channels.asSequence().map { it.group }
+            .distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
         val options = when (section) {
             "Movies" -> listOf("All") + movieCategories + groups.drop(1).filterNot { it in movieCategories }
             "Series" -> listOf("All", "Anime") + groups.drop(1).filterNot { it.equals("Anime", true) }
             else -> groups
         }
         options.forEach { item ->
-            val active = selectedGroup == item
-            val chip = text(item, 12, if (active) bg else muted, true).apply {
+            val matchingCount = when {
+                item == "All" -> channels.count { c -> (section == "Movies" && isMovie(c)) || (section == "Series" && isSeries(c)) || (section == "Live TV" && !isMovie(c) && !isSeries(c)) }
+                section == "Movies" && item in movieCategories -> channels.count { isMovie(it) && matchesMovieCategory(it, item) }
+                section == "Series" && item == "Anime" -> channels.count { isAnime(it) }
+                else -> channels.count { it.group.equals(item, true) }
+            }
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(8), dp(14), dp(8))
                 isFocusable = true
-                gravity = Gravity.CENTER
-                setPadding(dp(15), 0, dp(15), 0)
+                background = if (selectedGroup == item) rounded(Color.argb(220, 0, 130, 110), 10, accent, 1) else glass(10)
                 applyTvFocusStyle(this)
-                background = if (active) rounded(Color.argb(220, 0, 170, 130), 30, Color.argb(160, 160, 255, 230), 1)
-                    else glass(30)
                 setOnClickListener {
-                    animate().scaleX(0.92f).scaleY(0.92f).setDuration(65).withEndAction {
-                        animate().scaleX(1f).scaleY(1f).setDuration(130).start()
-                        selectedGroup = item; displayedLimit = 60; renderListOnly()
-                    }.start()
+                    selectedGroup = item
+                    displayedLimit = 60
+                    renderListOnly()
                 }
             }
-            categoryRow.addView(chip, LinearLayout.LayoutParams(-2, dp(34)).apply { rightMargin = dp(7) })
+            card.addView(text(item, 13, if (selectedGroup == item) Color.WHITE else white, true),
+                LinearLayout.LayoutParams(0, -2, 1f))
+            card.addView(text(matchingCount.toString(), 11, muted, true))
+            categoryRow.addView(card, LinearLayout.LayoutParams(-1, dp(40)).apply {
+                bottomMargin = dp(6)
+            })
         }
     }
 
