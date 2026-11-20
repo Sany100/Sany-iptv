@@ -145,7 +145,7 @@ private final class PlaylistStore {
 
     private func cacheURL(for source: String) -> URL {
         let encoded = Data(source.utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "=", with: "")
-        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Playlists", isDirectory: true)
+        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Playlists", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent(encoded + ".m3u")
     }
@@ -179,6 +179,7 @@ private final class PlaylistStore {
                     let text = try String(contentsOf: url, encoding: .utf8)
                     EPGRepository.detectPlaylistEPG(text)
                     let parsed = self.parse(text)
+                    self.loadedFromCache = false
                     if parsed.isEmpty { throw NSError(domain: "SANYPlaylist", code: 1, userInfo: [NSLocalizedDescriptionKey: "প্লেলিস্টে কোনো চ্যানেল পাওয়া যায়নি।"]) }
                     result = .success(parsed)
                 } catch { result = .failure(error) }
