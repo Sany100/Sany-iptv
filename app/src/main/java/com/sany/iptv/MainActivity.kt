@@ -847,7 +847,7 @@ class MainActivity : AppCompatActivity() {
         // The Live TV title is shown in the replacement banner below the brand header.
         headerTitleView?.visibility = View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
-        categoryHeaderContainer.visibility = if (immersiveCategory) View.VISIBLE else View.GONE
+        categoryHeaderContainer.visibility = if (section == "Live TV" && (categoryDirectory || immersiveCategory)) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
             if (categoryDirectory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.let { scroll ->
@@ -967,17 +967,6 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(12), 0, 0, 0)
             })
             categoryCards += card
-        }
-        if (section == "Live TV" && categoryDirectory) {
-            val toolbar = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(4), 0, dp(4), 0)
-            }
-            toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(36), 1f))
-            toolbar.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(34)))
-            categoryHeaderContainer.removeAllViews()
-            categoryHeaderContainer.addView(toolbar, LinearLayout.LayoutParams(-1, dp(38)))
         }
         if (prefs.getString("channel_view_mode", "list") == "grid") {
             categoryCards.chunked(2).forEach { pair ->
