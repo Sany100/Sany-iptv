@@ -3112,8 +3112,9 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
 
-        // While minimized, keep the player pinned above a complete, playlist-ordered
-        // channel directory. The bottom navigation remains exposed for every section.
+        // The minimized player is a compact top strip. The actual active menu
+        // remains visible directly underneath it; never replace menu content with
+        // a channel directory while navigating between sections.
         val miniChannelScroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
@@ -3127,7 +3128,6 @@ class MainActivity : AppCompatActivity() {
         miniChannelScroll.addView(miniChannelRows)
         screen.addView(miniChannelScroll, FrameLayout.LayoutParams(-1, -1).apply {
             topMargin = dp(235)
-            bottomMargin = dp(if (isTvDevice) 62 else 74)
         })
         playerChannelScroll = miniChannelScroll
         playerChannelRows = miniChannelRows
@@ -3563,6 +3563,16 @@ class MainActivity : AppCompatActivity() {
         playerView?.layoutParams = FrameLayout.LayoutParams(
             -1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP
         )
+        // In minimized mode, reserve the top 235dp for video and lay out the
+        // currently selected menu in the remaining screen area.
+        playerScreen?.layoutParams = FrameLayout.LayoutParams(
+            -1, if (enabled) -1 else dp(235), Gravity.TOP
+        )
+        if (::home.isInitialized) {
+            home.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
+                topMargin = if (enabled) 0 else dp(235)
+            }
+        }
         playerHeader?.let { header ->
             (header.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.topMargin = if (enabled) 0 else dp(235)
@@ -3574,7 +3584,7 @@ class MainActivity : AppCompatActivity() {
         playerChannelScroll?.visibility = if (enabled) View.GONE else View.VISIBLE
         if (!enabled) {
             playerTopActions?.visibility = View.GONE
-            renderMinimizedPlayerChannels()
+            playerChannelScroll?.visibility = View.GONE
         }
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -3607,6 +3617,9 @@ class MainActivity : AppCompatActivity() {
                 listContainer.paddingLeft, 0,
                 listContainer.paddingRight, listContainer.paddingBottom
             )
+        }
+        if (::home.isInitialized) {
+            home.layoutParams = FrameLayout.LayoutParams(-1, -1)
         }
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
