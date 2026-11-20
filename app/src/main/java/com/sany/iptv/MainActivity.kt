@@ -3405,6 +3405,15 @@ class MainActivity : AppCompatActivity() {
                 val start = e1 ?: return false
                 val dx = e2.x - start.x
                 val dy = e2.y - start.y
+                // A clear downward swipe minimizes fullscreen playback to the inline player.
+                // Keep horizontal swipes reserved for channel navigation.
+                if (isPlayerFullscreen &&
+                    dy > swipeThreshold &&
+                    dy > kotlin.math.abs(dx) * 1.25f &&
+                    velocityY > swipeVelocityThreshold) {
+                    setPlayerFullscreen(false)
+                    return true
+                }
                 // Use the same horizontal channel-swipe gesture in fullscreen and inline player.
                 if (kotlin.math.abs(dx) > swipeThreshold &&
                     kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f &&
