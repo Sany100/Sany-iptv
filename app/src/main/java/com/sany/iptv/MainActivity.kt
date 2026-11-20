@@ -761,14 +761,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHome() {
         home.removeAllViews()
-        // Preserve the exact welcome-message slot as blank space on the Home screen.
-        val homeWelcomeSpacer = text(" ", 14, accent, true).apply {
-            gravity = Gravity.CENTER
-            letterSpacing = 0.025f
-            setPadding(dp(8), dp(5), dp(8), dp(9))
-            visibility = View.INVISIBLE
-        }
-        home.addView(homeWelcomeSpacer, LinearLayout.LayoutParams(-1, -2))
+        // No reserved blank welcome slot: keep the selected page content directly below the player.
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(6))
@@ -856,7 +849,7 @@ class MainActivity : AppCompatActivity() {
 
         contentArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(14), dp(18), 0)
+            setPadding(dp(18), 0, dp(18), 0)
             setBackgroundColor(bg)
         }
         home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -1078,7 +1071,9 @@ class MainActivity : AppCompatActivity() {
         // The Live TV title is shown in the replacement banner below the brand header.
         headerTitleView?.visibility = View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
-        categoryHeaderContainer.visibility = if (section == "Live TV" && (categoryDirectory || immersiveCategory)) View.VISIBLE else View.GONE
+        // In a selected Live TV category, remove the back/category toolbar so
+        // channel cards begin immediately beneath the minimized video.
+        categoryHeaderContainer.visibility = if (section == "Live TV" && categoryDirectory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
             if (categoryDirectory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.let { scroll ->
@@ -1088,7 +1083,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (::countLabel.isInitialized) countLabel.visibility =
-            if (categoryDirectory) View.GONE else View.VISIBLE
+            if (categoryDirectory || immersiveCategory) View.GONE else View.VISIBLE
         (if (::listContainer.isInitialized) listContainer.parent as? ScrollView else null)?.visibility =
             if (categoryDirectory) View.GONE else View.VISIBLE
 
