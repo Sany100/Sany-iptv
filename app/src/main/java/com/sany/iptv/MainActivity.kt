@@ -1317,14 +1317,21 @@ class MainActivity : AppCompatActivity() {
             val watermarkLine = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                alpha = 0.42f
+                alpha = 1f
                 setPadding(0, dp(4), 0, 0)
             }
-            watermarkLine.addView(ImageView(this).apply {
-                setImageResource(com.sany.iptv.R.drawable.sany_logo_icon)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                contentDescription = "SANY IPTV watermark"
-            }, LinearLayout.LayoutParams(dp(11), dp(11)))
+            // Always-on blinking green live indicator beside the SANY IPTV watermark.
+            val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
+                contentDescription = "SANY IPTV active indicator"
+                val pulse = ValueAnimator.ofFloat(0.25f, 1f).apply {
+                    duration = 850L
+                    repeatCount = ValueAnimator.INFINITE
+                    repeatMode = ValueAnimator.REVERSE
+                    addUpdateListener { alpha = it.animatedValue as Float }
+                }
+                pulse.start()
+            }
+            watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
                 letterSpacing = 0.12f
                 setPadding(dp(4), 0, 0, 0)
