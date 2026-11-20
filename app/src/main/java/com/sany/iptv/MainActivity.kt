@@ -3267,7 +3267,7 @@ class MainActivity : AppCompatActivity() {
         infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(52), dp(44)))
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(29)))
         screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(80), Gravity.TOP).apply {
-            topMargin = dp(182)
+            topMargin = dp(155)
             leftMargin = dp(8); rightMargin = dp(8)
         })
 
@@ -3372,10 +3372,10 @@ class MainActivity : AppCompatActivity() {
             (listContainer.parent as? ScrollView)?.scrollTo(0, 0)
         }
 
-        // Reserve the dock area below the inline video so channel cards never sit behind controls.
+        // Start channel cards immediately below the inline video; no artificial blank spacer.
         if (::listContainer.isInitialized) {
             listContainer.setPadding(
-                listContainer.paddingLeft, dp(262),
+                listContainer.paddingLeft, 0,
                 listContainer.paddingRight, listContainer.paddingBottom
             )
         }
@@ -3442,7 +3442,7 @@ class MainActivity : AppCompatActivity() {
         playerControlsPanel?.let { panel ->
             (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
-                params.topMargin = if (enabled) 0 else dp(182)
+                params.topMargin = if (enabled) 0 else dp(155)
                 params.bottomMargin = if (enabled) dp(18) else 0
                 panel.layoutParams = params
             }
