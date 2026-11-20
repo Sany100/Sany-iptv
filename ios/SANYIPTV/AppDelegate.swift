@@ -1024,9 +1024,19 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
         table.estimatedRowHeight = 64
         table.register(UITableViewCell.self, forCellReuseIdentifier: "programme")
         table.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(searchBar)
+        view.addSubview(timeFilter)
         view.addSubview(table)
+        searchBar.translatesAutoresizingMaskIntoConstraints = false
+        timeFilter.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            table.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            searchBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            searchBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            timeFilter.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
+            timeFilter.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            timeFilter.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            table.topAnchor.constraint(equalTo: timeFilter.bottomAnchor, constant: 6),
             table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             table.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             table.bottomAnchor.constraint(equalTo: view.bottomAnchor)
