@@ -149,7 +149,7 @@ private final class LiveTVViewController: BaseViewController, UITableViewDataSou
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "SANY IPTV"
-        tabBarItem = UITabBarItem(title: "Live TV", image: UIImage(systemName: "tv"), tag: 0)
+        tabBarItem = UITabBarItem(title: "Live TV", image: nil, tag: 0)
         searchBar.placeholder = "চ্যানেল খুঁজুন"
         searchBar.delegate = self
         searchBar.barStyle = .black
@@ -158,7 +158,7 @@ private final class LiveTVViewController: BaseViewController, UITableViewDataSou
         filter.selectedSegmentIndex = 0
         filter.addTarget(self, action: #selector(filterChanged), for: .valueChanged)
         filter.backgroundColor = SANYStyle.panel
-        filter.selectedSegmentTintColor = UIColor(red: 0.05, green: 0.35, blue: 0.48, alpha: 1)
+        filter.tintColor = SANYStyle.accent
         filter.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .normal)
         filter.setTitleTextAttributes([.foregroundColor: UIColor.white], for: .selected)
         let header = UIStackView(arrangedSubviews: [searchBar, filter])
@@ -270,7 +270,7 @@ private final class CheckerViewController: BaseViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Channel Checker"
-        tabBarItem = UITabBarItem(title: "Checker", image: UIImage(systemName: "checkmark.seal"), tag: 1)
+        tabBarItem = UITabBarItem(title: "Checker", image: nil, tag: 1)
         status.text = "প্লেলিস্ট লোড করে চ্যানেল পরীক্ষা করুন"
         status.textColor = .white
         status.textAlignment = .center
@@ -355,7 +355,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Playback Settings"
-        tabBarItem = UITabBarItem(title: "Settings", image: UIImage(systemName: "gearshape"), tag: 2)
+        tabBarItem = UITabBarItem(title: "Settings", image: nil, tag: 2)
         table.backgroundColor = SANYStyle.background
         table.dataSource = self
         table.delegate = self
