@@ -81,6 +81,8 @@ class MainActivity : AppCompatActivity() {
     private var channels = listOf<Channel>()
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
     @Volatile private var checkerRunning = false
+    @Volatile private var checkerPaused = false
+    @Volatile private var checkerTargetCount = 0
     private val checkerProgressCount = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var liveTvPublishedCount = 0
     private var checkerFilter = "All"
@@ -2521,13 +2523,14 @@ class MainActivity : AppCompatActivity() {
     private fun updateCheckerUi() {
         checkerSummaryView?.text = checkerSummaryText()
         checkerListAdapter?.notifyDataSetChanged()
-        checkerRunButton?.text = if (checkerRunning) "CHECKING CHANNELS…" else "↻  CHECK ALL CHANNELS AGAIN"
+        checkerRunButton?.text = if (checkerRunning) (if (checkerPaused) "▶  RESUME CHECKING" else "Ⅱ  PAUSE CHECKING") else "↻  CHECK ALL CHANNELS AGAIN"
     }
 
     private fun liveTvProgressLabel(): String {
         if (channels.isEmpty()) return "Live TV"
         if (!checkerRunning && streamChecks.isEmpty()) return "Live TV"
-        val percent = if (channels.isEmpty()) 100 else ((if (checkerRunning) checkerProgressCount.get() else streamChecks.size) * 100 / channels.size).coerceIn(0, 100)
+        val denominator = if (checkerRunning) checkerTargetCount.coerceAtLeast(1) else channels.size.coerceAtLeast(1)
+        val percent = ((if (checkerRunning) checkerProgressCount.get() else streamChecks.size) * 100 / denominator).coerceIn(0, 100)
         return if (checkerRunning) "Live TV $percent%" else "Live TV"
     }
 
@@ -2555,14 +2558,27 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) { streamChecks.clear() }
     }
 
-    private fun checkerSummaryText(): String =
-        if (checkerRunning) "Checking… ${checkerProgressCount.get()} / ${channels.size}"
-        else "Total ${channels.size} • Working ${streamChecks.values.count { it.first == "Working" }} • Not working ${streamChecks.values.count { it.first != "Working" }}"
+    private fun checkerSummaryText(): String {
+        val working = streamChecks.values.count { it.first == "Working" }
+        val offline = streamChecks.values.count { it.first == "Offline" }
+        val restricted = streamChecks.values.count { it.first == "Restricted" }
+        val errors = streamChecks.values.count { it.first == "Error" }
+        val progress = if (checkerRunning) " • ${checkerProgressCount.get()}/${checkerTargetCount}" else ""
+        val state = if (checkerPaused) "PAUSED • " else if (checkerRunning) "CHECKING • " else ""
+        return "${state}Total ${channels.size}${progress} • Working ${working} • Offline ${offline} • Restricted ${restricted} • Error ${errors}"
+    }
 
-    private fun startPlaylistCheck(showToast: Boolean) {
+    private fun startPlaylistCheck(showToast: Boolean, onlyOffline: Boolean = false) {
         if (channels.isEmpty() || checkerRunning) return
-        val snapshot = channels.toList()
+        val snapshot = if (onlyOffline) channels.filter { streamChecks[it.url]?.first == "Offline" }
+            else channels.toList()
+        if (snapshot.isEmpty()) {
+            toast(if (onlyOffline) "আবার পরীক্ষা করার মতো Offline channel নেই" else "চ্যানেল পাওয়া যায়নি")
+            return
+        }
         checkerRunning = true
+        checkerPaused = false
+        checkerTargetCount = snapshot.size
         checkerProgressCount.set(0)
         liveTvPublishedCount = 0
         updateLiveTvProgress()
@@ -2590,6 +2606,13 @@ class MainActivity : AppCompatActivity() {
                 while (true) {
                     val index = nextIndex.getAndIncrement()
                     if (index >= snapshot.size || Thread.currentThread().isInterrupted) break
+                    while (checkerPaused && !Thread.currentThread().isInterrupted) {
+                        try { Thread.sleep(150L) } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            break
+                        }
+                    }
+                    if (Thread.currentThread().isInterrupted) break
                     val channel = snapshot[index]
                     streamChecks[channel.url] = probeStream(channel.url)
                     checkerProgressCount.incrementAndGet()
@@ -2606,6 +2629,7 @@ class MainActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 checkerRunning = false
+                checkerPaused = false
                 checkerProgressCount.set(snapshot.size)
                 saveStreamCheckResults()
                 updateLiveTvProgress()
@@ -2650,13 +2674,21 @@ class MainActivity : AppCompatActivity() {
         }
         box.addView(checkerSummaryView)
         checkerRunButton = actionButton(
-            if (checkerRunning) "CHECKING CHANNELS…" else "↻  CHECK ALL CHANNELS AGAIN"
+            if (checkerRunning) (if (checkerPaused) "▶  RESUME CHECKING" else "Ⅱ  PAUSE CHECKING")
+            else "↻  CHECK ALL CHANNELS AGAIN"
         ) {
-            if (!checkerRunning) startPlaylistCheck(true)
+            if (checkerRunning) {
+                checkerPaused = !checkerPaused
+                updateCheckerUi()
+            } else startPlaylistCheck(true)
         }
         box.addView(checkerRunButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
-            bottomMargin = dp(10)
+            bottomMargin = dp(8)
         })
+        box.addView(actionButton("↻  RETRY OFFLINE CHANNELS") {
+            if (!checkerRunning) startPlaylistCheck(true, onlyOffline = true)
+            else toast("আগে চলমান পরীক্ষা Pause বা শেষ করুন")
+        }, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(10) })
 
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val filterScroll = HorizontalScrollView(this).apply {
@@ -3398,14 +3430,3 @@ class MainActivity : AppCompatActivity() {
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
     private fun dp(v: Int): Int {
-        val tvScale = if (isTvDevice) 1.15f else 1f
-        return (v * resources.displayMetrics.density * tvScale).toInt()
-    }
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-}
-
-private class SimpleTextWatcher(val changed: (String) -> Unit) : android.text.TextWatcher {
-    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { changed(s?.toString().orEmpty()) }
-    override fun afterTextChanged(s: android.text.Editable?) = Unit
-}
