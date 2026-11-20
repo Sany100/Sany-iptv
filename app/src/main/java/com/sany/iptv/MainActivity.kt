@@ -724,7 +724,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(7), 0, dp(4))
         }
         categoriesScroll.addView(categoryRow)
-        contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 135 else 160)).apply {
+        contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, 0, 1f).apply {
             topMargin = dp(5)
         })
         renderCategories()
@@ -739,6 +739,7 @@ class MainActivity : AppCompatActivity() {
         listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listScroll.addView(listContainer)
         contentArea.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        renderCategories()
         renderChannelRows(listContainer)
     }
 
@@ -815,14 +816,27 @@ class MainActivity : AppCompatActivity() {
     private fun renderCategories() {
         categoryRow.removeAllViews()
 
-        // Live TV behaves like a category browser: show either the category
-        // directory OR the selected category's channels, never both together.
-        if (section == "Live TV" && selectedGroup != "Select category") {
+        // Full-height category directory inspired by the supplied reference.
+        // Channel cards are hidden until the user enters a category.
+        val categoryDirectory = section == "Live TV" && selectedGroup == "Select category"
+        (categoryRow.parent as? ScrollView)?.let { scroll ->
+            scroll.layoutParams = (scroll.layoutParams as LinearLayout.LayoutParams).apply {
+                height = if (categoryDirectory) 0 else dp(52)
+                weight = if (categoryDirectory) 1f else 0f
+            }
+        }
+        if (::countLabel.isInitialized) countLabel.visibility =
+            if (categoryDirectory) View.GONE else View.VISIBLE
+        (if (::listContainer.isInitialized) listContainer.parent as? ScrollView else null)?.visibility =
+            if (categoryDirectory) View.GONE else View.VISIBLE
+
+        if (section == "Live TV" && !categoryDirectory) {
             val back = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                background = glass(10)
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+                background = glass(12)
+                elevation = dp(3).toFloat()
                 isFocusable = true
                 applyTvFocusStyle(this)
                 setOnClickListener {
@@ -834,7 +848,7 @@ class MainActivity : AppCompatActivity() {
             back.addView(text("‹  ALL CATEGORIES", 13, accent, true),
                 LinearLayout.LayoutParams(0, -2, 1f))
             back.addView(text(selectedGroup, 12, muted, true))
-            categoryRow.addView(back, LinearLayout.LayoutParams(-1, dp(40)))
+            categoryRow.addView(back, LinearLayout.LayoutParams(-1, dp(46)))
             return
         }
 
@@ -855,9 +869,10 @@ class MainActivity : AppCompatActivity() {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14), dp(8), dp(14), dp(8))
+                setPadding(dp(16), dp(10), dp(15), dp(10))
+                background = glass(10)
+                elevation = dp(2).toFloat()
                 isFocusable = true
-                background = if (selectedGroup == item) rounded(Color.argb(220, 0, 130, 110), 10, accent, 1) else glass(10)
                 applyTvFocusStyle(this)
                 setOnClickListener {
                     selectedGroup = item
@@ -865,11 +880,14 @@ class MainActivity : AppCompatActivity() {
                     renderListOnly()
                 }
             }
-            card.addView(text(item, 13, if (selectedGroup == item) Color.WHITE else white, true),
+            card.addView(text(if (item == "All") "All channels" else item, 14, white, true),
                 LinearLayout.LayoutParams(0, -2, 1f))
             card.addView(text(matchingCount.toString(), 11, muted, true))
-            categoryRow.addView(card, LinearLayout.LayoutParams(-1, dp(40)).apply {
-                bottomMargin = dp(6)
+            card.addView(text("›", 24, accent, true).apply {
+                setPadding(dp(12), 0, 0, 0)
+            })
+            categoryRow.addView(card, LinearLayout.LayoutParams(-1, dp(56)).apply {
+                bottomMargin = dp(1)
             })
         }
     }
