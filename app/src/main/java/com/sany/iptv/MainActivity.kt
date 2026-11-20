@@ -2460,11 +2460,13 @@ class MainActivity : AppCompatActivity() {
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        // Keep older Android devices on a lower concurrency level.
-        // Android 10+ uses 64 workers; Android 7-9 uses 32; Android 6 uses 4.
-        // Keep this bounded: device memory/CPU and server throttling limit real throughput.
+        // Scale checker concurrency by Android version.
+        // Android 14+ uses 68 workers; Android 10-13 uses 48.
+        // Android 7-9 uses 32; Android 6 and below use 4.
+        // Actual throughput still depends on device resources and server throttling.
         val maxWorkers = when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 64
+            Build.VERSION.SDK_INT >= 34 -> 68
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 48
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.N -> 32
             else -> 4
         }
