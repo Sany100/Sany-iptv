@@ -212,12 +212,6 @@ class MainActivity : AppCompatActivity() {
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
         registerForPushUpdates()
-        if (prefs.getBoolean("mandatory_update_required", false)) {
-            updateRequired = true
-            showMandatoryUpdateDialog()
-            updateReminderHandler.removeCallbacks(updateReminderRunnable)
-            updateReminderHandler.postDelayed(updateReminderRunnable, 10_000L)
-        }
         checkForMandatoryUpdate()
         checkMaintenanceMode()
         if (!restoringBackground) {
@@ -294,7 +288,16 @@ class MainActivity : AppCompatActivity() {
                 val body = connection.inputStream.bufferedReader().use { it.readText() }
                 connection.disconnect()
                 val config = JSONObject(body)
-                if (!config.optBoolean("enabled", true)) return@thread
+                if (!config.optBoolean("enabled", true)) {
+                    runOnUiThread {
+                        updateRequired = false
+                        prefs.edit().putBoolean("mandatory_update_required", false).apply()
+                        updateReminderHandler.removeCallbacks(updateReminderRunnable)
+                        updateDialog?.dismiss()
+                        updateDialog = null
+                    }
+                    return@thread
+                }
                 val minimumCode = config.optInt("minimum_version_code", 0)
                 val currentCode = packageManager.getPackageInfo(packageName, 0).versionCode
                 val required = currentCode < minimumCode
