@@ -603,8 +603,6 @@ class MainActivity : AppCompatActivity() {
         headerTitleView = text(if (section == "Movies") "Movies" else section, 19, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         if (section == "Live TV") {
-            titleRow.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(40)).apply { rightMargin = dp(8) })
-
             val playlistButton = text("Sany iptv Channel  ▾", 10, accent, true).apply {
                 gravity = Gravity.CENTER
                 maxLines = 1
@@ -741,10 +739,10 @@ class MainActivity : AppCompatActivity() {
         // This makes it stationary while channel rows scroll underneath it.
         categoryHeaderContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
+            visibility = View.VISIBLE
         }
-        contentArea.addView(categoryHeaderContainer, LinearLayout.LayoutParams(-1, dp(54)).apply {
-            topMargin = dp(5)
+        contentArea.addView(categoryHeaderContainer, LinearLayout.LayoutParams(-1, dp(42)).apply {
+            topMargin = dp(2)
         })
         val categoriesScroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
@@ -863,6 +861,18 @@ class MainActivity : AppCompatActivity() {
         (if (::listContainer.isInitialized) listContainer.parent as? ScrollView else null)?.visibility =
             if (categoryDirectory) View.GONE else View.VISIBLE
 
+        if (section == "Live TV" && categoryDirectory) {
+            categoryHeaderContainer.removeAllViews()
+            val toolbar = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(4), 0, dp(4), 0)
+            }
+            toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(36), 1f))
+            toolbar.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(34)))
+            categoryHeaderContainer.addView(toolbar, LinearLayout.LayoutParams(-1, dp(38)))
+        }
+
         if (section == "Live TV" && !categoryDirectory) {
             categoryHeaderContainer.removeAllViews()
             val back = LinearLayout(this).apply {
@@ -915,20 +925,23 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val groups = listOf("All") + channels.asSequence().map { it.group }
+        val directoryChannels = if (section == "Live TV") liveTvVisibleCandidates() else channels
+        val groups = listOf("All") + directoryChannels.asSequence().map { it.group }
             .distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
         val options = when (section) {
             "Movies" -> listOf("All") + movieCategories + groups.drop(1).filterNot { it in movieCategories }
             "Series" -> listOf("All", "Anime") + groups.drop(1).filterNot { it.equals("Anime", true) }
             else -> groups
         }
+        val categoryCards = mutableListOf<View>()
         options.forEach { item ->
             val matchingCount = when {
-                item == "All" -> channels.count { c -> (section == "Movies" && isMovie(c)) || (section == "Series" && isSeries(c)) || (section == "Live TV" && !isMovie(c) && !isSeries(c)) }
-                section == "Movies" && item in movieCategories -> channels.count { isMovie(it) && matchesMovieCategory(it, item) }
-                section == "Series" && item == "Anime" -> channels.count { isAnime(it) }
-                else -> channels.count { it.group.equals(item, true) }
+                item == "All" -> directoryChannels.count { c -> (section == "Movies" && isMovie(c)) || (section == "Series" && isSeries(c)) || (section == "Live TV" && !isMovie(c) && !isSeries(c)) }
+                section == "Movies" && item in movieCategories -> directoryChannels.count { isMovie(it) && matchesMovieCategory(it, item) }
+                section == "Series" && item == "Anime" -> directoryChannels.count { isAnime(it) }
+                else -> directoryChannels.count { it.group.equals(item, true) }
             }
+            if (section == "Live TV" && matchingCount == 0) return@forEach
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -953,9 +966,37 @@ class MainActivity : AppCompatActivity() {
             card.addView(text("›", 24, accent, true).apply {
                 setPadding(dp(12), 0, 0, 0)
             })
-            categoryRow.addView(card, LinearLayout.LayoutParams(-1, dp(56)).apply {
-                bottomMargin = dp(1)
-            })
+            categoryCards += card
+        }
+        if (section == "Live TV" && categoryDirectory) {
+            val toolbar = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(4), 0, dp(4), 0)
+            }
+            toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(36), 1f))
+            toolbar.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(34)))
+            categoryHeaderContainer.removeAllViews()
+            categoryHeaderContainer.addView(toolbar, LinearLayout.LayoutParams(-1, dp(38)))
+        }
+        if (prefs.getString("channel_view_mode", "list") == "grid") {
+            categoryCards.chunked(2).forEach { pair ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                pair.forEachIndexed { index, itemView ->
+                    row.addView(itemView, LinearLayout.LayoutParams(0, dp(56), 1f).apply {
+                        if (index == 0) rightMargin = dp(5) else leftMargin = dp(5)
+                    })
+                }
+                if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, dp(56), 1f).apply { leftMargin = dp(5) })
+                categoryRow.addView(row, LinearLayout.LayoutParams(-1, dp(57)).apply { bottomMargin = dp(5) })
+            }
+        } else {
+            categoryCards.forEach { card ->
+                categoryRow.addView(card, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(1) })
+            }
         }
     }
 
@@ -995,6 +1036,7 @@ class MainActivity : AppCompatActivity() {
         if (mode != "list" && mode != "grid") return
         prefs.edit().putString("channel_view_mode", mode).apply()
         if (::listContainer.isInitialized && ::countLabel.isInitialized) {
+            if (section == "Live TV") renderCategories()
             renderChannelRows(listContainer)
         }
         fun refreshButtons(view: View) {
@@ -1231,16 +1273,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun liveTvVisibleCandidates(): List<Channel> {
+        if (!checkerRunning && streamChecks.isEmpty()) return emptyList()
+        val working = channels.filter { streamChecks[it.url]?.first == "Working" }
+        if (!checkerRunning) return working
+        val limit = if (channels.isNotEmpty() && checkerProgressCount.get() * 2 >= channels.size) 60 else 30
+        return working.take(limit)
+    }
+
     private fun filteredChannels(): List<Channel> {
-        // During checking, show up to 30 verified channels before 50%,
-        // up to 60 from 50% to 99%, and all verified channels after 100%.
-        val liveCandidates = if (section == "Live TV" && (checkerRunning || streamChecks.isNotEmpty())) {
-            val working = channels.filter { streamChecks[it.url]?.first == "Working" }
-            if (checkerRunning) {
-                val limit = if (channels.isNotEmpty() && checkerProgressCount.get() * 2 >= channels.size) 60 else 30
-                working.take(limit)
-            } else working
-        } else channels
+        // Live TV shows only streams positively verified by the Checker.
+        val liveCandidates = if (section == "Live TV") liveTvVisibleCandidates() else channels
         return liveCandidates.filter { c ->
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
