@@ -1071,9 +1071,8 @@ class MainActivity : AppCompatActivity() {
         // The Live TV title is shown in the replacement banner below the brand header.
         headerTitleView?.visibility = View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
-        // In a selected Live TV category, remove the back/category toolbar so
-        // channel cards begin immediately beneath the minimized video.
-        categoryHeaderContainer.visibility = if (section == "Live TV" && categoryDirectory) View.VISIBLE else View.GONE
+        // Keep the category back, view-mode and search toolbar visible above channel rows.
+        categoryHeaderContainer.visibility = if (section == "Live TV" && (categoryDirectory || immersiveCategory)) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
             if (categoryDirectory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.let { scroll ->
@@ -1083,7 +1082,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (::countLabel.isInitialized) countLabel.visibility =
-            if (categoryDirectory || immersiveCategory) View.GONE else View.VISIBLE
+            if (categoryDirectory) View.GONE else View.VISIBLE
         (if (::listContainer.isInitialized) listContainer.parent as? ScrollView else null)?.visibility =
             if (categoryDirectory) View.GONE else View.VISIBLE
 
