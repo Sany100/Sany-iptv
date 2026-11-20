@@ -541,7 +541,7 @@ private final class CheckerViewController: BaseViewController, UITableViewDataSo
         cell.textLabel?.numberOfLines = 2
         cell.textLabel?.font = .systemFont(ofSize: 12)
         cell.textLabel?.text = "● \(state.uppercased())  \(item["name"] ?? "Unknown")\n\(item["detail"] ?? "") • \(item["date"] ?? "")"
-        cell.textLabel?.textColor = state == "working" ? .systemGreen : (state == "restricted" ? .systemOrange : .systemRed)
+        cell.textLabel?.textColor = state == "working" ? UIColor(red: 0.2, green: 0.85, blue: 0.4, alpha: 1) : (state == "restricted" ? UIColor(red: 1, green: 0.65, blue: 0.15, alpha: 1) : UIColor(red: 1, green: 0.3, blue: 0.3, alpha: 1))
         return cell
     }
 
