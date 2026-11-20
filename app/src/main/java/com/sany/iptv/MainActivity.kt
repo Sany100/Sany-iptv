@@ -694,24 +694,23 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Playlist selector occupies the former search-control position.
-        val playlistSelector = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(15), dp(10), dp(14), dp(10))
-            background = glass(12)
-            isFocusable = true
-            setOnClickListener { showPlaylistDialog() }
+        // The visible playlist dropdown is removed from Live TV. Playlist data and
+        // Playlist Manager remain untouched; use this full-width title strip instead.
+        playlistSelectorContainer = null
+        if (section == "Live TV") {
+            val liveTitleBar = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+                background = glass(12)
+                elevation = dp(3).toFloat()
+            }
+            liveTitleBar.addView(text("▶  LIVE TV", 16, accent, true),
+                LinearLayout.LayoutParams(0, -2, 1f))
+            liveTitleBar.addView(text("${channels.size} CHANNELS", 10, muted, true))
+            contentArea.addView(liveTitleBar,
+                LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 50 else 58)))
         }
-        val playlistText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        playlistText.addView(text("Sany iptv Channel", 14, white, true))
-        playlistText.addView(text("Tap to switch playlist  •  " + channels.size + " channels", 10, muted).apply {
-            setPadding(0, dp(3), 0, 0)
-        })
-        playlistSelector.addView(playlistText, LinearLayout.LayoutParams(0, -2, 1f))
-        playlistSelector.addView(text("⌄", 25, accent, true))
-        playlistSelectorContainer = playlistSelector
-        contentArea.addView(playlistSelector, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 50 else 58)))
 
         // Keep the selected-category title/search bar outside every ScrollView.
         // This makes it stationary while channel rows scroll underneath it.
@@ -822,6 +821,8 @@ class MainActivity : AppCompatActivity() {
         // when the user returns to the category directory.
         val immersiveCategory = section == "Live TV" && !categoryDirectory
         homeHeaderContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
+        // The Live TV title is shown in the replacement banner below the brand header.
+        headerTitleView?.visibility = if (section == "Live TV") View.GONE else View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
         categoryHeaderContainer.visibility = if (immersiveCategory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
