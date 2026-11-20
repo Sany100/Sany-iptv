@@ -3003,8 +3003,195 @@ class MainActivity : AppCompatActivity() {
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         playerScreen = screen
+        isPlayerFullscreen = keepFullscreenMode
+        playerHeader = null
+
+        val view = PlayerView(this).apply {
+            useController = false
+            player = p
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            setBackgroundColor(Color.BLACK)
+            setShutterBackgroundColor(Color.BLACK)
+            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+        }
+        playerView = view
+        screen.addView(view, FrameLayout.LayoutParams(-1, dp(230), Gravity.TOP))
+
+        // Custom control dock sits below the video, keeping the channel list unobstructed.
+        val controlsPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(5), dp(10), dp(5))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xE6101A2A.toInt(), 0xF20A1220.toInt())
+            ).apply {
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), 0x884D8DDA.toInt())
+            }
+            visibility = View.GONE
+            alpha = 0f
+            elevation = dp(5).toFloat()
+        }
+        val transportRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        fun playerAction(label: String, description: String, action: () -> Unit) =
+            TextView(this).apply {
+                text = label
+                contentDescription = description
+                textSize = if (label == "Ⅱ" || label == "▶") 25f else 22f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                isFocusable = true
+                applyTvFocusStyle(this)
+                setOnClickListener { action() }
+            }
+        val previousButton = playerAction("|◀", "Previous channel") { playAdjacentChannel(-1) }
+        val rewindButton = playerAction("↶ 5", "Rewind 5 seconds") {
+            p.seekTo((p.currentPosition - 5_000L).coerceAtLeast(0L))
+        }
+        val playPauseButton = playerAction(if (p.isPlaying) "Ⅱ" else "▶", "Play or pause") {
+            if (p.isPlaying) p.pause() else p.play()
+        }
+        val forwardButton = playerAction("15 ↷", "Forward 15 seconds") {
+            val duration = p.duration
+            val target = p.currentPosition + 15_000L
+            p.seekTo(if (duration > 0) target.coerceAtMost(duration) else target)
+        }
+        val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
+        listOf(previousButton, rewindButton, playPauseButton, forwardButton, nextButton).forEachIndexed { index, button ->
+            transportRow.addView(button, LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                if (index == 2) {
+                    leftMargin = dp(4); rightMargin = dp(4)
+                }
+            })
+        }
+        controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(38)))
+
+        val progressBar = SeekBar(this).apply {
+            max = 1000
+            progressTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x668899AA)
+            setPadding(dp(2), 0, dp(2), 0)
+        }
+        controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(24)))
+        val infoRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        fun timeLabel() = TextView(this).apply {
+            text = "00:00"
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        }
+        val positionLabel = timeLabel()
+        val durationLabel = timeLabel().apply { setTextColor(0xFFB8C4D4.toInt()) }
+        infoRow.addView(positionLabel)
+        infoRow.addView(durationLabel, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12) })
+        val settingsButton = playerAction("⚙", "Player settings") {
+            val options = arrayOf("Playback speed", "Video quality")
+            AlertDialog.Builder(this).setTitle("Player settings").setItems(options) { _, which ->
+                if (which == 0) {
+                    val speeds = arrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                    val labels = speeds.map { if (it == 1f) "1.0× (Normal)" else "${it}×" }.toTypedArray()
+                    val selected = speeds.indexOf(prefs.getFloat("playback_speed", 1.0f)).coerceAtLeast(0)
+                    AlertDialog.Builder(this).setTitle("Playback speed").setSingleChoiceItems(labels, selected) { dialog, choice ->
+                        prefs.edit().putFloat("playback_speed", speeds[choice]).apply()
+                        p.setPlaybackSpeed(speeds[choice])
+                        dialog.dismiss()
+                    }.setNegativeButton("CLOSE", null).show()
+                } else {
+                    val qualities = arrayOf("auto", "480", "720", "1080")
+                    val labels = arrayOf("Auto", "480p", "720p", "1080p")
+                    val selected = qualities.indexOf(prefs.getString("video_quality", "auto")).coerceAtLeast(0)
+                    AlertDialog.Builder(this).setTitle("Video quality").setSingleChoiceItems(labels, selected) { dialog, choice ->
+                        prefs.edit().putString("video_quality", qualities[choice]).apply()
+                        applyVideoQuality()
+                        dialog.dismiss()
+                    }.setNegativeButton("CLOSE", null).show()
+                }
+            }.show()
+        }
+        val fullscreenButton = playerAction("⛶", "Toggle fullscreen") {
+            setPlayerFullscreen(!isPlayerFullscreen)
+        }
+        infoRow.addView(settingsButton, LinearLayout.LayoutParams(dp(40), dp(34)))
+        infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(40), dp(34)))
+        controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(34)))
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(105), Gravity.TOP).apply {
+            topMargin = dp(232)
+            leftMargin = dp(8); rightMargin = dp(8)
+        })
+
+        val controlsHandler = Handler(Looper.getMainLooper())
+        val hideControls = Runnable {
+            if (controlsPanel.visibility == View.VISIBLE) {
+                controlsPanel.animate().alpha(0f).setDuration(180).withEndAction {
+                    controlsPanel.visibility = View.GONE
+                }.start()
+            }
+        }
+        fun revealControls(autoHide: Boolean = true) {
+            controlsHandler.removeCallbacks(hideControls)
+            if (controlsPanel.visibility != View.VISIBLE) {
+                controlsPanel.visibility = View.VISIBLE
+                controlsPanel.animate().alpha(1f).setDuration(140).start()
+            } else controlsPanel.alpha = 1f
+            if (autoHide) controlsHandler.postDelayed(hideControls, 2500L)
+        }
+        progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && p.duration > 0) {
+                    val target = p.duration * progress / 1000L
+                    positionLabel.text = formatPlayerTime(target)
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                controlsHandler.removeCallbacks(hideControls)
+            }
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                val duration = p.duration
+                if (duration > 0) p.seekTo(duration * (seekBar?.progress ?: 0) / 1000L)
+                revealControls()
+            }
+        })
+        val progressUpdater = object : Runnable {
+            override fun run() {
+                if (player !== p || playerView == null) return
+                val duration = p.duration
+                val position = p.currentPosition
+                if (!progressBar.isPressed && duration > 0) {
+                    progressBar.progress = ((position * 1000L) / duration).toInt().coerceIn(0, 1000)
+                }
+                positionLabel.text = formatPlayerTime(position)
+                durationLabel.text = formatPlayerTime(if (duration > 0) duration else 0L)
+                playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
+                controlsHandler.postDelayed(this, 500L)
+            }
+        }
+        controlsHandler.post(progressUpdater)
+
+        val tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (controlsPanel.visibility == View.VISIBLE) {
+                    controlsHandler.removeCallbacks(hideControls)
+                    hideControls.run()
+                } else revealControls()
+                return true
+            }
+        })
+        view.setOnTouchListener { _, event ->
+            tapDetector.onTouchEvent(event)
+            true
+        }
+
         val tvRemoteHint: TextView? = if (isTvDevice) TextView(this).apply {
-            // TV-friendly channel switch hint stays visible when the player controls fade.
             text = "▲ / ▼  CHANGE CHANNEL     BACK  •  EXIT"
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
@@ -3019,104 +3206,19 @@ class MainActivity : AppCompatActivity() {
             isFocusable = false
             contentDescription = "Use Up or Down on the TV remote to change channel"
         } else null
-        isPlayerFullscreen = keepFullscreenMode
-        playerHeader = null
-        val view = PlayerView(this).apply {
-            useController = true
-            player = p
-            // Crop slightly when needed so the video fills the entire landscape display.
-            // The PlayerView and its shutter remain black, never showing the home screen behind it.
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            setBackgroundColor(Color.BLACK)
-            setShutterBackgroundColor(Color.BLACK)
-            setControllerShowTimeoutMs(2500)
-            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-        }
-        playerView = view
-        screen.addView(view, FrameLayout.LayoutParams(-1, dp(230), Gravity.TOP).apply {
-            leftMargin = dp(0); rightMargin = dp(0)
-        })
         tvRemoteHint?.let { hint ->
             screen.addView(hint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
                 bottomMargin = dp(18)
             })
         }
 
-        val swipeDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            private val threshold = dp(65)
-            private val velocity = dp(120)
-            override fun onDown(e: MotionEvent) = true
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                val start = e1 ?: return false
-                val dx = e2.x - start.x
-                val dy = e2.y - start.y
-                if (kotlin.math.abs(dx) > threshold && kotlin.math.abs(dx) > kotlin.math.abs(dy) &&
-                    kotlin.math.abs(velocityX) > velocity) {
-                    playAdjacentChannel(if (dx < 0) 1 else -1)
-                    return true
-                }
-                return false
-            }
-        })
-        view.setOnTouchListener { _, event ->
-            swipeDetector.onTouchEvent(event)
-            false
+        // Every new playback starts the visible channel list at playlist channel 1.
+        (if (::listContainer.isInitialized) listContainer.parent as? ScrollView else null)?.post {
+            (listContainer.parent as? ScrollView)?.scrollTo(0, 0)
         }
 
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xCC000000.toInt(), Color.TRANSPARENT)
-            )
-        }
-        val back = text("‹", 34, Color.WHITE, true).apply {
-            isFocusable = true
-            applyTvFocusStyle(this)
-            gravity = Gravity.CENTER
-            setOnClickListener { closePlayer() }
-        }
-        header.addView(back, LinearLayout.LayoutParams(dp(42), dp(48)))
-        header.addView(text(channel.name, 16, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f))
-        playerHeader = header
-        screen.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
-            topMargin = dp(230)
-        })
-        val fullscreenButton = text("⛶  FULL", 13, Color.WHITE, true).apply {
-            isFocusable = true
-            applyTvFocusStyle(this)
-            gravity = Gravity.CENTER
-            setPadding(dp(13), 0, dp(13), 0)
-            background = GradientDrawable().apply {
-                setColor(0xCC101A28.toInt())
-                cornerRadius = dp(14).toFloat()
-                setStroke(dp(1), 0x99FFFFFF.toInt())
-            }
-            elevation = dp(8).toFloat()
-            setOnClickListener { setPlayerFullscreen(!isPlayerFullscreen) }
-            contentDescription = "Toggle fullscreen"
-        }
-        playerFullscreenButton = fullscreenButton
-        screen.addView(fullscreenButton, FrameLayout.LayoutParams(-2, dp(46), Gravity.TOP or Gravity.END).apply {
-            topMargin = dp(244); rightMargin = dp(16)
-        })
-        // Hide the custom fullscreen button together with Media3 controls.
-        // It reappears when the user taps the video to show the controls again.
-        view.setControllerVisibilityListener(
-            PlayerView.ControllerVisibilityListener { visibility ->
-                val controlsVisible = visibility == View.VISIBLE
-                playerFullscreenButton?.visibility = if (controlsVisible) View.VISIBLE else View.GONE
-                playerHeader?.visibility = if (isPlayerFullscreen && controlsVisible) View.VISIBLE
-                    else if (isPlayerFullscreen) View.GONE else View.VISIBLE
-            }
-        )
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
-        // Retain portrait/fullscreen mode across channel changes.
         setPlayerFullscreen(keepFullscreenMode)
-        view.showController()
-
         val lowerUrl = streamUrl.substringBefore("?").substringBefore("#").lowercase()
         val itemBuilder = MediaItem.Builder().setUri(streamUrl)
         when {
@@ -3150,6 +3252,15 @@ class MainActivity : AppCompatActivity() {
         target.setParameters(builder)
     }
 
+    private fun formatPlayerTime(milliseconds: Long): String {
+        val totalSeconds = (milliseconds.coerceAtLeast(0L) / 1000L)
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) String.format("%d:%02d:%02d", hours, minutes, seconds)
+            else String.format("%02d:%02d", minutes, seconds)
+    }
+
     private fun playAdjacentChannel(direction: Int) {
         val current = currentChannel ?: return
         val index = channels.indexOfFirst { it.url == current.url }
@@ -3165,8 +3276,6 @@ class MainActivity : AppCompatActivity() {
     private fun setPlayerFullscreen(enabled: Boolean) {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
-        playerFullscreenButton?.text = if (enabled) "⤢  EXIT" else "⛶  FULL"
-        if (!enabled) playerFullscreenButton?.visibility = View.VISIBLE
         playerView?.layoutParams = FrameLayout.LayoutParams(
             -1, if (enabled) -1 else dp(230), if (enabled) Gravity.CENTER else Gravity.TOP
         )
