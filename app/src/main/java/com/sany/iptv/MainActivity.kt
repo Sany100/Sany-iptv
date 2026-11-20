@@ -108,6 +108,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var search: EditText
     private lateinit var countLabel: TextView
     private lateinit var categoryRow: LinearLayout
+    private lateinit var categoryHeaderContainer: LinearLayout
     private lateinit var bottomNav: LinearLayout
     private lateinit var listContainer: LinearLayout
     private var playerScreen: FrameLayout? = null
@@ -712,8 +713,18 @@ class MainActivity : AppCompatActivity() {
         playlistSelectorContainer = playlistSelector
         contentArea.addView(playlistSelector, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 50 else 58)))
 
+        // Keep the selected-category title/search bar outside every ScrollView.
+        // This makes it stationary while channel rows scroll underneath it.
+        categoryHeaderContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        contentArea.addView(categoryHeaderContainer, LinearLayout.LayoutParams(-1, dp(54)).apply {
+            topMargin = dp(5)
+        })
         val categoriesScroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
+            isFillViewport = true
             setBackgroundColor(bg)
             overScrollMode = View.OVER_SCROLL_NEVER
         }
@@ -787,31 +798,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showChannelSearchDialog() {
-        val input = EditText(this).apply {
-            hint = "Search channels, movies, series..."
-            setTextColor(white)
-            setHintTextColor(muted)
-            setSingleLine(true)
-            setText(searchQuery)
+        // Kept as a compatibility no-op: search is now inline in the fixed header.
+        if (!::categoryHeaderContainer.isInitialized) return
+        val input = categoryHeaderContainer.findViewWithTag<EditText>("category_inline_search") ?: return
+        input.requestFocus()
+        input.post {
+            val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }
-        // Filter the current category immediately as the user types.
-        input.addTextChangedListener(SimpleTextWatcher { value ->
-            searchQuery = value.trim()
-            displayedLimit = 60
-            renderListOnly()
-        })
-        AlertDialog.Builder(this)
-            .setTitle("⌕  Search channels")
-            .setView(input)
-            .setPositiveButton("DONE", null)
-            .setNeutralButton("CLEAR") { _, _ ->
-                input.setText("")
-                searchQuery = ""
-                displayedLimit = 60
-                renderListOnly()
-            }
-            .setNegativeButton("CLOSE", null)
-            .show()
     }
 
     private fun renderCategories() {
@@ -829,10 +823,13 @@ class MainActivity : AppCompatActivity() {
         val immersiveCategory = section == "Live TV" && !categoryDirectory
         homeHeaderContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
+        categoryHeaderContainer.visibility = if (immersiveCategory) View.VISIBLE else View.GONE
+        (categoryRow.parent as? ScrollView)?.visibility =
+            if (categoryDirectory || movieDirectory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.let { scroll ->
             scroll.layoutParams = (scroll.layoutParams as LinearLayout.LayoutParams).apply {
-                height = if (categoryDirectory || movieDirectory) 0 else dp(52)
-                weight = if (categoryDirectory) 1f else 0f
+                height = 0
+                weight = if (categoryDirectory || movieDirectory) 1f else 0f
             }
         }
         if (::countLabel.isInitialized) countLabel.visibility =
@@ -841,12 +838,17 @@ class MainActivity : AppCompatActivity() {
             if (categoryDirectory) View.GONE else View.VISIBLE
 
         if (section == "Live TV" && !categoryDirectory) {
+            categoryHeaderContainer.removeAllViews()
             val back = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(8), dp(16), dp(8))
+                setPadding(dp(16), dp(5), dp(10), dp(5))
                 background = glass(12)
-                elevation = dp(3).toFloat()
+                elevation = dp(4).toFloat()
+                translationZ = dp(4).toFloat()
+            }
+            val categoryTitle = text("‹  ALL CATEGORIES", 13, accent, true).apply {
+                gravity = Gravity.CENTER_VERTICAL
                 isFocusable = true
                 applyTvFocusStyle(this)
                 setOnClickListener {
@@ -855,31 +857,30 @@ class MainActivity : AppCompatActivity() {
                     renderListOnly()
                 }
             }
-            back.addView(text("‹  ALL CATEGORIES", 13, accent, true),
-                LinearLayout.LayoutParams(0, -2, 1f))
-            val categorySearch = text("⌕  Search", 13, accent, true).apply {
-                gravity = Gravity.CENTER
+            back.addView(categoryTitle, LinearLayout.LayoutParams(0, -1, 1f))
+            val categorySearch = EditText(this).apply {
+                tag = "category_inline_search"
+                hint = "⌕  Search"
+                textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(accent)
+                setHintTextColor(accent)
+                singleLine = true
+                imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
                 setPadding(dp(10), 0, dp(10), 0)
-                contentDescription = "Search channels"
-                isFocusable = true
-                isFocusableInTouchMode = false
                 background = glass(10)
-                // Keep the Search control fixed in the category header.
-                clearAnimation()
-                animate().cancel()
-                setTranslationX(0f)
-                setTranslationY(0f)
-                setScaleX(1f)
-                setScaleY(1f)
-                setAlpha(1f)
-                setOnClickListener { showChannelSearchDialog() }
+                gravity = Gravity.CENTER_VERTICAL
+                setText(searchQuery)
+                isFocusable = true
+                isFocusableInTouchMode = true
+                addTextChangedListener(SimpleTextWatcher { value ->
+                    searchQuery = value.trim()
+                    displayedLimit = 60
+                    renderChannelRows(listContainer)
+                })
             }
-            back.addView(categorySearch, LinearLayout.LayoutParams(dp(92), dp(42)))
-            back.clearAnimation()
-            back.animate().cancel()
-            back.setTranslationY(0f)
-            back.setTranslationX(0f)
-            categoryRow.addView(back, LinearLayout.LayoutParams(-1, dp(46)))
+            back.addView(categorySearch, LinearLayout.LayoutParams(dp(118), dp(42)))
+            categoryHeaderContainer.addView(back, LinearLayout.LayoutParams(-1, dp(46)))
             return
         }
 
