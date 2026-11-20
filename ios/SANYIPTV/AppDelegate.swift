@@ -141,6 +141,14 @@ private final class PlaylistStore {
     private var loading = false
     private var callbacks: [(Result<[SANYChannel], Error>) -> Void] = []
     private var pendingSource = ""
+    private(set) var loadedFromCache = false
+
+    private func cacheURL(for source: String) -> URL {
+        let encoded = Data(source.utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "=", with: "")
+        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Playlists", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appendingPathComponent(encoded + ".m3u")
+    }
 
     var activePlaylist: String {
         UserDefaults.standard.string(forKey: "sany.ios.activePlaylist")
@@ -187,22 +195,29 @@ private final class PlaylistStore {
         request.timeoutInterval = 30
         request.setValue("SANY-IPTV-iOS", forHTTPHeaderField: "User-Agent")
         URLSession.shared.dataTask(with: request) { data, response, error in
-            let result: Result<[SANYChannel], Error>
-            if let error = error {
-                result = .failure(error)
-            } else if let data = data,
-                      let http = response as? HTTPURLResponse,
-                      (200...299).contains(http.statusCode),
-                      let text = String(data: data, encoding: .utf8) {
+            var result: Result<[SANYChannel], Error>
+            var fromCache = false
+            if error == nil, let data = data,
+               let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+               let text = String(data: data, encoding: .utf8) {
                 let parsed = self.parse(text)
                 if parsed.isEmpty {
                     result = .failure(NSError(domain: "SANYPlaylist", code: 3, userInfo: [NSLocalizedDescriptionKey: "প্লেলিস্টে কোনো playable channel পাওয়া যায়নি।"]))
                 } else {
+                    try? data.write(to: self.cacheURL(for: source), options: .atomic)
                     result = .success(parsed)
                 }
             } else {
-                result = .failure(NSError(domain: "SANYPlaylist", code: 4, userInfo: [NSLocalizedDescriptionKey: "Playlist server সঠিক উত্তর দেয়নি।"]))
+                let cache = self.cacheURL(for: source)
+                if let cached = try? Data(contentsOf: cache), let text = String(data: cached, encoding: .utf8) {
+                    let parsed = self.parse(text)
+                    if !parsed.isEmpty { result = .success(parsed); fromCache = true }
+                    else { result = .failure(error ?? NSError(domain: "SANYPlaylist", code: 4, userInfo: [NSLocalizedDescriptionKey: "Cached playlist is invalid."])) }
+                } else {
+                    result = .failure(error ?? NSError(domain: "SANYPlaylist", code: 4, userInfo: [NSLocalizedDescriptionKey: "Playlist server সঠিক উত্তর দেয়নি এবং কোনো cache নেই।"]))
+                }
             }
+            self.loadedFromCache = fromCache
             self.finish(result, source: source)
         }.resume()
     }
@@ -219,7 +234,11 @@ private final class PlaylistStore {
         do {
             try text.write(to: url, atomically: true, encoding: .utf8)
             let source = url.absoluteString
+            try text.write(to: cacheURL(for: source), atomically: true, encoding: .utf8)
             channels = parsed
+            loadedFromCache = false
+            var saved = UserDefaults.standard.stringArray(forKey: "sany.ios.playlists") ?? []
+            if !saved.contains(source) { saved.append(source); UserDefaults.standard.set(saved, forKey: "sany.ios.playlists") }
             loadedSource = source
             UserDefaults.standard.set(source, forKey: "sany.ios.activePlaylist")
             completion(.success(parsed))
@@ -828,7 +847,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         showMessage("Playlist loading শুরু হয়েছে। লোড সম্পন্ন হলে Live TV ট্যাবে চ্যানেলগুলো দেখা যাবে।")
         PlaylistStore.shared.load(from: value, forceRefresh: true) { [weak self] result in
             switch result {
-            case .success(let channels): self?.showMessage("Playlist loaded: \(channels.count) channels")
+            case .success(let channels): self?.showMessage("Playlist loaded: \(channels.count) channels\n\(PlaylistStore.shared.loadedFromCache ? "Offline cache used." : "Online refresh complete.")")
             case .failure(let error): self?.showMessage("Playlist load failed: \(error.localizedDescription)")
             }
             self?.table.reloadData()
@@ -838,7 +857,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     private func reloadActivePlaylist() {
         PlaylistStore.shared.load(from: PlaylistStore.shared.activePlaylist, forceRefresh: true) { [weak self] result in
             switch result {
-            case .success(let channels): self?.showMessage("Playlist reloaded: \(channels.count) channels")
+            case .success(let channels): self?.showMessage("Playlist reloaded: \(channels.count) channels\n\(PlaylistStore.shared.loadedFromCache ? "Offline cache used." : "Online refresh complete.")")
             case .failure(let error): self?.showMessage("Reload failed: \(error.localizedDescription)")
             }
         }
