@@ -3307,12 +3307,60 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var lastBackPressedAt = 0L
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (playerView != null && isPlayerFullscreen) setPlayerFullscreen(false)
-        else if (playerView != null) closePlayer() else if (section != "Live TV") {
-            section = "Live TV"; selectedGroup = "All"; searchQuery = ""; renderHome()
-        } else super.onBackPressed()
+        if (playerView != null && isPlayerFullscreen) {
+            setPlayerFullscreen(false)
+            return
+        }
+        if (playerView != null) {
+            closePlayer()
+            return
+        }
+        // From a channel category, return to the Live TV category directory.
+        if (section == "Live TV" && selectedGroup != "Select category") {
+            selectedGroup = "Select category"
+            liveTvSelectedGroup = "Select category"
+            searchQuery = ""
+            liveTvSearchQuery = ""
+            displayedLimit = 60
+            prefs.edit()
+                .putString("live_tv_group", "Select category")
+                .putString("live_tv_search", "")
+                .putString("ui_group", "Select category")
+                .putString("ui_search", "")
+                .apply()
+            renderHome()
+            return
+        }
+        // Other sections return to the Live TV category directory first.
+        if (section != "Live TV") {
+            section = "Live TV"
+            selectedGroup = "Select category"
+            liveTvSelectedGroup = "Select category"
+            searchQuery = ""
+            liveTvSearchQuery = ""
+            prefs.edit()
+                .putString("ui_section", "Live TV")
+                .putString("ui_group", "Select category")
+                .putString("ui_search", "")
+                .putString("live_tv_group", "Select category")
+                .putString("live_tv_search", "")
+                .apply()
+            renderHome()
+            return
+        }
+        // Require two Back presses within two seconds to exit the app.
+        val now = System.currentTimeMillis()
+        if (now - lastBackPressedAt <= 2_000L) {
+            lastBackPressedAt = 0L
+            finish()
+        } else {
+            lastBackPressedAt = now
+            Toast.makeText(this, "অ্যাপ থেকে বের হতে আবার Back চাপুন", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
