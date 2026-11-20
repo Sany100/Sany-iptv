@@ -120,6 +120,7 @@ class MainActivity : AppCompatActivity() {
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
+    private var playerMinimizeButton: TextView? = null
     private var playerControlsPanel: View? = null
     private var headerTitleView: TextView? = null
     private var homeHeaderContainer: View? = null
@@ -3178,12 +3179,20 @@ class MainActivity : AppCompatActivity() {
                 }
             }.show()
         }
+        val minimizeButton = playerAction("⤡", "Minimize / Exit Fullscreen") {
+            if (isPlayerFullscreen) setPlayerFullscreen(false)
+        }.apply {
+            visibility = if (keepFullscreenMode) View.VISIBLE else View.GONE
+            textSize = 24f
+        }
+        playerMinimizeButton = minimizeButton
         val fullscreenButton = playerAction("⛶", "Toggle fullscreen") {
             setPlayerFullscreen(!isPlayerFullscreen)
         }
         playerFullscreenButton = fullscreenButton
         playerControlsPanel = controlsPanel
         infoRow.addView(settingsButton, LinearLayout.LayoutParams(dp(40), dp(34)))
+        infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(40), dp(34)))
         fullscreenButton.textSize = 25f
         infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(40), dp(34)))
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(30)))
@@ -3353,6 +3362,7 @@ class MainActivity : AppCompatActivity() {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerFullscreenButton?.text = if (enabled) "⤢" else "⛶"
+        playerMinimizeButton?.visibility = if (enabled) View.VISIBLE else View.GONE
         playerControlsPanel?.let { panel ->
             (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
@@ -3399,6 +3409,7 @@ class MainActivity : AppCompatActivity() {
         }
         playerHeader = null
         playerFullscreenButton = null
+        playerMinimizeButton = null
         playerControlsPanel = null
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
