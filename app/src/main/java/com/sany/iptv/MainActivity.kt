@@ -666,7 +666,7 @@ class MainActivity : AppCompatActivity() {
             letterSpacing = 0.01f
             setPadding(dp(8), 0, dp(8), 0)
             alpha = 0f
-            translationY = dp(-4).toFloat()
+            translationY = dp(-30).toFloat()
         }
         center.addView(welcome)
 
@@ -675,6 +675,7 @@ class MainActivity : AppCompatActivity() {
             letterSpacing = 0.025f
             setPadding(0, dp(7), 0, dp(14))
             alpha = 0f
+            translationY = dp(-30).toFloat()
         }
         center.addView(thankYou)
 
@@ -688,11 +689,13 @@ class MainActivity : AppCompatActivity() {
             progress = 0
             progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(64, 170, 255))
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.argb(85, 210, 230, 255))
+            translationY = dp(-30).toFloat()
         }
         center.addView(loadingBar, LinearLayout.LayoutParams(dp(230), dp(7)))
         val percentLabel = text("0%", 13, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(9), 0, 0)
+            translationY = dp(-30).toFloat()
         }
         center.addView(percentLabel)
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
