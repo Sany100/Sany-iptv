@@ -2181,14 +2181,6 @@ class MainActivity : AppCompatActivity() {
                 if (url.startsWith("http://", true) || url.startsWith("https://", true)) loadFromUrl(url)
                 else toast("সঠিক HTTP/HTTPS playlist URL দিন")
             }
-            .setNeutralButton("ADD PERMANENTLY 🔒") { _, _ ->
-                val url = input.text.toString().trim()
-                if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
-                    savePlaylistUrl(url, permanent = true)
-                    loadFromUrl(url)
-                    toast("Playlist permanently locked — Delete disabled")
-                } else toast("সঠিক HTTP/HTTPS playlist URL দিন")
-            }
             .setNegativeButton("CANCEL", null).show()
     }
 
