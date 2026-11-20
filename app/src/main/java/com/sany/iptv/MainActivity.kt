@@ -281,69 +281,138 @@ class MainActivity : AppCompatActivity() {
 
     private fun showMaintenanceScreen(message: String, deviceId: String) {
         if (maintenanceOverlay != null || !::root.isInitialized) return
-        val overlay = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(28), dp(28), dp(28), dp(28))
+
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(5, 10, 24))
+            isClickable = true
+            isFocusable = true
+        }
+        val glow = View(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.rgb(5, 13, 32), Color.rgb(20, 31, 62), Color.rgb(8, 12, 27))
+                intArrayOf(Color.rgb(12, 36, 74), Color.rgb(5, 10, 24))
             )
         }
+        overlay.addView(glow, FrameLayout.LayoutParams(-1, -1))
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(28), dp(24), dp(24))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(20, 35, 62), Color.rgb(11, 20, 39))
+            ).apply {
+                cornerRadius = dp(26).toFloat()
+                setStroke(dp(1), Color.rgb(55, 105, 165))
+            }
+            elevation = dp(12).toFloat()
+        }
+        val cardParams = FrameLayout.LayoutParams(
+            -1, -2, Gravity.CENTER
+        ).apply {
+            leftMargin = dp(22)
+            rightMargin = dp(22)
+            topMargin = dp(24)
+            bottomMargin = dp(24)
+        }
+
         val icon = TextView(this).apply {
             text = "🛠️"
-            textSize = 54f
+            textSize = 58f
             gravity = Gravity.CENTER
         }
-        overlay.addView(icon, LinearLayout.LayoutParams(-1, dp(82)))
-        val title = TextView(this).apply {
+        card.addView(icon, LinearLayout.LayoutParams(-1, dp(82)))
+
+        val brand = TextView(this).apply {
             text = "SANY IPTV"
-            textSize = 27f
+            textSize = 25f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            letterSpacing = 0.06f
+        }
+        card.addView(brand, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+
+        val status = TextView(this).apply {
+            text = "●  MAINTENANCE MODE ACTIVE"
+            textSize = 11f
+            setTextColor(Color.rgb(255, 199, 92))
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            letterSpacing = 0.06f
+            setPadding(dp(14), dp(9), dp(14), dp(9))
+            background = GradientDrawable().apply {
+                setColor(Color.argb(35, 255, 190, 70))
+                cornerRadius = dp(30).toFloat()
+                setStroke(dp(1), Color.argb(120, 255, 190, 70))
+            }
+        }
+        card.addView(status, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(18) })
+
+        val heading = TextView(this).apply {
+            text = "We’ll be back soon!"
+            textSize = 22f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
         }
-        overlay.addView(title, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-        val heading = TextView(this).apply {
-            text = "App Under Maintenance"
-            textSize = 19f
-            setTextColor(Color.rgb(255, 195, 75))
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-        }
-        overlay.addView(heading, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(18) })
+        card.addView(heading, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
+
         val detail = TextView(this).apply {
             text = message
             textSize = 15f
-            setTextColor(Color.rgb(220, 228, 242))
+            setTextColor(Color.rgb(215, 226, 243))
             gravity = Gravity.CENTER
             setLineSpacing(dp(5).toFloat(), 1f)
         }
-        overlay.addView(detail, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(14)
-            bottomMargin = dp(22)
+        card.addView(detail, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(12)
+            bottomMargin = dp(18)
         })
-        val status = TextView(this).apply {
-            text = "MAINTENANCE MODE ACTIVE"
-            textSize = 12f
-            setTextColor(Color.rgb(255, 195, 75))
+
+        val divider = View(this).apply { setBackgroundColor(Color.argb(70, 150, 185, 230)) }
+        card.addView(divider, LinearLayout.LayoutParams(-1, dp(1)))
+
+        val eta = TextView(this).apply {
+            text = "EXPECTED RETURN\nশীঘ্রই আবার চালু হবে"
+            textSize = 13f
+            setTextColor(Color.rgb(255, 207, 115))
+            typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            letterSpacing = 0.08f
+            setLineSpacing(dp(4).toFloat(), 1f)
         }
-        overlay.addView(status, LinearLayout.LayoutParams(-1, -2))
-        val copy = TextView(this).apply {
-            text = "COPY THIS DEVICE ID (ADMIN)"
-            textSize = 12f
-            setTextColor(Color.rgb(120, 195, 255))
+        card.addView(eta, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(18)
+        })
+
+        val thanks = TextView(this).apply {
+            text = "আপনার ধৈর্য ও সহযোগিতার জন্য ধন্যবাদ।\n— SANY IPTV Team"
+            textSize = 13f
+            setTextColor(Color.rgb(165, 185, 211))
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(18), dp(12), dp(8))
+            setLineSpacing(dp(4).toFloat(), 1f)
+        }
+        card.addView(thanks, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(20)
+        })
+
+        val copy = TextView(this).apply {
+            text = "COPY DEVICE ID (ADMIN)"
+            textSize = 11f
+            setTextColor(Color.rgb(125, 195, 255))
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(14), dp(12), dp(4))
             setOnClickListener {
                 val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SANY IPTV device ID", deviceId))
                 toast("Device ID copied")
             }
         }
-        overlay.addView(copy, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+        card.addView(copy, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+
+        overlay.addView(card, cardParams)
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         maintenanceOverlay = overlay
     }
