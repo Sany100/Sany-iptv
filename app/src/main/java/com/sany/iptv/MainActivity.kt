@@ -185,11 +185,11 @@ class MainActivity : AppCompatActivity() {
             section = "Live TV"
             liveTvSelectedGroup = "Select category"
             liveTvSearchQuery = ""
-            selectedGroup = "All"
+            selectedGroup = "Select category"
             searchQuery = ""
             prefs.edit()
                 .putString("ui_section", "Live TV")
-                .putString("ui_group", "All")
+                .putString("ui_group", "Select category")
                 .putString("ui_search", "")
                 .putString("live_tv_group", "Select category")
                 .putString("live_tv_search", "")
