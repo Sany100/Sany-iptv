@@ -167,15 +167,34 @@ class MainActivity : AppCompatActivity() {
         val savedPlaylist = permanentPlaylistUrl
         prefs.edit().putString("playlist_url", permanentPlaylistUrl).apply()
         val restoringBackground = savedInstanceState != null
-        section = savedInstanceState?.getString("ui_section") ?: prefs.getString("ui_section", "Live TV") ?: "Live TV"
-        liveTvSelectedGroup = savedInstanceState?.getString("live_tv_group") ?: prefs.getString("live_tv_group", "Select category") ?: "Select category"
-        liveTvSearchQuery = savedInstanceState?.getString("live_tv_search") ?: prefs.getString("live_tv_search", "") ?: ""
-        selectedGroup = savedInstanceState?.getString("ui_group") ?: prefs.getString("ui_group", "All") ?: "All"
-        if (section == "Live TV") {
-            selectedGroup = liveTvSelectedGroup
-            searchQuery = liveTvSearchQuery
+        if (restoringBackground) {
+            // Restore the current screen only for Android's in-process Activity recreation
+            // (for example, rotation or process recreation with a saved instance state).
+            section = savedInstanceState?.getString("ui_section") ?: "Live TV"
+            liveTvSelectedGroup = savedInstanceState?.getString("live_tv_group") ?: "Select category"
+            liveTvSearchQuery = savedInstanceState?.getString("live_tv_search") ?: ""
+            selectedGroup = savedInstanceState?.getString("ui_group") ?: "All"
+            searchQuery = savedInstanceState?.getString("ui_search") ?: ""
+            if (section == "Live TV") {
+                selectedGroup = liveTvSelectedGroup
+                searchQuery = liveTvSearchQuery
+            }
         } else {
-            searchQuery = savedInstanceState?.getString("ui_search") ?: prefs.getString("ui_search", "") ?: ""
+            // A fresh app launch always opens the Live TV home/category directory.
+            // Do not carry the last visited category or section across a full app close.
+            section = "Live TV"
+            liveTvSelectedGroup = "Select category"
+            liveTvSearchQuery = ""
+            selectedGroup = "All"
+            searchQuery = ""
+            prefs.edit()
+                .putString("ui_section", "Live TV")
+                .putString("ui_group", "All")
+                .putString("ui_search", "")
+                .putString("live_tv_group", "Select category")
+                .putString("live_tv_search", "")
+                .putBoolean("resume_without_splash", false)
+                .apply()
         }
         // Keep the Live TV channel list empty until the user opens a category.
         val resumeStream = if (restoringBackground) prefs.getString("resume_stream", null) else null
