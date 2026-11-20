@@ -822,14 +822,14 @@ class MainActivity : AppCompatActivity() {
         // when the user returns to the category directory.
         val immersiveCategory = section == "Live TV" && !categoryDirectory
         homeHeaderContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
-        playlistSelectorContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
+        playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
         categoryHeaderContainer.visibility = if (immersiveCategory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
-            if (categoryDirectory || movieDirectory) View.VISIBLE else View.GONE
+            if (categoryDirectory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.let { scroll ->
             scroll.layoutParams = (scroll.layoutParams as LinearLayout.LayoutParams).apply {
                 height = 0
-                weight = if (categoryDirectory || movieDirectory) 1f else 0f
+                weight = if (categoryDirectory) 1f else 0f
             }
         }
         if (::countLabel.isInitialized) countLabel.visibility =
