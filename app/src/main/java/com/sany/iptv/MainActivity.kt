@@ -2098,9 +2098,17 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) { emptyList() }
     }
 
-    private fun savePlaylistUrl(url: String) {
+    private fun permanentPlaylistUrls(): Set<String> {
+        return prefs.getStringSet("permanent_playlist_urls", emptySet())?.toSet().orEmpty() + permanentPlaylistUrl
+    }
+
+    private fun savePlaylistUrl(url: String, permanent: Boolean = false) {
         if (url != permanentPlaylistUrl && url !in playlistUrls) playlistUrls.add(url)
-        // Keep the permanent owner playlist at position 1 in the saved list.
+        if (permanent) {
+            val locked = permanentPlaylistUrls().toMutableSet().apply { add(url) }
+            prefs.edit().putStringSet("permanent_playlist_urls", locked).apply()
+        }
+        // Keep the built-in owner playlist at position 1 in the saved list.
         playlistUrls.remove(permanentPlaylistUrl)
         playlistUrls.add(0, permanentPlaylistUrl)
         val json = org.json.JSONArray()
@@ -2108,14 +2116,50 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putString("playlist_urls", json.toString()).putString("playlist_url", permanentPlaylistUrl).apply()
     }
 
+    private fun removeSavedPlaylist(url: String) {
+        if (url in permanentPlaylistUrls()) {
+            toast("এই Playlist স্থায়ীভাবে LOCK করা — Delete করা যাবে না")
+            return
+        }
+        playlistUrls.removeAll { it == url }
+        val json = org.json.JSONArray()
+        playlistUrls.forEach { json.put(it) }
+        prefs.edit().putString("playlist_urls", json.toString()).apply()
+        if (prefs.getString("playlist_url", permanentPlaylistUrl) == url) {
+            prefs.edit().putString("playlist_url", permanentPlaylistUrl).apply()
+            loadFromUrl(permanentPlaylistUrl)
+        }
+        toast("Playlist removed")
+    }
+
     private fun showPlaylistDialog() {
-        val labels = playlistUrls.mapIndexed { index, url ->
-            if (url == permanentPlaylistUrl) "★ SANY IPTV — PERMANENT / LOCKED"
-            else (index + 1).toString() + ". " + url
+        val locked = permanentPlaylistUrls()
+        val items = playlistUrls.toList()
+        val labels = items.mapIndexed { index, url ->
+            when {
+                url == permanentPlaylistUrl -> "🔒 SANY IPTV — BUILT-IN / PERMANENT"
+                url in locked -> "🔒 PERMANENT — " + url
+                else -> (index + 1).toString() + ". " + url + "  •  REMOVABLE"
+            }
         }.toTypedArray()
         val builder = AlertDialog.Builder(this).setTitle("Playlist manager")
-        if (labels.isNotEmpty()) builder.setItems(labels) { _, which -> loadFromUrl(playlistUrls[which]) }
-        else builder.setMessage("এখনো কোনো playlist যোগ করা হয়নি।")
+        if (labels.isNotEmpty()) builder.setItems(labels) { _, which ->
+            val selected = items[which]
+            val actions = if (selected in locked) arrayOf("LOAD PLAYLIST", "CANCEL")
+                else arrayOf("LOAD PLAYLIST", "DELETE PLAYLIST", "CANCEL")
+            AlertDialog.Builder(this).setTitle(if (selected in locked) "🔒 Permanent playlist" else "Playlist options")
+                .setItems(actions) { _, action ->
+                    when (actions[action]) {
+                        "LOAD PLAYLIST" -> loadFromUrl(selected)
+                        "DELETE PLAYLIST" -> AlertDialog.Builder(this)
+                            .setTitle("Delete playlist?")
+                            .setMessage("শুধু এই saved playlist মুছবে। মূল M3U server মুছবে না।")
+                            .setNegativeButton("CANCEL", null)
+                            .setPositiveButton("DELETE") { _, _ -> removeSavedPlaylist(selected); showPlaylistDialog() }
+                            .show()
+                    }
+                }.show()
+        } else builder.setMessage("এখনো কোনো playlist যোগ করা হয়নি।")
         builder.setNeutralButton("＋ ADD PLAYLIST") { _, _ -> showAddPlaylistDialog() }
             .setPositiveButton("IMPORT FILE") { _, _ -> openFilePicker() }
             .setNegativeButton("CLOSE", null)
@@ -2136,6 +2180,14 @@ class MainActivity : AppCompatActivity() {
                 val url = input.text.toString().trim()
                 if (url.startsWith("http://", true) || url.startsWith("https://", true)) loadFromUrl(url)
                 else toast("সঠিক HTTP/HTTPS playlist URL দিন")
+            }
+            .setNeutralButton("ADD PERMANENTLY 🔒") { _, _ ->
+                val url = input.text.toString().trim()
+                if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
+                    savePlaylistUrl(url, permanent = true)
+                    loadFromUrl(url)
+                    toast("Playlist permanently locked — Delete disabled")
+                } else toast("সঠিক HTTP/HTTPS playlist URL দিন")
             }
             .setNegativeButton("CANCEL", null).show()
     }
