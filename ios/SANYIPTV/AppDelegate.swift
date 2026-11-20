@@ -169,6 +169,7 @@ private final class PlaylistStore {
                 let result: Result<[SANYChannel], Error>
                 do {
                     let text = try String(contentsOf: url, encoding: .utf8)
+                    EPGRepository.detectPlaylistEPG(text)
                     let parsed = self.parse(text)
                     if parsed.isEmpty { throw NSError(domain: "SANYPlaylist", code: 1, userInfo: [NSLocalizedDescriptionKey: "প্লেলিস্টে কোনো চ্যানেল পাওয়া যায়নি।"]) }
                     result = .success(parsed)
@@ -207,6 +208,7 @@ private final class PlaylistStore {
     }
 
     func importPlaylist(text: String, name: String, completion: @escaping (Result<[SANYChannel], Error>) -> Void) {
+        EPGRepository.detectPlaylistEPG(text)
         let parsed = parse(text)
         guard !parsed.isEmpty else {
             completion(.failure(NSError(domain: "SANYPlaylist", code: 5, userInfo: [NSLocalizedDescriptionKey: "ফাইলে valid M3U channel পাওয়া যায়নি।"])))
@@ -870,3 +872,121 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
             }
         }
     }}
+
+private final class EPGUpdateOperation {
+    private let lock = NSLock()
+    private var tasks: [URLSessionDataTask] = []
+    func add(_ task: URLSessionDataTask) { lock.lock(); tasks.append(task); lock.unlock() }
+    func cancel() { lock.lock(); let current = tasks; lock.unlock(); current.forEach { $0.cancel() } }
+}
+
+private enum EPGRepository {
+    static let sources = [
+        "http://epg.it999.ru/epg.xml.gz",
+        "https://worker-9dd4.onrender.com/guide.xml.gz",
+        "https://raw.githubusercontent.com/StrangeDrVN/epg/public/guide.xml.gz"
+    ]
+
+    static func detectPlaylistEPG(_ playlist: String) {
+        guard UserDefaults.standard.object(forKey: "sany.ios.autoAddEPG") as? Bool ?? true else { return }
+        let pattern = #"(?i)(?:url-tvg|x-tvg-url|tvg-url)=[\"']([^\"']+)[\"']"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: playlist, range: NSRange(playlist.startIndex..., in: playlist)),
+              let range = Range(match.range(at: 1), in: playlist) else { return }
+        let value = String(playlist[range])
+        guard let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+        UserDefaults.standard.set(value, forKey: "sany.ios.epgURL")
+    }
+
+    static func update(completion: @escaping (Result<String, Error>) -> Void) -> EPGUpdateOperation {
+        let operation = EPGUpdateOperation()
+        var allSources = sources
+        if let custom = UserDefaults.standard.string(forKey: "sany.ios.epgURL"), !custom.isEmpty, !allSources.contains(custom) { allSources.append(custom) }
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var bodies: [Int: String] = [:]
+        var failures: [String] = []
+        for (index, source) in allSources.enumerated() {
+            guard let url = URL(string: source) else { failures.append("Source \\(index + 1): invalid URL"); continue }
+            group.enter()
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 75
+            request.setValue("SANY-IPTV-iOS", forHTTPHeaderField: "User-Agent")
+            request.setValue("application/gzip, application/xml, text/xml, */*", forHTTPHeaderField: "Accept")
+            let task = URLSession.shared.dataTask(with: request) { data, response, error in
+                defer { group.leave() }
+                do {
+                    if let error = error { throw error }
+                    guard let data = data, let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { throw NSError(domain: "SANYEPG", code: 1, userInfo: [NSLocalizedDescriptionKey: "HTTP response was not successful"]) }
+                    let decoded = try decode(data)
+                    guard let xml = String(data: decoded, encoding: .utf8) else { throw NSError(domain: "SANYEPG", code: 2, userInfo: [NSLocalizedDescriptionKey: "Feed is not UTF-8 XML"]) }
+                    let parser = XMLParser(data: decoded)
+                    parser.shouldResolveExternalEntities = false
+                    guard parser.parse() else { throw parser.parserError ?? NSError(domain: "SANYEPG", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid XMLTV document"]) }
+                    let openRegex = try NSRegularExpression(pattern: "(?is)<tv\\b[^>]*>")
+                    let closeRegex = try NSRegularExpression(pattern: "(?is)</tv\\s*>")
+                    let ns = NSRange(xml.startIndex..., in: xml)
+                    guard let openMatch = openRegex.firstMatch(in: xml, range: ns),
+                          let openRange = Range(openMatch.range, in: xml),
+                          let closeMatch = closeRegex.firstMatch(in: xml, range: NSRange(openRange.upperBound..., in: xml)),
+                          let closeRange = Range(closeMatch.range, in: xml) else { throw NSError(domain: "SANYEPG", code: 4, userInfo: [NSLocalizedDescriptionKey: "XMLTV <tv> root not found"]) }
+                    let body = String(xml[openRange.upperBound..<closeRange.lowerBound])
+                    lock.lock(); bodies[index] = body; lock.unlock()
+                } catch {
+                    lock.lock(); failures.append("Source \\(index + 1): \\(error.localizedDescription)"); lock.unlock()
+                }
+            }
+            operation.add(task)
+            task.resume()
+        }
+        group.notify(queue: .global(qos: .utility)) {
+            lock.lock(); let ordered = bodies.keys.sorted().compactMap { bodies[$0] }; let errors = failures; lock.unlock()
+            guard let first = ordered.first else {
+                let error = NSError(domain: "SANYEPG", code: 5, userInfo: [NSLocalizedDescriptionKey: errors.joined(separator: " | ").isEmpty ? "All EPG sources failed" : errors.joined(separator: " | ")])
+                DispatchQueue.main.async { completion(.failure(error)) }
+                return
+            }
+            do {
+                let merged = "<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\\n<tv>" + ordered.joined(separator: "\\n") + "</tv>"
+                let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let destination = folder.appendingPathComponent("epg_data.xml")
+                try Data(merged.utf8).write(to: destination, options: .atomic)
+                let stamp = ISO8601DateFormatter().string(from: Date())
+                UserDefaults.standard.set(stamp, forKey: "sany.ios.epgLastUpdated")
+                let summary = "EPG updated: \\(ordered.count)/\\(allSources.count) feeds downloaded and merged.\\nSaved: \\(destination.lastPathComponent)" + (errors.isEmpty ? "" : "\\nSome feeds failed: \\(errors.joined(separator: "; "))")
+                DispatchQueue.main.async { completion(.success(summary)) }
+            } catch { DispatchQueue.main.async { completion(.failure(error)) } }
+        }
+        return operation
+    }
+
+    private static func decode(_ data: Data) throws -> Data {
+        guard data.count >= 2, data[data.startIndex] == 0x1f, data[data.startIndex + 1] == 0x8b else { return data }
+        var stream = z_stream()
+        let status = inflateInit2_(&stream, 15 + 32, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
+        guard status == Z_OK else { throw NSError(domain: "SANYEPG", code: Int(status), userInfo: [NSLocalizedDescriptionKey: "Could not initialize gzip decoder"]) }
+        defer { inflateEnd(&stream) }
+        return try data.withUnsafeBytes { raw -> Data in
+            guard let base = raw.bindMemory(to: Bytef.self).baseAddress else { throw NSError(domain: "SANYEPG", code: 6, userInfo: [NSLocalizedDescriptionKey: "Empty gzip feed"]) }
+            stream.next_in = UnsafeMutablePointer<Bytef>(mutating: base)
+            stream.avail_in = uInt(data.count)
+            var output = Data()
+            while true {
+                var chunk = [UInt8](repeating: 0, count: 65536)
+                let result = chunk.withUnsafeMutableBufferPointer { buffer -> Int32 in
+                    stream.next_out = buffer.baseAddress
+                    stream.avail_out = uInt(buffer.count)
+                    return inflate(&stream, Z_NO_FLUSH)
+                }
+                let produced = 65536 - Int(stream.avail_out)
+                if produced > 0 { output.append(contentsOf: chunk.prefix(produced)) }
+                if output.count > 512 * 1024 * 1024 { throw NSError(domain: "SANYEPG", code: 7, userInfo: [NSLocalizedDescriptionKey: "EPG feed exceeds 512 MB limit"]) }
+                if result == Z_STREAM_END { break }
+                if result != Z_OK { throw NSError(domain: "SANYEPG", code: Int(result), userInfo: [NSLocalizedDescriptionKey: "Gzip feed could not be decompressed"]) }
+                if stream.avail_in == 0 && produced == 0 { throw NSError(domain: "SANYEPG", code: 8, userInfo: [NSLocalizedDescriptionKey: "Gzip feed ended unexpectedly"]) }
+            }
+            return output
+        }
+    }
+}
