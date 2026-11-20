@@ -481,56 +481,67 @@ private final class CheckerViewController: BaseViewController, UITableViewDataSo
     private let status = UILabel()
     private let progress = UIProgressView(progressViewStyle: .default)
     private let startButton = UIButton(type: .system)
+    private let offlineButton = UIButton(type: .system)
+    private let filter = UISegmentedControl(items: ["All", "Working", "Offline", "Restricted", "Error"])
     private let resultsTable = UITableView(frame: .zero, style: .plain)
     private var running = false
-    private var channels: [SANYChannel] = []
+    private var pendingChecks: [SANYChannel] = []
+    private var onlineCount = 0
+    private var offlineOnlyRun = false
     private var results: [[String: String]] = UserDefaults.standard.array(forKey: "sany.ios.checkerResults") as? [[String: String]] ?? []
+    private var visibleResults: [[String: String]] {
+        guard filter.selectedSegmentIndex > 0 else { return results }
+        let key = ["", "working", "offline", "restricted", "error"][filter.selectedSegmentIndex]
+        return results.filter { $0["status"] == key }
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Channel Checker"
         tabBarItem = UITabBarItem(title: "Checker", image: nil, tag: 1)
-        status.text = results.isEmpty ? "প্লেলিস্ট লোড করে চ্যানেল পরীক্ষা করুন" : "আগের ফলাফল সংরক্ষিত: \(results.count)টি"
-        status.textColor = .white
-        status.textAlignment = .center
-        status.numberOfLines = 0
+        status.text = results.isEmpty ? "প্লেলিস্ট লোড করে চ্যানেল পরীক্ষা করুন" : "সংরক্ষিত ফলাফল: \(results.count)টি"
+        status.textColor = .white; status.textAlignment = .center; status.numberOfLines = 0
         progress.progressTintColor = SANYStyle.accent
-        startButton.setTitle("চেক / পুনরায় পরীক্ষা শুরু করুন", for: .normal)
+        startButton.setTitle("সব চ্যানেল পরীক্ষা করুন", for: .normal)
         startButton.setTitleColor(.white, for: .normal)
         startButton.backgroundColor = UIColor(red: 0.04, green: 0.38, blue: 0.52, alpha: 1)
         startButton.layer.cornerRadius = 12
         startButton.addTarget(self, action: #selector(startCheck), for: .touchUpInside)
+        offlineButton.setTitle("শুধু Offline / Error পুনরায় পরীক্ষা", for: .normal)
+        offlineButton.setTitleColor(SANYStyle.accent, for: .normal)
+        offlineButton.addTarget(self, action: #selector(recheckOffline), for: .touchUpInside)
+        filter.selectedSegmentIndex = 0
+        filter.addTarget(self, action: #selector(filterChanged), for: .valueChanged)
         resultsTable.backgroundColor = SANYStyle.background
         resultsTable.dataSource = self
         resultsTable.register(UITableViewCell.self, forCellReuseIdentifier: "checkerResult")
-        resultsTable.rowHeight = 54
-        let stack = UIStackView(arrangedSubviews: [status, progress, startButton, resultsTable])
-        stack.axis = .vertical
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
+        resultsTable.rowHeight = 58
+        let stack = UIStackView(arrangedSubviews: [status, progress, startButton, offlineButton, filter, resultsTable])
+        stack.axis = .vertical; stack.spacing = 10; stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
-            startButton.heightAnchor.constraint(equalToConstant: 50)
+            startButton.heightAnchor.constraint(equalToConstant: 48),
+            offlineButton.heightAnchor.constraint(equalToConstant: 42)
         ])
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "মুছুন", style: .plain, target: self, action: #selector(clearResults))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Clear", style: .plain, target: self, action: #selector(clearResults))
         resultsTable.reloadData()
     }
 
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { results.count }
+    @objc private func filterChanged() { resultsTable.reloadData() }
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { visibleResults.count }
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "checkerResult", for: indexPath)
-        let item = results[indexPath.row]
-        let online = item["status"] == "online"
+        let item = visibleResults[indexPath.row]
+        let state = item["status"] ?? "error"
         cell.backgroundColor = SANYStyle.panel
-        cell.textLabel?.textColor = .white
         cell.textLabel?.numberOfLines = 2
         cell.textLabel?.font = .systemFont(ofSize: 12)
-        cell.textLabel?.text = "\(online ? "● ONLINE" : "● OFFLINE")  \(item["name"] ?? "Unknown")\n\(item["date"] ?? "")"
-        cell.textLabel?.textColor = online ? .systemGreen : .systemRed
+        cell.textLabel?.text = "● \(state.uppercased())  \(item["name"] ?? "Unknown")\n\(item["detail"] ?? "") • \(item["date"] ?? "")"
+        cell.textLabel?.textColor = state == "working" ? .systemGreen : (state == "restricted" ? .systemOrange : .systemRed)
         return cell
     }
 
@@ -538,71 +549,90 @@ private final class CheckerViewController: BaseViewController, UITableViewDataSo
         results.removeAll()
         UserDefaults.standard.removeObject(forKey: "sany.ios.checkerResults")
         resultsTable.reloadData()
-        status.text = "সংরক্ষিত Checker ফলাফল মুছে ফেলা হয়েছে"
+        status.text = "Checker ফলাফল মুছে ফেলা হয়েছে"
     }
 
     @objc private func startCheck() {
         guard !running else { return }
-        running = true
-        startButton.isEnabled = false
-        startButton.alpha = 0.55
-        status.text = "প্লেলিস্ট লোড হচ্ছে…"
+        running = true; offlineOnlyRun = false
+        startButton.isEnabled = false; offlineButton.isEnabled = false
+        status.text = "Playlist লোড হচ্ছে…"
         PlaylistStore.shared.load { [weak self] result in
             guard let self = self else { return }
             switch result {
-            case .failure(let error): self.finish("লোড ব্যর্থ: \(error.localizedDescription)")
+            case .failure(let error): self.finish("Playlist load failed: \(error.localizedDescription)")
             case .success(let channels):
-                self.channels = channels
                 self.results.removeAll()
+                self.pendingChecks = channels
+                self.onlineCount = 0
                 self.progress.progress = 0
-                self.checkNext(index: 0, online: 0)
+                self.checkNext(index: 0)
             }
         }
     }
 
-    private func checkNext(index: Int, online: Int) {
-        if index >= channels.count {
-            let offline = channels.count - online
-            let stamp = ISO8601DateFormatter().string(from: Date())
-            UserDefaults.standard.set(stamp, forKey: "sany.ios.checkerLastRun")
+    @objc private func recheckOffline() {
+        guard !running else { return }
+        PlaylistStore.shared.load { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .failure(let error): self.status.text = "Playlist load failed: \(error.localizedDescription)"
+            case .success(let channels):
+                let bad = Set(self.results.filter { ["offline", "error", "restricted"].contains($0["status"] ?? "") }.compactMap { $0["url"] })
+                self.pendingChecks = channels.filter { bad.contains($0.streamURL.absoluteString) }
+                guard !self.pendingChecks.isEmpty else { self.status.text = "Offline/Error চ্যানেল পাওয়া যায়নি।"; return }
+                self.results.removeAll { bad.contains($0["url"] ?? "") }
+                self.running = true; self.offlineOnlyRun = true; self.onlineCount = 0
+                self.startButton.isEnabled = false; self.offlineButton.isEnabled = false
+                self.progress.progress = 0
+                self.checkNext(index: 0)
+            }
+        }
+    }
+
+    private func checkNext(index: Int) {
+        if index >= pendingChecks.count {
+            UserDefaults.standard.set(ISO8601DateFormatter().string(from: Date()), forKey: "sany.ios.checkerLastRun")
             UserDefaults.standard.set(results, forKey: "sany.ios.checkerResults")
-            resultsTable.reloadData()
-            finish("চেক সম্পন্ন: মোট \(channels.count), Online \(online), Offline \(offline)। ফলাফল ফোনে সংরক্ষণ করা হয়েছে।")
+            let working = results.filter { $0["status"] == "working" }.count
+            let offline = results.filter { $0["status"] == "offline" }.count
+            let restricted = results.filter { $0["status"] == "restricted" }.count
+            let errors = results.filter { $0["status"] == "error" }.count
+            finish("\(offlineOnlyRun ? "Offline পুনরায় পরীক্ষা" : "সম্পূর্ণ পরীক্ষা") শেষ। মোট \(results.count) • Working \(working) • Offline \(offline) • Restricted \(restricted) • Error \(errors)")
             return
         }
-        let channel = channels[index]
+        let channel = pendingChecks[index]
         var request = URLRequest(url: channel.streamURL)
         request.httpMethod = "GET"
         request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
         request.timeoutInterval = 8
         URLSession.shared.dataTask(with: request) { [weak self] _, response, error in
-            let http = response as? HTTPURLResponse
-            let ok = error == nil && http.map { (200...399).contains($0.statusCode) } == true
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let state: String
+            let detail: String
+            if let error = error { state = "error"; detail = error.localizedDescription }
+            else if (200...399).contains(code) { state = "working"; detail = "HTTP \(code)" }
+            else if code == 401 || code == 403 { state = "restricted"; detail = "HTTP \(code)" }
+            else if code == 404 || code == 410 { state = "offline"; detail = "HTTP \(code)" }
+            else { state = "error"; detail = "HTTP \(code)" }
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                let stamp = ISO8601DateFormatter().string(from: Date())
-                self.results.append([
-                    "name": channel.name,
-                    "url": channel.streamURL.absoluteString,
-                    "status": ok ? "online" : "offline",
-                    "date": stamp
-                ])
-                let count = online + (ok ? 1 : 0)
-                self.progress.progress = Float(index + 1) / Float(max(self.channels.count, 1))
-                self.status.text = "Checking: \(index + 1)/\(self.channels.count) • \(Int(self.progress.progress * 100))%\nOnline: \(count) • Offline: \(index + 1 - count)"
+                self.results.append(["name": channel.name, "url": channel.streamURL.absoluteString, "status": state, "detail": detail, "date": ISO8601DateFormatter().string(from: Date())])
+                if state == "working" { self.onlineCount += 1 }
+                self.progress.progress = Float(index + 1) / Float(max(self.pendingChecks.count, 1))
+                self.status.text = "Checking \(index + 1)/\(self.pendingChecks.count) • \(Int(self.progress.progress * 100))% • Working \(self.onlineCount)"
                 if (index + 1) % 10 == 0 {
                     UserDefaults.standard.set(self.results, forKey: "sany.ios.checkerResults")
                     self.resultsTable.reloadData()
                 }
-                self.checkNext(index: index + 1, online: count)
+                self.checkNext(index: index + 1)
             }
         }.resume()
     }
 
     private func finish(_ message: String) {
-        running = false
-        startButton.isEnabled = true
-        startButton.alpha = 1
+        running = false; startButton.isEnabled = true; offlineButton.isEnabled = true
+        UserDefaults.standard.set(results, forKey: "sany.ios.checkerResults")
         status.text = message
         resultsTable.reloadData()
     }
