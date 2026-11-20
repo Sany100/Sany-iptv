@@ -573,7 +573,7 @@ class MainActivity : AppCompatActivity() {
         })
         top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        headerTitleView = text(if (section == "Movies") "Movies" else section, 23, white, true)
+        headerTitleView = text(if (section == "Movies") "Movies" else section, 19, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         // Keep the Home header clean: the four quick-action controls are hidden as requested.
         top.addView(titleRow)
@@ -708,12 +708,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(3), 0, 0)
         })
         playlistSelector.addView(playlistText, LinearLayout.LayoutParams(0, -2, 1f))
-        val searchAction = text("⌕", 25, accent, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(10), 0, dp(10), 0)
-            setOnClickListener { showChannelSearchDialog() }
-        }
-        playlistSelector.addView(searchAction)
         playlistSelector.addView(text("⌄", 25, accent, true))
         playlistSelectorContainer = playlistSelector
         contentArea.addView(playlistSelector, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 50 else 58)))
@@ -858,6 +852,14 @@ class MainActivity : AppCompatActivity() {
             back.addView(text("‹  ALL CATEGORIES", 13, accent, true),
                 LinearLayout.LayoutParams(0, -2, 1f))
             back.addView(text(selectedGroup, 12, muted, true))
+            val categorySearch = text("⌕", 25, accent, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(12), 0, dp(4), 0)
+                contentDescription = "Search channels"
+                isFocusable = true
+                setOnClickListener { showChannelSearchDialog() }
+            }
+            back.addView(categorySearch, LinearLayout.LayoutParams(dp(42), dp(42)))
             categoryRow.addView(back, LinearLayout.LayoutParams(-1, dp(46)))
             return
         }
