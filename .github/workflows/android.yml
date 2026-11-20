@@ -81,7 +81,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="1.1.${GITHUB_RUN_NUMBER}"
+            VERSION="1.2.${GITHUB_RUN_NUMBER}"
           fi
           VERSION_CODE="$GITHUB_RUN_NUMBER"
           gradle assembleRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
