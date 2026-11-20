@@ -41,8 +41,8 @@ android {
         // Newer Android versions are not capped here; test on actual devices.
         minSdk = 23
         targetSdk = 35
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("2").get().toInt()
-        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.1").get()
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("3").get().toInt()
+        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.2").get()
     }
 
     buildTypes {
