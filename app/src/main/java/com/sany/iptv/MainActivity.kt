@@ -646,7 +646,9 @@ class MainActivity : AppCompatActivity() {
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
         center.addView(logo, LinearLayout.LayoutParams(dp(260), dp(260)).apply {
-            topMargin = dp(95)
+            // Lift the splash logo higher while keeping the welcome text and
+            // loading progress grouped comfortably below it.
+            topMargin = dp(35)
             bottomMargin = dp(0)
         })
 
