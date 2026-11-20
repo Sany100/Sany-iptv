@@ -947,7 +947,8 @@ private enum EPGRepository {
                 return
             }
             do {
-                let merged = "<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?>\n<tv>" + ordered.joined(separator: "\n") + "</tv>"
+                let xmlHeader = #"<?xml version="1.0" encoding="UTF-8"?>"#
+                let merged = xmlHeader + "\n<tv>" + ordered.joined(separator: "\n") + "</tv>"
                 let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 let destination = folder.appendingPathComponent("epg_data.xml")
