@@ -979,10 +979,30 @@ private struct EPGProgramme {
     let stop: Date?
 }
 
-private final class EPGGuideViewController: UIViewController, UITableViewDataSource, XMLParserDelegate {
+private final class EPGGuideViewController: UIViewController, UITableViewDataSource, XMLParserDelegate, UISearchBarDelegate {
     private let table = UITableView(frame: .zero, style: .plain)
+    private let searchBar = UISearchBar()
+    private let timeFilter = UISegmentedControl(items: ["All", "Now", "Upcoming"])
     private var programmes: [EPGProgramme] = []
     private var currentChannel = ""
+    private var currentChannelID = ""
+    private var channelNames: [String: String] = [:]
+    private var captureDisplayName = false
+    private var displayNameText = ""
+    private var searchText = ""
+    private var visibleProgrammes: [EPGProgramme] {
+        let now = Date()
+        return programmes.filter { item in
+            let matchesText = searchText.isEmpty || item.channel.localizedCaseInsensitiveContains(searchText) || item.title.localizedCaseInsensitiveContains(searchText)
+            let matchesTime: Bool
+            switch timeFilter.selectedSegmentIndex {
+            case 1: matchesTime = (item.start ?? .distantFuture) <= now && (item.stop ?? .distantPast) > now
+            case 2: matchesTime = (item.start ?? .distantPast) > now
+            default: matchesTime = true
+            }
+            return matchesText && matchesTime
+        }
+    }
     private var currentTitle = ""
     private var currentStart: Date?
     private var currentStop: Date?
@@ -995,6 +1015,11 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
         view.backgroundColor = SANYStyle.background
         table.backgroundColor = SANYStyle.background
         table.dataSource = self
+        searchBar.delegate = self
+        searchBar.placeholder = "Search channel or programme"
+        searchBar.barStyle = .black
+        timeFilter.selectedSegmentIndex = 0
+        timeFilter.addTarget(self, action: #selector(filtersChanged), for: .valueChanged)
         table.rowHeight = UITableView.automaticDimension
         table.estimatedRowHeight = 64
         table.register(UITableViewCell.self, forCellReuseIdentifier: "programme")
@@ -1060,11 +1085,11 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
     }
 
     func parser(_ parser: XMLParser, foundCharacters string: String) {
-        if captureTitle { currentTitle += string }
+        if captureTitle { currentTitle += string }\n        if captureDisplayName { displayNameText += string }
     }
 
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
-        if elementName == "title" { captureTitle = false }
+        if elementName == "title" { captureTitle = false }\n        if elementName == "display-name" { captureDisplayName = false; if !currentChannelID.isEmpty && channelNames[currentChannelID] == nil { channelNames[currentChannelID] = displayNameText.trimmingCharacters(in: .whitespacesAndNewlines) } }
         if elementName == "programme" {
             let name = currentTitle.trimmingCharacters(in: .whitespacesAndNewlines)
             if !name.isEmpty {
@@ -1082,10 +1107,10 @@ private final class EPGGuideViewController: UIViewController, UITableViewDataSou
         return formatter.date(from: String(value.prefix(20)))
     }
 
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { programmes.count }
+    @objc private func filtersChanged() { table.reloadData() }\n    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) { self.searchText = searchText; table.reloadData() }\n    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) { searchBar.resignFirstResponder() }\n\n    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { visibleProgrammes.count }
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "programme", for: indexPath)
-        let item = programmes[indexPath.row]
+        let item = visibleProgrammes[indexPath.row]
         let formatter = DateFormatter()
         formatter.locale = Locale.current
         formatter.timeZone = .current
