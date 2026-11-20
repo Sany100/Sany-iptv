@@ -794,15 +794,18 @@ class MainActivity : AppCompatActivity() {
             setSingleLine(true)
             setText(searchQuery)
         }
+        // Filter the current category immediately as the user types.
+        input.addTextChangedListener(SimpleTextWatcher { value ->
+            searchQuery = value.trim()
+            displayedLimit = 60
+            renderListOnly()
+        })
         AlertDialog.Builder(this)
-            .setTitle("Search channels")
+            .setTitle("⌕  Search channels")
             .setView(input)
-            .setPositiveButton("SEARCH") { _, _ ->
-                searchQuery = input.text.toString().trim()
-                displayedLimit = 60
-                renderListOnly()
-            }
+            .setPositiveButton("DONE", null)
             .setNeutralButton("CLEAR") { _, _ ->
+                input.setText("")
                 searchQuery = ""
                 displayedLimit = 60
                 renderListOnly()
@@ -851,17 +854,16 @@ class MainActivity : AppCompatActivity() {
             }
             back.addView(text("‹  ALL CATEGORIES", 13, accent, true),
                 LinearLayout.LayoutParams(0, -2, 1f))
-            back.addView(text(selectedGroup, 12, muted, true))
-            val categorySearch = text("⌕", 25, accent, true).apply {
+            val categorySearch = text("⌕  Search", 13, accent, true).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(12), 0, dp(4), 0)
+                setPadding(dp(10), 0, dp(10), 0)
                 contentDescription = "Search channels"
                 isFocusable = true
                 isFocusableInTouchMode = false
-                // Keep this control visually static; do not inherit or retain any view animation.
+                background = glass(10)
+                // Keep the Search control fixed in the category header.
                 clearAnimation()
                 animate().cancel()
-                setLayerType(View.LAYER_TYPE_HARDWARE, null)
                 setTranslationX(0f)
                 setTranslationY(0f)
                 setScaleX(1f)
@@ -869,7 +871,7 @@ class MainActivity : AppCompatActivity() {
                 setAlpha(1f)
                 setOnClickListener { showChannelSearchDialog() }
             }
-            back.addView(categorySearch, LinearLayout.LayoutParams(dp(42), dp(42)))
+            back.addView(categorySearch, LinearLayout.LayoutParams(dp(92), dp(42)))
             back.clearAnimation()
             back.animate().cancel()
             back.setTranslationY(0f)
