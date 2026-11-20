@@ -886,7 +886,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             back.addView(categoryTitle, LinearLayout.LayoutParams(0, -1, 1f))
-            back.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(42)).apply { leftMargin = dp(6) })
+            back.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(32)).apply { leftMargin = dp(4) })
             val categorySearch = EditText(this).apply {
                 tag = "category_inline_search"
                 hint = "⌕  Search"
@@ -896,7 +896,7 @@ class MainActivity : AppCompatActivity() {
                 setHintTextColor(accent)
                 setSingleLine(true)
                 imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
-                setPadding(dp(10), 0, dp(10), 0)
+                setPadding(dp(6), 0, dp(6), 0)
                 background = glass(10)
                 gravity = Gravity.CENTER_VERTICAL
                 setText(searchQuery)
@@ -910,8 +910,8 @@ class MainActivity : AppCompatActivity() {
                     renderChannelRows(listContainer)
                 })
             }
-            back.addView(categorySearch, LinearLayout.LayoutParams(dp(118), dp(42)))
-            categoryHeaderContainer.addView(back, LinearLayout.LayoutParams(-1, dp(46)))
+            back.addView(categorySearch, LinearLayout.LayoutParams(dp(118), dp(32)))
+            categoryHeaderContainer.addView(back, LinearLayout.LayoutParams(-1, dp(40)))
             return
         }
 
@@ -968,10 +968,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun createViewModeDropdown(): TextView {
         val currentMode = prefs.getString("channel_view_mode", "list") ?: "list"
-        return text(if (currentMode == "grid") "▦  Grid  ▾" else "☷  List  ▾", 12, accent, true).apply {
+        return text(if (currentMode == "grid") "▦ Grid ▾" else "☷ List ▾", 10, accent, true).apply {
             tag = "channel_view_mode_dropdown"
             gravity = Gravity.CENTER
-            minWidth = dp(92)
+            minWidth = dp(72)
             setPadding(dp(10), 0, dp(10), 0)
             background = glass(10)
             isFocusable = true
@@ -1008,7 +1008,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         if (::root.isInitialized) refreshButtons(root)
-        val label = if (mode == "grid") "▦  Grid  ▾" else "☷  List  ▾"
+        val label = if (mode == "grid") "▦ Grid ▾" else "☷ List ▾"
         if (::home.isInitialized) {
             fun refreshDropdowns(view: View) {
                 if (view.tag == "channel_view_mode_dropdown") (view as? TextView)?.text = label
@@ -1209,12 +1209,12 @@ class MainActivity : AppCompatActivity() {
                     letterSpacing = 0.06f
                     setPadding(0, dp(5), 0, 0)
                 })
-                cardRow.addView(card, LinearLayout.LayoutParams(0, dp(92), 1f).apply {
+                cardRow.addView(card, LinearLayout.LayoutParams(0, dp(if (isTvDevice) 158 else 166), 1f).apply {
                     if (columnIndex == 0) rightMargin = dp(8) else leftMargin = dp(8)
                 })
             }
             if (pair.size == 1) {
-                cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(92), 1f).apply { leftMargin = dp(8) })
+                cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(if (isTvDevice) 158 else 166), 1f).apply { leftMargin = dp(8) })
             }
             container.addView(cardRow, LinearLayout.LayoutParams(-1, -2).apply {
                 bottomMargin = dp(if (isTvDevice) 7 else 12)
