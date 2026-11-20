@@ -116,6 +116,8 @@ class MainActivity : AppCompatActivity() {
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
     private var headerTitleView: TextView? = null
+    private var homeHeaderContainer: View? = null
+    private var playlistSelectorContainer: View? = null
     private var liveTvNavLabel: TextView? = null
     private var pausedForBackground = false
     private var maintenanceOverlay: View? = null
@@ -575,6 +577,7 @@ class MainActivity : AppCompatActivity() {
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         // Keep the Home header clean: the four quick-action controls are hidden as requested.
         top.addView(titleRow)
+        homeHeaderContainer = top
         home.addView(top, LinearLayout.LayoutParams(-1, -2))
         // Keep Android 6 rendering simple; newer devices retain the header transition.
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
@@ -712,6 +715,7 @@ class MainActivity : AppCompatActivity() {
         }
         playlistSelector.addView(searchAction)
         playlistSelector.addView(text("⌄", 25, accent, true))
+        playlistSelectorContainer = playlistSelector
         contentArea.addView(playlistSelector, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 50 else 58)))
 
         val categoriesScroll = ScrollView(this).apply {
@@ -819,6 +823,12 @@ class MainActivity : AppCompatActivity() {
         // Full-height category directory inspired by the supplied reference.
         // Channel cards are hidden until the user enters a category.
         val categoryDirectory = section == "Live TV" && selectedGroup == "Select category"
+        // Entering a Live TV category switches to an immersive channel view:
+        // hide the branded/title header and playlist selector, then restore them
+        // when the user returns to the category directory.
+        val immersiveCategory = section == "Live TV" && !categoryDirectory
+        homeHeaderContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
+        playlistSelectorContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
         (categoryRow.parent as? ScrollView)?.let { scroll ->
             scroll.layoutParams = (scroll.layoutParams as LinearLayout.LayoutParams).apply {
                 height = if (categoryDirectory) 0 else dp(52)
