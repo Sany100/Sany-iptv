@@ -570,7 +570,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val brand = text("SANY IPTV", if (isTvDevice) 21 else 25, accent, true).apply {
+        val brand = text("SANY IPTV", if (isTvDevice) 23 else 29, accent, true).apply {
             letterSpacing = 0.06f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(8), 0, 0, 0)
@@ -873,7 +873,7 @@ class MainActivity : AppCompatActivity() {
                 elevation = dp(4).toFloat()
                 translationZ = dp(4).toFloat()
             }
-            val categoryTitle = text("‹  ALL CATEGORIES", 13, accent, true).apply {
+            val categoryTitle = text("‹  ${selectedGroup.uppercase()}", 13, accent, true).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 isFocusable = true
                 applyTvFocusStyle(this)
@@ -1159,6 +1159,47 @@ class MainActivity : AppCompatActivity() {
                 topLine.addView(text((itemIndex + 1).toString().padStart(2, '0'), 13, accent, true))
                 topLine.addView(text("  •  ${channel.group.ifBlank { "Other" }}", 11, muted))
                 card.addView(topLine)
+                // Show the actual channel logo in Grid/Card mode, with a readable fallback.
+                val cardLogoFallback = text(channel.name.take(1).uppercase(), 20, accent, true).apply {
+                    gravity = Gravity.CENTER
+                    isClickable = false
+                }
+                val cardLogo = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    background = glass(10)
+                    setPadding(dp(5), dp(5), dp(5), dp(5))
+                    contentDescription = "${channel.name} logo"
+                }
+                val cardLogoFrame = FrameLayout(this).apply {
+                    addView(cardLogo, FrameLayout.LayoutParams(-1, -1))
+                    addView(cardLogoFallback, FrameLayout.LayoutParams(-1, -1))
+                }
+                card.addView(cardLogoFrame, LinearLayout.LayoutParams(dp(58), dp(58)).apply {
+                    topMargin = dp(8)
+                })
+                channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
+                    cardLogo.tag = logoUrl
+                    logoExecutor.execute {
+                        try {
+                            val connection = URL(logoUrl).openConnection().apply {
+                                connectTimeout = 5000
+                                readTimeout = 5000
+                            }
+                            val bitmap = connection.getInputStream().use { input ->
+                                BitmapFactory.Options().run {
+                                    inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                                    BitmapFactory.decodeStream(input, null, this)
+                                }
+                            }
+                            if (bitmap != null) runOnUiThread {
+                                if (!isFinishing && cardLogo.tag == logoUrl) {
+                                    cardLogo.setImageBitmap(bitmap)
+                                    cardLogoFallback.visibility = View.GONE
+                                } else bitmap.recycle()
+                            }
+                        } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
+                    }
+                }
                 card.addView(text(channel.name, 17, white, true).apply {
                     maxLines = 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
