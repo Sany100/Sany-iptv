@@ -209,6 +209,12 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
+        if (prefs.getBoolean("mandatory_update_required", false)) {
+            updateRequired = true
+            showMandatoryUpdateDialog()
+            updateReminderHandler.removeCallbacks(updateReminderRunnable)
+            updateReminderHandler.postDelayed(updateReminderRunnable, 10_000L)
+        }
         checkForMandatoryUpdate()
         checkMaintenanceMode()
         if (!restoringBackground) {
