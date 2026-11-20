@@ -587,7 +587,41 @@ class MainActivity : AppCompatActivity() {
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         headerTitleView = text(if (section == "Movies") "Movies" else section, 19, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
-        // Keep the Home header clean: the four quick-action controls are hidden as requested.
+        if (section == "Live TV") {
+            // Compact view-mode switch occupies the small square beside LIVE TV.
+            val viewModeBox = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(3), dp(3), dp(3), dp(3))
+                background = glass(10)
+            }
+            fun viewModeButton(label: String, mode: String) = text(label, 18, if ((prefs.getString("channel_view_mode", "list") ?: "list") == mode) accent else muted, true).apply {
+                gravity = Gravity.CENTER
+                isFocusable = true
+                setPadding(dp(7), 0, dp(7), 0)
+                minWidth = dp(34)
+                setOnClickListener {
+                    prefs.edit().putString("channel_view_mode", mode).apply()
+                    renderChannelRows(listContainer)
+                    // Refresh the selected-state tint without changing the header geometry.
+                    renderHome()
+                }
+            }
+            viewModeBox.addView(viewModeButton("☷", "list"))
+            viewModeBox.addView(viewModeButton("▦", "grid"))
+            titleRow.addView(viewModeBox, LinearLayout.LayoutParams(-2, dp(40)).apply { rightMargin = dp(8) })
+
+            val playlistButton = text("Sany iptv Channel  ▾", 10, accent, true).apply {
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(9), 0, dp(9), 0)
+                background = glass(10)
+                isFocusable = true
+                setOnClickListener { showPlaylistDialog() }
+            }
+            titleRow.addView(playlistButton, LinearLayout.LayoutParams(dp(142), dp(40)))
+        }
         top.addView(titleRow)
         homeHeaderContainer = top
         home.addView(top, LinearLayout.LayoutParams(-1, -2))
@@ -942,7 +976,7 @@ class MainActivity : AppCompatActivity() {
             container.addView(text(message, 15, muted, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
             return
         }
-        if (isTvDevice) {
+        if (isTvDevice || prefs.getString("channel_view_mode", "list") == "grid") {
             renderTvChannelCards(container, filtered)
             return
         }
