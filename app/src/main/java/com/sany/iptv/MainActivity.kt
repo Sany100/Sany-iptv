@@ -3141,11 +3141,18 @@ class MainActivity : AppCompatActivity() {
                 applyTvFocusStyle(this)
                 setOnClickListener { action() }
             }
+        // Channel identity is anchored at the far-left of the transport row.
+        val channelIdentity = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(3), 0, dp(4), 0)
+        }
         val previousButton = playerAction("|◀", "Previous channel") { playAdjacentChannel(-1) }
         val playPauseButton = playerAction(if (p.isPlaying) "Ⅱ" else "▶", "Play or pause") {
             if (p.isPlaying) p.pause() else p.play()
         }
         val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
+        transportRow.addView(channelIdentity, LinearLayout.LayoutParams(dp(126), -1))
         listOf(previousButton, playPauseButton, nextButton).forEachIndexed { index, button ->
             button.textSize = if (index == 1) 21f else 19f
             button.typeface = if (index == 1) Typeface.create("sans-serif-light", Typeface.NORMAL) else Typeface.DEFAULT
@@ -3197,11 +3204,9 @@ class MainActivity : AppCompatActivity() {
             setTextColor(0xFFBBD9FF.toInt())
             gravity = Gravity.CENTER_VERTICAL
         }
-        infoRow.addView(nowPlayingLogo, LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+        channelIdentity.addView(nowPlayingLogo, LinearLayout.LayoutParams(dp(27), dp(27)))
+        channelIdentity.addView(nowPlayingName, LinearLayout.LayoutParams(0, -1, 1f).apply {
             leftMargin = dp(5)
-        })
-        infoRow.addView(nowPlayingName, LinearLayout.LayoutParams(0, dp(26), 0.9f).apply {
-            leftMargin = dp(4)
         })
         channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
             nowPlayingLogo.tag = logoUrl
