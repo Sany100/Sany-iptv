@@ -556,8 +556,12 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(10).toFloat()
             elevation = dp(14).toFloat()
         }
-        val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        // The header logo is intentionally removed; keep the brand name clean and prominent.
+        // Keep the original stacked brand header. Move connection status below
+        // SANY IPTV instead of showing it as a pill on the right side.
+        val brandLine = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+        }
         val brand = text("SANY IPTV", if (isTvDevice) 21 else 25, accent, true).apply {
             letterSpacing = 0.06f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
@@ -565,8 +569,15 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             translationZ = dp(10).toFloat()
         }
-        brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-        brandLine.addView(pill(if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED", if (channels.isEmpty()) muted else accent))
+        brandLine.addView(brand, LinearLayout.LayoutParams(-1, -2))
+        val connectionStatus = text(
+            if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED",
+            10, if (channels.isEmpty()) muted else accent, true
+        ).apply {
+            setPadding(dp(8), dp(2), 0, dp(5))
+            letterSpacing = 0.04f
+        }
+        brandLine.addView(connectionStatus, LinearLayout.LayoutParams(-1, -2))
         top.addView(brandLine)
         top.addView(text("PREMIUM IPTV EXPERIENCE", 12, white, true).apply {
             letterSpacing = 0.025f
@@ -694,23 +705,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // The visible playlist dropdown is removed from Live TV. Playlist data and
-        // Playlist Manager remain untouched; use this full-width title strip instead.
+        // Keep the original Live TV header layout; only the visible playlist
+        // selector stays removed. Playlist data and Playlist Manager are untouched.
         playlistSelectorContainer = null
-        if (section == "Live TV") {
-            val liveTitleBar = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(8), dp(16), dp(8))
-                background = glass(12)
-                elevation = dp(3).toFloat()
-            }
-            liveTitleBar.addView(text("▶  LIVE TV", 16, accent, true),
-                LinearLayout.LayoutParams(0, -2, 1f))
-            liveTitleBar.addView(text("${channels.size} CHANNELS", 10, muted, true))
-            contentArea.addView(liveTitleBar,
-                LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 50 else 58)))
-        }
 
         // Keep the selected-category title/search bar outside every ScrollView.
         // This makes it stationary while channel rows scroll underneath it.
@@ -822,7 +819,7 @@ class MainActivity : AppCompatActivity() {
         val immersiveCategory = section == "Live TV" && !categoryDirectory
         homeHeaderContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
         // The Live TV title is shown in the replacement banner below the brand header.
-        headerTitleView?.visibility = if (section == "Live TV") View.GONE else View.VISIBLE
+        headerTitleView?.visibility = View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
         categoryHeaderContainer.visibility = if (immersiveCategory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
