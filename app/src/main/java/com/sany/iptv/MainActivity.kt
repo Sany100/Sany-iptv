@@ -120,6 +120,7 @@ class MainActivity : AppCompatActivity() {
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
+    private var playerControlsPanel: View? = null
     private var headerTitleView: TextView? = null
     private var homeHeaderContainer: View? = null
     private var playlistSelectorContainer: View? = null
@@ -3120,6 +3121,8 @@ class MainActivity : AppCompatActivity() {
         val fullscreenButton = playerAction("⛶", "Toggle fullscreen") {
             setPlayerFullscreen(!isPlayerFullscreen)
         }
+        playerFullscreenButton = fullscreenButton
+        playerControlsPanel = controlsPanel
         infoRow.addView(settingsButton, LinearLayout.LayoutParams(dp(40), dp(34)))
         infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(40), dp(34)))
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(34)))
@@ -3276,6 +3279,15 @@ class MainActivity : AppCompatActivity() {
     private fun setPlayerFullscreen(enabled: Boolean) {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
+        playerFullscreenButton?.text = if (enabled) "⤢" else "⛶"
+        playerControlsPanel?.let { panel ->
+            (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
+                params.topMargin = if (enabled) 0 else dp(232)
+                params.bottomMargin = if (enabled) dp(18) else 0
+                panel.layoutParams = params
+            }
+        }
         playerView?.layoutParams = FrameLayout.LayoutParams(
             -1, if (enabled) -1 else dp(230), if (enabled) Gravity.CENTER else Gravity.TOP
         )
@@ -3314,6 +3326,7 @@ class MainActivity : AppCompatActivity() {
         }
         playerHeader = null
         playerFullscreenButton = null
+        playerControlsPanel = null
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
         playerView?.player = null
