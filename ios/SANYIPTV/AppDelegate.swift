@@ -164,7 +164,7 @@ private final class PlaylistStore {
         for raw in text.components(separatedBy: .newlines) {
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if line.lowercased().hasPrefix("#extinf") {
-                let pattern = #"([\\w-]+)="([^"]*)""#
+                let pattern = #"([\w-]+)="([^"]*)""#
                 var attrs: [String: String] = [:]
                 if let regex = try? NSRegularExpression(pattern: pattern) {
                     let range = NSRange(line.startIndex..<line.endIndex, in: line)
@@ -180,7 +180,7 @@ private final class PlaylistStore {
             } else if !line.isEmpty && !line.hasPrefix("#"),
                       let url = URL(string: line),
                       ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-                let fallback = url.lastPathComponent.isEmpty ? "Channel \\(result.count + 1)" : url.lastPathComponent
+                let fallback = url.lastPathComponent.isEmpty ? "Channel \(result.count + 1)" : url.lastPathComponent
                 result.append(SANYChannel(name: name.isEmpty ? fallback : name, streamURL: url, group: group, logoURL: logo))
                 name = ""
                 group = "Other"
@@ -552,7 +552,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
             do {
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
                 try AVAudioSession.sharedInstance().setActive(true)
-            } catch { showMessage("Background audio session চালু করা যায়নি: \\(error.localizedDescription)") }
+            } catch { showMessage("Background audio session চালু করা যায়নি: \(error.localizedDescription)") }
         }
         if key == "sany.ios.hardwareDecoder" {
             showMessage("iOS-এর AVPlayer hardware/software decoder নির্বাচন নিজে নিয়ন্ত্রণ করতে দেয় না। এই পছন্দটি সংরক্ষণ করা হয়েছে, কিন্তু playback engine-এ জোর করে প্রয়োগ করা সম্ভব নয়।")
@@ -570,7 +570,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         case "Playback speed": return String(format: "%.2fx", d.object(forKey: "sany.ios.speed") as? Double ?? 1.0)
         case "Video Quality": return d.string(forKey: "sany.ios.quality") ?? "Auto"
         case "Buffer Control": return d.string(forKey: "sany.ios.buffer") ?? "Balanced"
-        case "Playlist manager": return "Saved playlists: \\(savedPlaylists().count)"
+        case "Playlist manager": return "Saved playlists: \(savedPlaylists().count)"
         case "Permanent SANY playlist": return "Owner playlist • locked"
         case "EPG sources (3)": return "3 built-in XMLTV feeds"
         case "SANY IPTV • iPhone Edition": return "M3U / M3U8 player"
@@ -644,7 +644,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
 
     private func showPlaylistManager() {
         let items = savedPlaylists()
-        let labels = items.enumerated().map { index, value in index == 0 ? "★ SANY IPTV — PERMANENT / LOCKED" : "\\(index). \\(value)" }
+        let labels = items.enumerated().map { index, value in index == 0 ? "★ SANY IPTV — PERMANENT / LOCKED" : "\(index). \(value)" }
         let alert = UIAlertController(title: "Playlist manager", message: "Select a saved playlist to load. The built-in SANY playlist cannot be removed.", preferredStyle: .actionSheet)
         for (index, label) in labels.enumerated() {
             alert.addAction(UIAlertAction(title: label, style: .default) { [weak self] _ in self?.loadPlaylist(items[index], locked: index == 0) })
@@ -694,8 +694,8 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         showMessage("Playlist loading শুরু হয়েছে। লোড সম্পন্ন হলে Live TV ট্যাবে চ্যানেলগুলো দেখা যাবে।")
         PlaylistStore.shared.load(from: value, forceRefresh: true) { [weak self] result in
             switch result {
-            case .success(let channels): self?.showMessage("Playlist loaded: \\(channels.count) channels")
-            case .failure(let error): self?.showMessage("Playlist load failed: \\(error.localizedDescription)")
+            case .success(let channels): self?.showMessage("Playlist loaded: \(channels.count) channels")
+            case .failure(let error): self?.showMessage("Playlist load failed: \(error.localizedDescription)")
             }
             self?.table.reloadData()
         }
@@ -704,8 +704,8 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     private func reloadActivePlaylist() {
         PlaylistStore.shared.load(from: PlaylistStore.shared.activePlaylist, forceRefresh: true) { [weak self] result in
             switch result {
-            case .success(let channels): self?.showMessage("Playlist reloaded: \\(channels.count) channels")
-            case .failure(let error): self?.showMessage("Reload failed: \\(error.localizedDescription)")
+            case .success(let channels): self?.showMessage("Playlist reloaded: \(channels.count) channels")
+            case .failure(let error): self?.showMessage("Reload failed: \(error.localizedDescription)")
             }
         }
     }
@@ -724,21 +724,21 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
             let text = try String(contentsOf: url, encoding: .utf8)
             PlaylistStore.shared.importPlaylist(text: text, name: url.lastPathComponent) { [weak self] result in
                 switch result {
-                case .success(let channels): self?.showMessage("Imported \\(channels.count) channels")
+                case .success(let channels): self?.showMessage("Imported \(channels.count) channels")
                 case .failure(let error): self?.showMessage(error.localizedDescription)
                 }
                 self?.table.reloadData()
             }
-        } catch let readError as NSError { showMessage("ফাইল পড়া যায়নি: \\(readError.localizedDescription)") }
+        } catch let readError as NSError { showMessage("ফাইল পড়া যায়নি: \(readError.localizedDescription)") }
     }
 
     private func checkForUpdates() {
         guard let url = URL(string: "https://github.com/Sany100/Sany-iptv/releases/latest") else { return }
         URLSession.shared.dataTask(with: url) { _, response, error in
             DispatchQueue.main.async {
-                if let error = error { self.showMessage("Update check failed: \\(error.localizedDescription)"); return }
+                if let error = error { self.showMessage("Update check failed: \(error.localizedDescription)"); return }
                 let finalURL = (response as? HTTPURLResponse)?.url?.absoluteString ?? url.absoluteString
-                self.showMessage("GitHub latest release page reached. iOS version checking and signed update delivery are not configured yet.\n\\(finalURL)")
+                self.showMessage("GitHub latest release page reached. iOS version checking and signed update delivery are not configured yet.\n\(finalURL)")
             }
         }.resume()
     }
@@ -759,12 +759,12 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         guard let url = URL(string: "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/maintenance.json") else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             DispatchQueue.main.async {
-                if let error = error { self.showMessage("Maintenance status check failed: \\(error.localizedDescription)"); return }
+                if let error = error { self.showMessage("Maintenance status check failed: \(error.localizedDescription)"); return }
                 guard let data = data,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { self.showMessage("Maintenance configuration পাওয়া যায়নি।"); return }
                 let enabled = json["enabled"] as? Bool ?? false
                 let message = json["message"] as? String ?? "No maintenance message."
-                self.showMessage(enabled ? "Maintenance ON\n\\(message)\nAdmin-device matching এখনও iOS-এ যুক্ত হয়নি।" : "Maintenance OFF — app access is open.")
+                self.showMessage(enabled ? "Maintenance ON\n\(message)\nAdmin-device matching এখনও iOS-এ যুক্ত হয়নি।" : "Maintenance OFF — app access is open.")
             }
         }.resume()
     }
@@ -776,7 +776,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     ]
 
     private func showEPGSources() {
-        showMessage(epgSources.enumerated().map { "Source \\( $0.offset + 1): \\( $0.element)" }.joined(separator: "\n\n") + "\n\nAndroid refreshes these feeds daily. Full iOS XMLTV merge and scheduled refresh are still pending.")
+        showMessage(epgSources.enumerated().map { "Source \( $0.offset + 1): \( $0.element)" }.joined(separator: "\n\n") + "\n\nAndroid refreshes these feeds daily. Full iOS XMLTV merge and scheduled refresh are still pending.")
     }
 
     private func updateEPG() {
@@ -790,7 +790,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
             URLSession.shared.dataTask(with: request) { data, response, error in
                 let status = (response as? HTTPURLResponse)?.statusCode
                 let label = error == nil && (200...299).contains(status ?? 0) && data != nil ? "reachable" : "failed"
-                results.append("\\(source): \\(label)")
+                results.append("\(source): \(label)")
                 group.leave()
             }.resume()
         }
