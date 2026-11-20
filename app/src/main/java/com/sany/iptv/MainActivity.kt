@@ -548,7 +548,7 @@ class MainActivity : AppCompatActivity() {
         home.addView(homeWelcomeSpacer, LinearLayout.LayoutParams(-1, -2))
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(if (isTvDevice) 16 else 20), dp(if (isTvDevice) 10 else 18), dp(if (isTvDevice) 16 else 20), dp(if (isTvDevice) 8 else 12))
+            setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(6))
             background = glass(22)
             // Premium 3D glass header: perspective, depth and a soft raised-card finish.
             cameraDistance = 11000f * resources.displayMetrics.density
@@ -559,8 +559,8 @@ class MainActivity : AppCompatActivity() {
         // Keep the original stacked brand header. Move connection status below
         // SANY IPTV instead of showing it as a pill on the right side.
         val brandLine = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.START
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
         val brand = text("SANY IPTV", if (isTvDevice) 21 else 25, accent, true).apply {
             letterSpacing = 0.06f
@@ -569,21 +569,28 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             translationZ = dp(10).toFloat()
         }
-        brandLine.addView(brand, LinearLayout.LayoutParams(-1, -2))
+        brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         val connectionStatus = text(
             if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED",
-            10, if (channels.isEmpty()) muted else accent, true
+            9, if (channels.isEmpty()) muted else accent, true
         ).apply {
-            setPadding(dp(8), dp(2), 0, dp(5))
-            letterSpacing = 0.04f
+            gravity = Gravity.CENTER
+            setPadding(dp(9), dp(5), dp(9), dp(5))
+            letterSpacing = 0.035f
+            background = glass(18)
         }
-        brandLine.addView(connectionStatus, LinearLayout.LayoutParams(-1, -2))
-        top.addView(brandLine)
-        top.addView(text("PREMIUM IPTV EXPERIENCE", 12, white, true).apply {
-            letterSpacing = 0.025f
-            setPadding(dp(8), dp(1), 0, dp(7))
+        brandLine.addView(connectionStatus, LinearLayout.LayoutParams(-2, -2).apply {
+            leftMargin = dp(8)
         })
-        top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 10, muted, true).apply { letterSpacing = 0.10f; setPadding(0, dp(1), 0, dp(14)) })
+        top.addView(brandLine)
+        top.addView(text("PREMIUM IPTV EXPERIENCE", 10, white, true).apply {
+            letterSpacing = 0.02f
+            setPadding(dp(8), 0, 0, dp(3))
+        })
+        top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 9, muted, true).apply {
+            letterSpacing = 0.075f
+            setPadding(0, 0, 0, dp(7))
+        })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         headerTitleView = text(if (section == "Movies") "Movies" else section, 19, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
@@ -600,12 +607,9 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 setPadding(dp(7), 0, dp(7), 0)
                 minWidth = dp(34)
-                setOnClickListener {
-                    prefs.edit().putString("channel_view_mode", mode).apply()
-                    renderChannelRows(listContainer)
-                    // Refresh the selected-state tint without changing the header geometry.
-                    renderHome()
-                }
+                tag = "channel_view_mode_$mode"
+                contentDescription = if (mode == "list") "List view" else "Grid view"
+                setOnClickListener { setChannelViewMode(mode) }
             }
             viewModeBox.addView(viewModeButton("☷", "list"))
             viewModeBox.addView(viewModeButton("▦", "grid"))
@@ -890,6 +894,20 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             back.addView(categoryTitle, LinearLayout.LayoutParams(0, -1, 1f))
+            listOf("list" to "☷", "grid" to "▦").forEach { (mode, glyph) ->
+                val modeButton = text(
+                    glyph, 16,
+                    if ((prefs.getString("channel_view_mode", "list") ?: "list") == mode) accent else muted,
+                    true
+                ).apply {
+                    tag = "channel_view_mode_$mode"
+                    gravity = Gravity.CENTER
+                    isFocusable = true
+                    contentDescription = if (mode == "list") "List view" else "Grid view"
+                    setOnClickListener { setChannelViewMode(mode) }
+                }
+                back.addView(modeButton, LinearLayout.LayoutParams(dp(30), dp(42)))
+            }
             val categorySearch = EditText(this).apply {
                 tag = "category_inline_search"
                 hint = "⌕  Search"
@@ -963,6 +981,25 @@ class MainActivity : AppCompatActivity() {
         renderChannelRows(listContainer)
     }
 
+    private fun setChannelViewMode(mode: String) {
+        if (mode != "list" && mode != "grid") return
+        prefs.edit().putString("channel_view_mode", mode).apply()
+        if (::listContainer.isInitialized && ::countLabel.isInitialized) {
+            renderChannelRows(listContainer)
+        }
+        fun refreshButtons(view: View) {
+            if (view.tag == "channel_view_mode_list") {
+                (view as? TextView)?.setTextColor(if (mode == "list") accent else muted)
+            } else if (view.tag == "channel_view_mode_grid") {
+                (view as? TextView)?.setTextColor(if (mode == "grid") accent else muted)
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) refreshButtons(view.getChildAt(index))
+            }
+        }
+        if (::root.isInitialized) refreshButtons(root)
+    }
+
     private fun renderChannelRows(container: LinearLayout) {
         container.removeAllViews()
         val filtered = filteredChannels()
@@ -976,7 +1013,7 @@ class MainActivity : AppCompatActivity() {
             container.addView(text(message, 15, muted, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
             return
         }
-        if (isTvDevice || prefs.getString("channel_view_mode", "list") == "grid") {
+        if (prefs.getString("channel_view_mode", "list") == "grid") {
             renderTvChannelCards(container, filtered)
             return
         }
@@ -1220,9 +1257,14 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener {
                     if (section == name) return@setOnClickListener
                     // Switch immediately; keep the transition animation lightweight.
+                    val previousSection = section
                     section = name
-                    selectedGroup = "All"
-                    searchQuery = ""
+                    // Preserve the exact Live TV category and search when opening
+                    // Settings and when returning from Settings to Live TV.
+                    if (name != "Settings" && previousSection != "Settings") {
+                        selectedGroup = if (name == "Live TV") "Select category" else "All"
+                        searchQuery = ""
+                    }
                     displayedLimit = 60
                     // Reuse the existing shell and header; rebuild only the page content
                     // and the five small navigation items. This avoids a full-screen layout
