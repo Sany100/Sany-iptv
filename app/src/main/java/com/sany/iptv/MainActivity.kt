@@ -122,6 +122,8 @@ class MainActivity : AppCompatActivity() {
     private var playerFullscreenButton: TextView? = null
     private var playerMinimizeButton: TextView? = null
     private var playerTopActions: View? = null
+    private var playerChannelScroll: ScrollView? = null
+    private var playerChannelRows: LinearLayout? = null
     private var playerControlsPanel: View? = null
     private var headerTitleView: TextView? = null
     private var homeHeaderContainer: View? = null
@@ -3110,6 +3112,26 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
 
+        // While minimized, keep the player pinned above a complete, playlist-ordered
+        // channel directory. The bottom navigation remains exposed for every section.
+        val miniChannelScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            setBackgroundColor(bg)
+            visibility = View.GONE
+        }
+        val miniChannelRows = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(12))
+        }
+        miniChannelScroll.addView(miniChannelRows)
+        screen.addView(miniChannelScroll, FrameLayout.LayoutParams(-1, -1).apply {
+            topMargin = dp(235)
+            bottomMargin = dp(if (isTvDevice) 62 else 74)
+        })
+        playerChannelScroll = miniChannelScroll
+        playerChannelRows = miniChannelRows
+
         // Custom control dock sits below the video, keeping the channel list unobstructed.
         val controlsPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -3256,18 +3278,20 @@ class MainActivity : AppCompatActivity() {
             }.show()
         }
         val settingsButton = playerAction("⚙", "Player settings") { openPlayerSettings() }
-        val topSettingsButton = playerAction("⚙\nSettings", "Player settings") {
+        val topSettingsButton = playerAction("⚙", "Player settings") {
             openPlayerSettings()
         }.apply {
-            textSize = 15f
+            textSize = 25f
             background = glass(12)
+            minWidth = dp(54)
+            minHeight = dp(54)
         }
-        val minimizeButton = playerAction("⤡\nMinimize", "Minimize player") {
+        val minimizeButton = playerAction("⤡", "Minimize player") {
             setPlayerFullscreen(false)
         }.apply {
-            textSize = 15f
-            minWidth = dp(86)
-            minHeight = dp(66)
+            textSize = 31f
+            minWidth = dp(62)
+            minHeight = dp(54)
             background = GradientDrawable().apply {
                 setColor(0xB5102745.toInt())
                 cornerRadius = dp(13).toFloat()
@@ -3279,20 +3303,20 @@ class MainActivity : AppCompatActivity() {
         val topActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(6), dp(4), dp(6), dp(4))
+            setPadding(dp(5), dp(5), dp(5), dp(5))
             background = GradientDrawable().apply {
                 setColor(0x9906101D.toInt())
                 cornerRadius = dp(14).toFloat()
             }
             visibility = View.GONE
-            addView(minimizeButton, LinearLayout.LayoutParams(dp(86), dp(66)))
-            addView(topSettingsButton, LinearLayout.LayoutParams(dp(76), dp(66)).apply {
-                leftMargin = dp(10)
+            addView(topSettingsButton, LinearLayout.LayoutParams(dp(54), dp(54)))
+            addView(minimizeButton, LinearLayout.LayoutParams(dp(62), dp(54)).apply {
+                leftMargin = dp(8)
             })
         }
         playerTopActions = topActions
-        screen.addView(topActions, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
-            topMargin = dp(12)
+        screen.addView(topActions, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
+            bottomMargin = dp(92)
             rightMargin = dp(14)
         })
         val fullscreenButton = playerAction("⛶", "Fullscreen / Minimize") {
@@ -3478,6 +3502,52 @@ class MainActivity : AppCompatActivity() {
         toast("Playing: ${channels[nextIndex].name}")
     }
 
+    private fun renderMinimizedPlayerChannels() {
+        val container = playerChannelRows ?: return
+        container.removeAllViews()
+        container.addView(text("ALL CHANNELS  •  PLAYLIST ORDER", 11, accent, true).apply {
+            setPadding(dp(4), dp(4), dp(4), dp(10))
+            letterSpacing = 0.04f
+        })
+        channels.forEachIndexed { index, channel ->
+            val isPlaying = currentChannel?.url == channel.url
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isFocusable = true
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                background = if (isPlaying) GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(0xFF126BDF.toInt(), 0xEE0845A4.toInt(), 0xDD071F52.toInt())
+                ).apply {
+                    cornerRadius = dp(13).toFloat()
+                    setStroke(dp(2), 0xFF35B8FF.toInt())
+                } else if (isLight) rounded(Color.WHITE, 12, Color.BLACK, 1) else glass(12)
+                if (isPlaying) elevation = dp(7).toFloat()
+                applyTvFocusStyle(this)
+                setOnClickListener { play(channel) }
+            }
+            row.addView(text((index + 1).toString().padStart(2, '0'), 12, accent, true).apply {
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(dp(34), dp(44)))
+            val title = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), 0, 0, 0)
+            }
+            title.addView(text(channel.name, 14, if (isPlaying) Color.WHITE else white, true))
+            title.addView(text(channel.group.ifBlank { "Other" }, 10, if (isPlaying) 0xFFD6E9FF.toInt() else muted))
+            row.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+            if (isPlaying) row.addView(text("▶", 17, Color.WHITE, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(8), 0, dp(4), 0)
+            })
+            container.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(6)
+            })
+        }
+    }
+
     private fun setPlayerFullscreen(enabled: Boolean) {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
@@ -3501,7 +3571,11 @@ class MainActivity : AppCompatActivity() {
         }
         playerFullscreenButton?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerMinimizeButton?.visibility = if (enabled) View.VISIBLE else View.GONE
-        if (!enabled) playerTopActions?.visibility = View.GONE
+        playerChannelScroll?.visibility = if (enabled) View.GONE else View.VISIBLE
+        if (!enabled) {
+            playerTopActions?.visibility = View.GONE
+            renderMinimizedPlayerChannels()
+        }
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
@@ -3525,6 +3599,8 @@ class MainActivity : AppCompatActivity() {
         playerFullscreenButton = null
         playerMinimizeButton = null
         playerTopActions = null
+        playerChannelScroll = null
+        playerChannelRows = null
         playerControlsPanel = null
         if (::listContainer.isInitialized) {
             listContainer.setPadding(
