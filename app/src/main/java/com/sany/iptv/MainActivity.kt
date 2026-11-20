@@ -121,6 +121,7 @@ class MainActivity : AppCompatActivity() {
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
     private var playerMinimizeButton: TextView? = null
+    private var playerTopActions: View? = null
     private var playerControlsPanel: View? = null
     private var headerTitleView: TextView? = null
     private var homeHeaderContainer: View? = null
@@ -3289,6 +3290,7 @@ class MainActivity : AppCompatActivity() {
                 leftMargin = dp(10)
             })
         }
+        playerTopActions = topActions
         screen.addView(topActions, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
             topMargin = dp(12)
             rightMargin = dp(14)
@@ -3499,6 +3501,7 @@ class MainActivity : AppCompatActivity() {
         }
         playerFullscreenButton?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerMinimizeButton?.visibility = if (enabled) View.VISIBLE else View.GONE
+        if (!enabled) playerTopActions?.visibility = View.GONE
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
@@ -3521,6 +3524,7 @@ class MainActivity : AppCompatActivity() {
         playerHeader = null
         playerFullscreenButton = null
         playerMinimizeButton = null
+        playerTopActions = null
         playerControlsPanel = null
         if (::listContainer.isInitialized) {
             listContainer.setPadding(
