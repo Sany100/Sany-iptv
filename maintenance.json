@@ -1,6 +1,6 @@
 {
-  "enabled": false,
-  "message": "",
+  "enabled": true,
+  "message": "SANY IPTV is under maintenance. Please try again later.",
   "allowed_devices": [
     "9e6aee49a1abdced"
   ]
