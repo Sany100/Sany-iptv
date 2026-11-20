@@ -1115,7 +1115,14 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener {
                     selectedGroup = "Select category"
                     liveTvSelectedGroup = selectedGroup
-                    prefs.edit().putString("live_tv_group", liveTvSelectedGroup).apply()
+                    searchQuery = ""
+                    liveTvSearchQuery = ""
+                    prefs.edit()
+                        .putString("live_tv_group", liveTvSelectedGroup)
+                        .putString("live_tv_search", "")
+                        .putString("ui_group", selectedGroup)
+                        .putString("ui_search", "")
+                        .apply()
                     displayedLimit = 60
                     renderListOnly()
                 }
@@ -1179,9 +1186,16 @@ class MainActivity : AppCompatActivity() {
                 applyTvFocusStyle(this)
                 setOnClickListener {
                     selectedGroup = item
+                    searchQuery = ""
                     if (section == "Live TV") {
                         liveTvSelectedGroup = item
-                        prefs.edit().putString("live_tv_group", liveTvSelectedGroup).apply()
+                        liveTvSearchQuery = ""
+                        prefs.edit()
+                            .putString("live_tv_group", liveTvSelectedGroup)
+                            .putString("live_tv_search", "")
+                            .putString("ui_group", selectedGroup)
+                            .putString("ui_search", "")
+                            .apply()
                     }
                     displayedLimit = 60
                     renderListOnly()
