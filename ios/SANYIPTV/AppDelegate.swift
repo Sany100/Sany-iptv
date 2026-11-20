@@ -617,8 +617,14 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         for (index, option) in options.enumerated() {
             alert.addAction(UIAlertAction(title: option, style: .default) { [weak self] _ in
                 let value = values?[index] ?? option
-                UserDefaults.standard.set(value, forKey: key)
+                if key == "sany.ios.speed", let speed = Double(value) {
+                    UserDefaults.standard.set(speed, forKey: key)
+                } else {
+                    UserDefaults.standard.set(value, forKey: key)
+                }
                 completion?(value)
+                self?.navigationController?.navigationBar.tintColor = SANYStyle.accent
+                self?.tabBarController?.tabBar.tintColor = SANYStyle.accent
                 self?.table.reloadData()
             })
         }
