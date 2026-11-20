@@ -3306,9 +3306,9 @@ class MainActivity : AppCompatActivity() {
         val fullscreenButton = playerAction("⛶", "Fullscreen / Minimize") {
             setPlayerFullscreen(!isPlayerFullscreen)
         }.apply {
-            textSize = 31f
-            minWidth = dp(48)
-            minHeight = dp(44)
+            textSize = 19f
+            minWidth = dp(38)
+            minHeight = dp(34)
         }
         playerFullscreenButton = fullscreenButton
         playerControlsPanel = controlsPanel
