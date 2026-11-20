@@ -1296,11 +1296,14 @@ class MainActivity : AppCompatActivity() {
             }
             val isPlayingChannel = currentChannel?.url == channel.url
             if (isPlayingChannel) {
-                row.background = GradientDrawable().apply {
-                    setColor(0x332D8CFF)
+                row.background = GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(0x66439BFF, 0x44306FC8, 0x33305C9B)
+                ).apply {
                     cornerRadius = dp(12).toFloat()
-                    setStroke(dp(1), 0xFF48A5FF.toInt())
+                    setStroke(dp(2), 0xFF55B2FF.toInt())
                 }
+                row.elevation = dp(4).toFloat()
             }
             row.addView(number, LinearLayout.LayoutParams(dp(30), dp(46)))
             val fallbackLogo = text(channel.name.take(1).uppercase(), 18, accent, true).apply {
@@ -1371,6 +1374,34 @@ class MainActivity : AppCompatActivity() {
             })
             details.addView(watermarkLine)
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            if (isPlayingChannel) {
+                val nowPlayingBadge = TextView(this).apply {
+                    text = "♫"
+                    textSize = 23f
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    contentDescription = "Now playing channel"
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(0xFF268CFF.toInt(), 0xFF1454B8.toInt())
+                    ).apply {
+                        cornerRadius = dp(12).toFloat()
+                        setStroke(dp(1), 0xFF9BCBFF.toInt())
+                    }
+                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                    val pulse = ValueAnimator.ofFloat(0.72f, 1f).apply {
+                        duration = 750L
+                        repeatCount = ValueAnimator.INFINITE
+                        repeatMode = ValueAnimator.REVERSE
+                        addUpdateListener { alpha = it.animatedValue as Float }
+                    }
+                    pulse.start()
+                }
+                row.addView(nowPlayingBadge, LinearLayout.LayoutParams(dp(42), dp(38)).apply {
+                    leftMargin = dp(6)
+                })
+            }
             // Keep the original full-width, front-facing channel logo presentation.
             logoFrame.rotationY = 0f
             logoFrame.rotationX = 0f
@@ -3179,22 +3210,17 @@ class MainActivity : AppCompatActivity() {
                 }
             }.show()
         }
-        val minimizeButton = playerAction("⤡", "Minimize / Exit Fullscreen") {
-            if (isPlayerFullscreen) setPlayerFullscreen(false)
-        }.apply {
-            visibility = if (keepFullscreenMode) View.VISIBLE else View.GONE
-            textSize = 24f
-        }
-        playerMinimizeButton = minimizeButton
-        val fullscreenButton = playerAction("⛶", "Toggle fullscreen") {
+        val fullscreenButton = playerAction("⛶", "Fullscreen / Minimize") {
             setPlayerFullscreen(!isPlayerFullscreen)
+        }.apply {
+            textSize = 31f
+            minWidth = dp(48)
+            minHeight = dp(44)
         }
         playerFullscreenButton = fullscreenButton
         playerControlsPanel = controlsPanel
-        infoRow.addView(settingsButton, LinearLayout.LayoutParams(dp(40), dp(34)))
-        infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(40), dp(34)))
-        fullscreenButton.textSize = 25f
-        infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(40), dp(34)))
+        infoRow.addView(settingsButton, LinearLayout.LayoutParams(dp(42), dp(40)))
+        infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(52), dp(44)))
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(30)))
         screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(94), Gravity.TOP).apply {
             topMargin = dp(232)
@@ -3362,7 +3388,6 @@ class MainActivity : AppCompatActivity() {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerFullscreenButton?.text = if (enabled) "⤢" else "⛶"
-        playerMinimizeButton?.visibility = if (enabled) View.VISIBLE else View.GONE
         playerControlsPanel?.let { panel ->
             (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
@@ -3409,7 +3434,6 @@ class MainActivity : AppCompatActivity() {
         }
         playerHeader = null
         playerFullscreenButton = null
-        playerMinimizeButton = null
         playerControlsPanel = null
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
