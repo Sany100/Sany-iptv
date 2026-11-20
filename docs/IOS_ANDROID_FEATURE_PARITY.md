@@ -38,8 +38,8 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 | Start playlist stream check | Partial | iOS CheckerViewController exists; compare probing method and timeout. |
 | Live progress and percentage | Partial | iOS progress UI exists; verify per-channel progress and percentage accuracy. |
 | Working/failed channel results | Partial | iOS checker records results; compare result list and status persistence. |
-| Recheck offline channels | Missing / not verified | Android schedules offline channel rechecks; port equivalent if required. |
-| Checker result persistence | Missing / not verified | Android saves/restores results; iOS parity not confirmed. |
+| Recheck offline channels | Partial | The checker can run again against the full active playlist and replaces the prior saved result set; targeted offline-only recheck remains. |
+| Checker result persistence | Implemented in source; latest build pending | iOS now saves per-channel Online/Offline status, timestamp and URL in UserDefaults, displays saved results and supports clearing/re-running. Validate after the current CI build and on device. |
 | Checker-to-Live-TV progressive channel reveal | Missing / not verified | Android-specific progressive reveal behavior must be ported if still desired. |
 
 ## Playback
@@ -54,7 +54,7 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 | Auto Retry on Failure | Partial | Retry observer exists with limited retry count; compare all error paths and retry policy. |
 | Playback speed | Partial | Speed preference exists; test controls and rate changes during playback. |
 | Background video playback | Partial / platform-limited | Setting row exists; verify AVAudioSession/background modes and App Store policy. |
-| Picture-in-Picture | Missing / not verified | Android PiP exists; implement iOS PiP if supported and user requires it. |
+| Picture-in-Picture | Implemented in source; latest build pending | Added a Picture-in-Picture setting and enabled AVPlayerViewController PiP when the setting is ON. iPhone PiP availability depends on iOS version/device and must be device-tested (not available on iOS 12 iPhone). |
 | Fullscreen / channel navigation | Partial / not verified | AVPlayerViewController is used; compare adjacent-channel and orientation behavior. |
 
 ## EPG
@@ -66,7 +66,7 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 | Manual EPG URL | Partial / not verified | Verify editable URL flow exists and persists. |
 | Update EPG data | Partial | EPGRepository update operation exists; verify XMLTV parsing, timezone and channel matching. |
 | Daily/background refresh | Partial | BGTaskScheduler path is guarded for iOS 13+; iOS does not guarantee exact daily execution. |
-| EPG programme guide UI | Missing / not verified | Data refresh is not equivalent to a usable guide screen. |
+| EPG programme guide UI | Implemented in source; latest build pending | Added an EPG Guide screen that reads the downloaded XMLTV file, parses programme/channel/time/title and lists programme entries. Channel-name mapping and filtering/search remain. |
 
 ## Settings and administration
 
@@ -100,15 +100,15 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 
 1. Build the iOS target with deployment target iOS 12.0 and resolve any availability/compiler errors.
 2. Port missing Android screen/navigation features and playlist/checker result persistence.
-3. Complete Settings actions; remove or clearly mark unsupported decoder controls rather than leaving inert controls.
+3. Complete Settings actions; remove or clearly mark unsupported decoder controls rather than leaving inert controls. PiP toggle and guide navigation are now added in source; confirm CI and device behavior.
 4. Implement/verify EPG guide UI, retry behavior, PiP and update-check workflow.
-5. Add automated tests for M3U parsing, preference persistence, checker results and maintenance schema.
+5. Add automated tests for M3U parsing, preference persistence, checker results and maintenance schema. Checker results are now persisted in source; automated test coverage remains.
 6. Compare Android and iOS feature-by-feature with screenshots and behavior tests; update this checklist with verified results.
 7. Sign and distribute through TestFlight/App Store only after device and review checks.
 
 ## Important limitations
 
-- This checklist does not claim 100% parity.
+- This checklist does not claim 100% parity. Latest code changes are not considered verified until the corresponding GitHub Actions run passes; physical iPhone testing is still required.
 - iOS AVPlayer does not provide a public switch equivalent to Android's ExoPlayer hardware decoder preference.
 - iOS background tasks are system-scheduled and cannot promise exact daily execution.
 - App Store updates must follow Apple's distribution rules; an Android-style APK self-updater cannot be copied directly.
