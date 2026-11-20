@@ -335,7 +335,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     private let keys = ["sany.ios.autoplay", "sany.ios.hardwareDecoder", "sany.ios.autoRetry"]
     private let qualityKey = "sany.ios.quality"
     private let qualities = ["Auto", "480p", "720p", "1080p"]
-    private let table = UITableView(frame: .zero, style: .insetGrouped)
+    private let table = UITableView(frame: .zero, style: .grouped)
 
     override func viewDidLoad() {
         super.viewDidLoad()
