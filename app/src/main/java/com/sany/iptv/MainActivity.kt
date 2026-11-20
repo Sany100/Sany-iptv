@@ -209,6 +209,7 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
+        checkForMandatoryUpdate()
         checkMaintenanceMode()
         if (!restoringBackground) {
             // Avoid costly first-frame transforms on Android 6 devices.
@@ -236,6 +237,87 @@ class MainActivity : AppCompatActivity() {
                 Handler(Looper.getMainLooper()).post { play(channel) }
             }
         }
+    }
+
+    // Mandatory update gate: the remote policy is controlled by update.json in the repository.
+    private val updateConfigUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/update.json"
+    private val updateReminderHandler = Handler(Looper.getMainLooper())
+    private var updateDialog: AlertDialog? = null
+    private var updateRequired = false
+    private val updateReminderRunnable = object : Runnable {
+        override fun run() {
+            if (updateRequired && !isFinishing && !isDestroyed) {
+                showMandatoryUpdateDialog()
+                updateReminderHandler.postDelayed(this, 10_000L)
+            }
+        }
+    }
+
+    private fun checkForMandatoryUpdate() {
+        thread(name = "sany-update-check") {
+            try {
+                val connection = (URL(updateConfigUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 7000
+                    readTimeout = 7000
+                    requestMethod = "GET"
+                    setRequestProperty("Cache-Control", "no-cache")
+                }
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val config = JSONObject(body)
+                if (!config.optBoolean("enabled", true)) return@thread
+                val minimumCode = config.optInt("minimum_version_code", 0)
+                val currentCode = if (Build.VERSION.SDK_INT >= 28) packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
+                    else @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionCode
+                val required = currentCode < minimumCode
+                val version = config.optString("latest_version", "নতুন সংস্করণ")
+                val apkUrl = config.optString("apk_url", "")
+                runOnUiThread {
+                    updateRequired = required
+                    if (required) {
+                        prefs.edit().putBoolean("mandatory_update_required", true).apply()
+                        showMandatoryUpdateDialog(version, apkUrl)
+                        updateReminderHandler.removeCallbacks(updateReminderRunnable)
+                        updateReminderHandler.postDelayed(updateReminderRunnable, 10_000L)
+                    } else {
+                        prefs.edit().putBoolean("mandatory_update_required", false).apply()
+                        updateReminderHandler.removeCallbacks(updateReminderRunnable)
+                        updateDialog?.dismiss()
+                        updateDialog = null
+                    }
+                }
+            } catch (_: Exception) {
+                // Do not brick existing installations when the policy endpoint is temporarily unavailable.
+            }
+        }
+    }
+
+    private fun showMandatoryUpdateDialog(
+        version: String = "নতুন সংস্করণ",
+        apkUrl: String = "https://github.com/Sany100/Sany-iptv/releases/latest"
+    ) {
+        if (!updateRequired || isFinishing || isDestroyed) return
+        if (updateDialog?.isShowing == true) return
+        val safeUrl = if (apkUrl.startsWith("https://")) apkUrl else "https://github.com/Sany100/Sany-iptv/releases/latest"
+        updateDialog = AlertDialog.Builder(this)
+            .setTitle("SANY IPTV আপডেট প্রয়োজন")
+            .setMessage("নতুন সংস্করণ $version ইনস্টল না করা পর্যন্ত অ্যাপ ব্যবহার করা যাবে না। UPDATE NOW চাপুন।")
+            .setCancelable(false)
+            .setPositiveButton("UPDATE NOW") { _, _ ->
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl)))
+                } catch (_: Exception) {
+                    toast("আপডেট লিংক খোলা যাচ্ছে না")
+                }
+            }
+            .create()
+            .also { dialog ->
+                dialog.setCanceledOnTouchOutside(false)
+                dialog.setOnShowListener {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(Color.rgb(35, 145, 255))
+                }
+                dialog.show()
+            }
     }
 
     private fun checkMaintenanceMode() {
