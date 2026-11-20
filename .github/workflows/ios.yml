@@ -1,7 +1,11 @@
-name: iOS Simulator Build
+name: iOS Build
 on:
   push:
-    branches: [ main ]
+    branches: [main, ios-bootstrap]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
     paths:
       - "ios/**"
       - ".github/workflows/ios.yml"
@@ -14,24 +18,24 @@ jobs:
   build-ios-simulator:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - name: Install XcodeGen
-        run: brew install xcodegen
-      - name: Generate Xcode project
-        run: |
-          cd ios
-          xcodegen generate
-      - name: Build iOS Simulator app
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Build iPhone Simulator app
         run: |
           xcodebuild \
             -project ios/SANYIPTV.xcodeproj \
             -scheme SANYIPTV \
             -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
-            -derivedDataPath ios/build \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             build
-      - uses: actions/upload-artifact@v4
+      - name: Upload simulator build
+        uses: actions/upload-artifact@v4
         with:
-          name: sany-iptv-ios-simulator
-          path: ios/build/Build/Products/Debug-iphonesimulator/SANY IPTV.app
+          name: SANY-IPTV-iOS-Simulator
+          path: build/Build/Products/Debug-iphonesimulator/SANYIPTV.app
+          if-no-files-found: error
