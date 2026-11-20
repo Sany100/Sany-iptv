@@ -3107,7 +3107,7 @@ class MainActivity : AppCompatActivity() {
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
-        screen.addView(view, FrameLayout.LayoutParams(-1, dp(210), Gravity.TOP))
+        screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
 
         // Custom control dock sits below the video, keeping the channel list unobstructed.
         val controlsPanel = LinearLayout(this).apply {
@@ -3267,7 +3267,7 @@ class MainActivity : AppCompatActivity() {
         infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(52), dp(44)))
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(29)))
         screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(80), Gravity.TOP).apply {
-            topMargin = dp(212)
+            topMargin = dp(182)
             leftMargin = dp(8); rightMargin = dp(8)
         })
 
@@ -3375,7 +3375,7 @@ class MainActivity : AppCompatActivity() {
         // Reserve the dock area below the inline video so channel cards never sit behind controls.
         if (::listContainer.isInitialized) {
             listContainer.setPadding(
-                listContainer.paddingLeft, dp(292),
+                listContainer.paddingLeft, dp(262),
                 listContainer.paddingRight, listContainer.paddingBottom
             )
         }
@@ -3442,24 +3442,24 @@ class MainActivity : AppCompatActivity() {
         playerControlsPanel?.let { panel ->
             (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
-                params.topMargin = if (enabled) 0 else dp(212)
+                params.topMargin = if (enabled) 0 else dp(182)
                 params.bottomMargin = if (enabled) dp(18) else 0
                 panel.layoutParams = params
             }
         }
         playerView?.layoutParams = FrameLayout.LayoutParams(
-            -1, if (enabled) -1 else dp(210), if (enabled) Gravity.CENTER else Gravity.TOP
+            -1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP
         )
         playerHeader?.let { header ->
             (header.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                params.topMargin = if (enabled) 0 else dp(210)
+                params.topMargin = if (enabled) 0 else dp(235)
                 header.layoutParams = params
             }
         }
         playerFullscreenButton?.let { button ->
             (button.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.gravity = if (enabled) Gravity.BOTTOM or Gravity.END else Gravity.TOP or Gravity.END
-                params.topMargin = if (enabled) 0 else dp(224)
+                params.topMargin = if (enabled) 0 else dp(249)
                 params.bottomMargin = if (enabled) dp(24) else 0
                 button.layoutParams = params
             }
