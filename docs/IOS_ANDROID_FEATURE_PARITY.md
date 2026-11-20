@@ -27,7 +27,7 @@ This is a source-code audit, not a runtime/device certification. “Partial” m
 | Add playlist URL | Partial | Playlist store accepts URLs; verify Settings action and persistence. |
 | Import M3U file | Partial | iOS document picker/import path exists; test provider formats and errors. |
 | M3U/M3U8 parsing | Partial | Basic EXTINF/group/logo parsing exists; compare attributes, quoted commas, URL schemes and edge cases. |
-| Playlist manager / switch playlist | Partial | Multiple remote/imported playlists can be selected and removed; active-source persistence and fallback on removal are implemented. Rapid switching during an in-flight request still needs testing. |
+| Playlist manager / switch playlist | Partial | Multiple remote/imported playlists can be selected. Built-in SANY playlist and any URL added with “Add PERMANENTLY & Load” are locked and excluded from deletion; ordinary saved playlists remain removable. Active-source fallback still needs runtime testing. |
 | Reload active playlist | Partial | Refresh/load exists; test offline/cache behavior. |
 | Playlist caching / offline recovery | Implemented in source; CI/device validation pending | Successful remote M3U downloads are cached per URL; network/HTTP failure falls back to the saved cache. Imported playlists are stored locally and added to the saved list. |
 
