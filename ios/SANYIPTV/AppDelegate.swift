@@ -729,7 +729,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
                 }
                 self?.table.reloadData()
             }
-        } catch { showMessage("ফাইল পড়া যায়নি: \\(error.localizedDescription)") }
+        } catch let readError as NSError { showMessage("ফাইল পড়া যায়নি: \\(readError.localizedDescription)") }
     }
 
     private func checkForUpdates() {
