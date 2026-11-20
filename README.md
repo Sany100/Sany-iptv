@@ -44,3 +44,9 @@ Build the universal Android APK:
 The debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`. GitHub Actions builds this APK on pushes to `main`. A signed release APK is published when the release workflow has the required signing secrets configured.
 
 Use only playlists and streams you are authorized to access.
+
+
+## Update policy
+
+- Mandatory updates are disabled by default and are enabled only when explicitly requested by the project owner.
+- When the remote mandatory-update policy is disabled, the app clears any previously cached mandatory-update prompt.
