@@ -217,6 +217,8 @@ private final class LiveTVViewController: BaseViewController, UITableViewDataSou
     private var favorites = Set(UserDefaults.standard.stringArray(forKey: "sany.ios.favorites") ?? [])
     private var selectedGroup: String?
     private let spinner = UIActivityIndicatorView(style: .whiteLarge)
+    private var retryObserver: NSObjectProtocol?
+    private var retryCount = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -303,10 +305,49 @@ private final class LiveTVViewController: BaseViewController, UITableViewDataSou
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         let channel = visible[indexPath.row]
+        if let observer = retryObserver {
+            NotificationCenter.default.removeObserver(observer)
+            retryObserver = nil
+        }
+        retryCount = 0
+        let item = AVPlayerItem(url: channel.streamURL)
+        let defaults = UserDefaults.standard
+        let quality = defaults.string(forKey: "sany.ios.quality") ?? "Auto"
+        switch quality {
+        case "480p": item.preferredPeakBitRate = 1_200_000
+        case "720p": item.preferredPeakBitRate = 2_500_000
+        case "1080p": item.preferredPeakBitRate = 5_000_000
+        default: item.preferredPeakBitRate = defaults.bool(forKey: "sany.ios.lowDataMode") ? 650_000 : 0
+        }
+        let buffer = defaults.string(forKey: "sany.ios.buffer") ?? "Balanced"
+        item.preferredForwardBufferDuration = buffer == "Low" ? 2.5 : (buffer == "High" ? 6.0 : 4.0)
+        let avPlayer = AVPlayer(playerItem: item)
+        avPlayer.automaticallyWaitsToMinimizeStalling = true
         let player = AVPlayerViewController()
-        player.player = AVPlayer(url: channel.streamURL)
+        player.player = avPlayer
         player.title = channel.name
-        present(player, animated: true) { player.player?.play() }
+        retryObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self, weak avPlayer] _ in
+            guard let self = self, let avPlayer = avPlayer,
+                  defaults.object(forKey: "sany.ios.autoRetry") as? Bool ?? true,
+                  self.retryCount < 2 else { return }
+            self.retryCount += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                avPlayer.seek(to: .zero)
+                avPlayer.play()
+                avPlayer.rate = Float(defaults.object(forKey: "sany.ios.speed") as? Double ?? 1.0)
+            }
+        }
+        let shouldAutoPlay = defaults.object(forKey: "sany.ios.autoPlay") as? Bool ?? true
+        present(player, animated: true) {
+            if shouldAutoPlay {
+                avPlayer.play()
+                avPlayer.rate = Float(defaults.object(forKey: "sany.ios.speed") as? Double ?? 1.0)
+            }
+        }
     }
 
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
