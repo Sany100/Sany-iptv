@@ -9,6 +9,10 @@ targets:
     platform: iOS
     sources:
       - path: SANYIPTV
+    info:
+      properties:
+        UIBackgroundModes:
+          - audio
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sany.iptv.ios
