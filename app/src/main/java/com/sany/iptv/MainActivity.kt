@@ -3663,6 +3663,10 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // PiP must use the whole Activity bounds. Keeping the portrait 230dp
             // inline-player height here makes Android crop the floating video.
+            // Expand both the video surface AND its parent to the full Activity
+            // bounds before entering PiP. Expanding only PlayerView leaves it
+            // clipped by the 235dp minimized-player container.
+            playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
             playerView?.let { view ->
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.layoutParams = FrameLayout.LayoutParams(-1, -1)
@@ -3690,11 +3694,15 @@ class MainActivity : AppCompatActivity() {
             playerMinimizeButton?.visibility = View.GONE
             playerView?.setUseController(false)
         } else if (playerView != null) {
+            // Restore the normal embedded-player container after PiP closes.
+            playerScreen?.layoutParams = FrameLayout.LayoutParams(
+                -1, if (isPlayerFullscreen) -1 else dp(235), Gravity.TOP
+            )
             playerView?.let { view ->
                 view.setUseController(true)
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.layoutParams = FrameLayout.LayoutParams(
-                    -1, if (isPlayerFullscreen) -1 else dp(230),
+                    -1, if (isPlayerFullscreen) -1 else dp(235),
                     if (isPlayerFullscreen) Gravity.CENTER else Gravity.TOP
                 )
             }
