@@ -600,7 +600,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     private let playlistRows = ["Playlist manager", "Add playlist URL", "Import M3U file", "Playlist Checker", "Reload playlist", "Permanent SANY playlist"]
     private let updateRows = ["Check for updates"]
     private let adminRows = ["Copy Device ID (Admin)", "Maintenance status"]
-    private let epgRows = ["Update EPG data", "Auto add EPG data", "EPG sources (3)"]
+    private let epgRows = ["Open EPG Guide", "Update EPG data", "Auto add EPG data", "EPG sources (3)"]
     private let aboutRows = ["SANY IPTV • iPhone Edition"]
     private var rows: [[String]] { [appearanceRows, playbackRows, playlistRows, updateRows, adminRows, epgRows, aboutRows] }
 
@@ -705,6 +705,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         case "Playlist manager": return "Saved playlists: \(savedPlaylists().count)"
         case "Permanent SANY playlist": return "Owner playlist • locked"
         case "EPG sources (3)": return "3 built-in XMLTV feeds"
+        case "Open EPG Guide": return "Browse downloaded programme schedule"
         case "SANY IPTV • iPhone Edition": return "M3U / M3U8 player"
         default: return nil
         }
@@ -736,6 +737,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         case "Check for updates": checkForUpdates()
         case "Copy Device ID (Admin)": copyDeviceID()
         case "Maintenance status": checkMaintenance()
+        case "Open EPG Guide": navigationController?.pushViewController(EPGGuideViewController(), animated: true)
         case "Update EPG data": updateEPG()
         case "EPG sources (3)": showEPGSources()
         case "SANY IPTV • iPhone Edition":
@@ -920,6 +922,135 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
             }
         }
     }}
+
+private struct EPGProgramme {
+    let channel: String
+    let title: String
+    let start: Date?
+    let stop: Date?
+}
+
+private final class EPGGuideViewController: UIViewController, UITableViewDataSource, XMLParserDelegate {
+    private let table = UITableView(frame: .zero, style: .plain)
+    private var programmes: [EPGProgramme] = []
+    private var currentChannel = ""
+    private var currentTitle = ""
+    private var currentStart: Date?
+    private var currentStop: Date?
+    private var captureTitle = false
+    private var xmlError: String?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "EPG Guide"
+        view.backgroundColor = SANYStyle.background
+        table.backgroundColor = SANYStyle.background
+        table.dataSource = self
+        table.rowHeight = UITableView.automaticDimension
+        table.estimatedRowHeight = 64
+        table.register(UITableViewCell.self, forCellReuseIdentifier: "programme")
+        table.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(table)
+        NSLayoutConstraint.activate([
+            table.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            table.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            table.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        loadGuide()
+    }
+
+    private func loadGuide() {
+        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let file = folder.appendingPathComponent("epg_data.xml")
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            showGuideError("EPG ডেটা পাওয়া যায়নি। Settings → Update EPG data চালান।")
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let parser = XMLParser(contentsOf: file) else {
+                DispatchQueue.main.async { self.showGuideError("EPG XML ফাইল খোলা যায়নি।") }
+                return
+            }
+            parser.delegate = self
+            parser.shouldResolveExternalEntities = false
+            let ok = parser.parse()
+            DispatchQueue.main.async {
+                if ok {
+                    self.programmes.sort { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
+                    self.table.reloadData()
+                    self.navigationItem.prompt = "\(self.programmes.count) programmes"
+                    if self.programmes.isEmpty { self.showGuideError("EPG ফাইলে programme entry পাওয়া যায়নি।") }
+                } else {
+                    self.showGuideError(parser.parserError?.localizedDescription ?? "EPG XML parse failed")
+                }
+            }
+        }
+    }
+
+    private func showGuideError(_ message: String) {
+        let label = UILabel()
+        label.text = message
+        label.textColor = .white
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.frame = view.bounds.insetBy(dx: 28, dy: 28)
+        label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        table.backgroundView = label
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
+        if elementName == "programme" {
+            currentChannel = attributeDict["channel"] ?? "Unknown channel"
+            currentStart = parseXMLTVDate(attributeDict["start"])
+            currentStop = parseXMLTVDate(attributeDict["stop"])
+            currentTitle = ""
+        } else if elementName == "title" {
+            captureTitle = true
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if captureTitle { currentTitle += string }
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+        if elementName == "title" { captureTitle = false }
+        if elementName == "programme" {
+            let name = currentTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty {
+                programmes.append(EPGProgramme(channel: currentChannel, title: name, start: currentStart, stop: currentStop))
+            }
+        }
+    }
+
+    private func parseXMLTVDate(_ value: String?) -> Date? {
+        guard let value = value else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyyMMddHHmmss Z"
+        return formatter.date(from: String(value.prefix(20)))
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { programmes.count }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "programme", for: indexPath)
+        let item = programmes[indexPath.row]
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.timeZone = .current
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        let period = item.start.map { formatter.string(from: $0) } ?? "Time unavailable"
+        cell.backgroundColor = SANYStyle.panel
+        cell.textLabel?.textColor = .white
+        cell.textLabel?.numberOfLines = 0
+        cell.textLabel?.text = "\(period)  •  \(item.channel)\n\(item.title)"
+        cell.textLabel?.font = .systemFont(ofSize: 13, weight: .medium)
+        return cell
+    }
+}
 
 private final class EPGUpdateOperation {
     private let lock = NSLock()
