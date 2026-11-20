@@ -3478,3 +3478,14 @@ class MainActivity : AppCompatActivity() {
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
     private fun dp(v: Int): Int {
+        val tvScale = if (isTvDevice) 1.15f else 1f
+        return (v * resources.displayMetrics.density * tvScale).toInt()
+    }
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+}
+
+private class SimpleTextWatcher(val changed: (String) -> Unit) : android.text.TextWatcher {
+    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { changed(s?.toString().orEmpty()) }
+    override fun afterTextChanged(s: android.text.Editable?) = Unit
+}
