@@ -2461,10 +2461,10 @@ class MainActivity : AppCompatActivity() {
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
         // Keep older Android devices on a lower concurrency level.
-        // Android 10+ uses 48 workers; Android 7-9 uses 32; Android 6 uses 4.
-        // Actual throughput depends on device, network, and IPTV server response times.
+        // Android 10+ uses 64 workers; Android 7-9 uses 32; Android 6 uses 4.
+        // Keep this bounded: device memory/CPU and server throttling limit real throughput.
         val maxWorkers = when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 48
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 64
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.N -> 32
             else -> 4
         }
