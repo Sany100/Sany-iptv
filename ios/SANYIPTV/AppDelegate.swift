@@ -409,6 +409,7 @@ private final class LiveTVViewController: BaseViewController, UITableViewDataSou
         avPlayer.automaticallyWaitsToMinimizeStalling = true
         let player = AVPlayerViewController()
         player.player = avPlayer
+        player.allowsPictureInPicturePlayback = defaults.object(forKey: "sany.ios.pictureInPicture") as? Bool ?? true
         player.title = channel.name
         retryObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
@@ -595,7 +596,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
         "APP UPDATES", "DEVICE & ADMIN", "ADDITIONAL SETTINGS", "ABOUT"
     ]
     private let appearanceRows = ["Customize accent color", "Low internet mode", "Reduce UI animations", "App theme"]
-    private let playbackRows = ["Playback speed", "Auto Play", "Video Quality", "Hardware Decoder", "Buffer Control", "Auto Retry on Failure", "Background video playback"]
+    private let playbackRows = ["Playback speed", "Auto Play", "Video Quality", "Hardware Decoder", "Buffer Control", "Auto Retry on Failure", "Background video playback", "Picture-in-Picture"]
     private let playlistRows = ["Playlist manager", "Add playlist URL", "Import M3U file", "Playlist Checker", "Reload playlist", "Permanent SANY playlist"]
     private let updateRows = ["Check for updates"]
     private let adminRows = ["Copy Device ID (Admin)", "Maintenance status"]
@@ -668,6 +669,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
             case 3: return ("sany.ios.hardwareDecoder", true)
             case 5: return ("sany.ios.autoRetry", true)
             case 6: return ("sany.ios.backgroundPlayback", true)
+            case 7: return ("sany.ios.pictureInPicture", true)
             default: return nil
             }
         }
