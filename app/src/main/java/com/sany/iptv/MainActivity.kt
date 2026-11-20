@@ -668,16 +668,21 @@ class MainActivity : AppCompatActivity() {
             alpha = 0f
             translationY = dp(-40).toFloat()
         }
-        center.addView(welcome)
+        center.addView(welcome, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(4)
+        })
 
         val thankYou = text("Thank you for choosing SANY IPTV", 12, Color.rgb(126, 220, 255), true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.025f
             setPadding(0, dp(7), 0, dp(14))
             alpha = 0f
-            translationY = dp(-25).toFloat()
+            // Keep this line in its own layout row beneath the welcome message.
+            translationY = 0f
         }
-        center.addView(thankYou)
+        center.addView(thankYou, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(10)
+        })
 
         // Static welcome text colors: color/lighting animation intentionally disabled.
         welcome.setTextColor(if (isLight) Color.rgb(25, 55, 100) else Color.WHITE)
@@ -689,13 +694,13 @@ class MainActivity : AppCompatActivity() {
             progress = 0
             progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(64, 170, 255))
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.argb(85, 210, 230, 255))
-            translationY = dp(-20).toFloat()
+            translationY = 0f
         }
         center.addView(loadingBar, LinearLayout.LayoutParams(dp(230), dp(7)))
         val percentLabel = text("0%", 13, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(9), 0, 0)
-            translationY = dp(-20).toFloat()
+            translationY = 0f
         }
         center.addView(percentLabel)
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
