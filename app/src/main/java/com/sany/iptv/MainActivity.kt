@@ -3322,8 +3322,8 @@ class MainActivity : AppCompatActivity() {
         infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
             leftMargin = dp(5)
         })
-        controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(29)))
-        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(80), Gravity.TOP).apply {
+        controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(88), Gravity.TOP).apply {
             topMargin = dp(155)
             leftMargin = dp(8); rightMargin = dp(8)
         })
