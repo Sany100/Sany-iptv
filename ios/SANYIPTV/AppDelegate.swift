@@ -923,8 +923,8 @@ private enum EPGRepository {
                     let parser = XMLParser(data: decoded)
                     parser.shouldResolveExternalEntities = false
                     guard parser.parse() else { throw parser.parserError ?? NSError(domain: "SANYEPG", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid XMLTV document"]) }
-                    let openRegex = try NSRegularExpression(pattern: "(?is)<tv\b[^>]*>")
-                    let closeRegex = try NSRegularExpression(pattern: "(?is)</tv\s*>")
+                    let openRegex = try NSRegularExpression(pattern: #"(?is)<tv\b[^>]*>"#)
+                    let closeRegex = try NSRegularExpression(pattern: #"(?is)</tv\s*>"#)
                     let ns = NSRange(xml.startIndex..., in: xml)
                     guard let openMatch = openRegex.firstMatch(in: xml, range: ns),
                           let openRange = Range(openMatch.range, in: xml),
