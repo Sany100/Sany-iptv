@@ -764,7 +764,7 @@ class MainActivity : AppCompatActivity() {
         // No reserved blank welcome slot: keep the selected page content directly below the player.
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(6))
+            setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 14 else 12))
             // Opaque theme-matched header: no translucent grey tint in either theme.
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
