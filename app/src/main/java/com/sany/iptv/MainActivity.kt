@@ -1293,6 +1293,14 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(2), 0, dp(8), 0)
                 minWidth = dp(28)
             }
+            val isPlayingChannel = currentChannel?.url == channel.url
+            if (isPlayingChannel) {
+                row.background = GradientDrawable().apply {
+                    setColor(0x332D8CFF)
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(dp(1), 0xFF48A5FF.toInt())
+                }
+            }
             row.addView(number, LinearLayout.LayoutParams(dp(30), dp(46)))
             val fallbackLogo = text(channel.name.take(1).uppercase(), 18, accent, true).apply {
                 gravity = Gravity.CENTER
@@ -1335,7 +1343,7 @@ class MainActivity : AppCompatActivity() {
             }
             row.addView(logoFrame, LinearLayout.LayoutParams(dp(46), dp(46)))
             val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0) }
-            details.addView(text(channel.name, 14, white, true))
+            details.addView(text(channel.name, 14, if (isPlayingChannel) 0xFF72B9FF.toInt() else white, true))
             details.addView(text(channel.group.ifBlank { "Other" }, 11, muted).apply { setPadding(0, dp(4), 0, 0) })
             // Subtle channel watermark beneath each channel label.
             val watermarkLine = LinearLayout(this).apply {
@@ -3022,10 +3030,10 @@ class MainActivity : AppCompatActivity() {
         val controlsPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(5), dp(10), dp(5))
+            setPadding(dp(8), dp(3), dp(8), dp(3))
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xE6101A2A.toInt(), 0xF20A1220.toInt())
+                intArrayOf(0xA6101A2A.toInt(), 0xB20A1220.toInt())
             ).apply {
                 cornerRadius = dp(12).toFloat()
                 setStroke(dp(1), 0x884D8DDA.toInt())
@@ -3051,26 +3059,18 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { action() }
             }
         val previousButton = playerAction("|◀", "Previous channel") { playAdjacentChannel(-1) }
-        val rewindButton = playerAction("↶ 5", "Rewind 5 seconds") {
-            p.seekTo((p.currentPosition - 5_000L).coerceAtLeast(0L))
-        }
         val playPauseButton = playerAction(if (p.isPlaying) "Ⅱ" else "▶", "Play or pause") {
             if (p.isPlaying) p.pause() else p.play()
         }
-        val forwardButton = playerAction("15 ↷", "Forward 15 seconds") {
-            val duration = p.duration
-            val target = p.currentPosition + 15_000L
-            p.seekTo(if (duration > 0) target.coerceAtMost(duration) else target)
-        }
         val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
-        listOf(previousButton, rewindButton, playPauseButton, forwardButton, nextButton).forEachIndexed { index, button ->
-            transportRow.addView(button, LinearLayout.LayoutParams(0, dp(38), 1f).apply {
-                if (index == 2) {
-                    leftMargin = dp(4); rightMargin = dp(4)
-                }
+        listOf(previousButton, playPauseButton, nextButton).forEachIndexed { index, button ->
+            button.textSize = if (index == 1) 21f else 19f
+            button.typeface = if (index == 1) Typeface.create("sans-serif-light", Typeface.NORMAL) else Typeface.DEFAULT
+            transportRow.addView(button, LinearLayout.LayoutParams(0, dp(32), 1f).apply {
+                if (index == 1) { leftMargin = dp(4); rightMargin = dp(4) }
             })
         }
-        controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(38)))
+        controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(32)))
 
         val progressBar = SeekBar(this).apply {
             max = 1000
@@ -3079,7 +3079,7 @@ class MainActivity : AppCompatActivity() {
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x668899AA)
             setPadding(dp(2), 0, dp(2), 0)
         }
-        controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(24)))
+        controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(20)))
         val infoRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -3124,9 +3124,10 @@ class MainActivity : AppCompatActivity() {
         playerFullscreenButton = fullscreenButton
         playerControlsPanel = controlsPanel
         infoRow.addView(settingsButton, LinearLayout.LayoutParams(dp(40), dp(34)))
+        fullscreenButton.textSize = 25f
         infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(40), dp(34)))
-        controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(34)))
-        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(105), Gravity.TOP).apply {
+        controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(30)))
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(94), Gravity.TOP).apply {
             topMargin = dp(232)
             leftMargin = dp(8); rightMargin = dp(8)
         })
@@ -3180,6 +3181,8 @@ class MainActivity : AppCompatActivity() {
         controlsHandler.post(progressUpdater)
 
         val tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            private val swipeThreshold = dp(64)
+            private val swipeVelocityThreshold = dp(120)
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (controlsPanel.visibility == View.VISIBLE) {
@@ -3188,11 +3191,20 @@ class MainActivity : AppCompatActivity() {
                 } else revealControls()
                 return true
             }
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                val start = e1 ?: return false
+                val dx = e2.x - start.x
+                val dy = e2.y - start.y
+                if (isPlayerFullscreen && kotlin.math.abs(dx) > swipeThreshold &&
+                    kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f &&
+                    kotlin.math.abs(velocityX) > swipeVelocityThreshold) {
+                    playAdjacentChannel(if (dx < 0) 1 else -1)
+                    return true
+                }
+                return true
+            }
         })
-        view.setOnTouchListener { _, event ->
-            tapDetector.onTouchEvent(event)
-            true
-        }
+        view.setOnTouchListener { _, event -> tapDetector.onTouchEvent(event); true }
 
         val tvRemoteHint: TextView? = if (isTvDevice) TextView(this).apply {
             text = "▲ / ▼  CHANGE CHANNEL     BACK  •  EXIT"
