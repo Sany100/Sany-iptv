@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  debug:
+  release-compatible:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,20 +19,32 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.4'
-      - name: Configure Firebase Analytics
+      - name: Configure Firebase
         env:
           FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}
         run: |
           if [ -n "$FIREBASE_JSON" ]; then
             printf '%s' "$FIREBASE_JSON" > app/google-services.json
-            echo "Firebase Analytics configured."
-          else
-            echo "Firebase Analytics not configured; building without analytics."
           fi
-      - name: Build development debug APK
-        run: gradle assembleDebug
+      - name: Decode existing production signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SANY_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || (echo "Missing production signing keystore secret" && exit 1)
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sany-release.jks"
+          echo "SANY_KEYSTORE_PATH=$RUNNER_TEMP/sany-release.jks" >> "$GITHUB_ENV"
+      - name: Build production-signed APK without publishing a release
+        env:
+          SANY_KEYSTORE_PASSWORD: ${{ secrets.SANY_RELEASE_STORE_PASSWORD }}
+          SANY_KEY_ALIAS: ${{ secrets.SANY_RELEASE_KEY_ALIAS }}
+          SANY_KEY_PASSWORD: ${{ secrets.SANY_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$SANY_KEYSTORE_PASSWORD" || (echo "Missing production store password" && exit 1)
+          test -n "$SANY_KEY_ALIAS" || (echo "Missing production key alias" && exit 1)
+          test -n "$SANY_KEY_PASSWORD" || (echo "Missing production key password" && exit 1)
+          gradle assembleRelease -PAPP_VERSION_NAME="1.2.297" -PAPP_VERSION_CODE="298"
       - uses: actions/upload-artifact@v4
         with:
-          name: sany-iptv-development-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: sany-iptv-1.2.297-production-signed
+          path: app/build/outputs/apk/release/app-release.apk
           retention-days: 14
