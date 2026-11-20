@@ -19,3 +19,6 @@ This simulator artifact is for CI validation; it is not an installable iPhone IP
 3. Add HLS playback using AVPlayer and validate supported codecs/streams.
 4. Add EPG and playback preferences.
 5. Configure protected Apple signing secrets only when device distribution is requested.
+
+
+The unsigned device IPA packaging workflow is available as `.github/workflows/ios-unsigned-ipa.yml` and can be started from the Actions tab. The output is unsigned and cannot be installed on a physical iPhone until it is signed and provisioned.
