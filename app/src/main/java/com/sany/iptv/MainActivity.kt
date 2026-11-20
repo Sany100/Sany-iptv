@@ -1399,15 +1399,20 @@ class MainActivity : AppCompatActivity() {
             }
             pair.forEachIndexed { columnIndex, channel ->
                 val itemIndex = rowIndex * 2 + columnIndex
+                val isPlayingChannel = currentChannel?.url == channel.url
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_VERTICAL
                     isFocusable = true
                     isFocusableInTouchMode = false
                     setPadding(dp(14), dp(10), dp(14), dp(10))
-                    background = glass(16)
+                    background = if (isPlayingChannel) GradientDrawable().apply {
+                        setColor(0x332D8CFF)
+                        cornerRadius = dp(16).toFloat()
+                        setStroke(dp(2), 0xFF48A5FF.toInt())
+                    } else glass(16)
                     applyTvFocusStyle(this)
-                    contentDescription = "Play ${channel.name}"
+                    contentDescription = if (isPlayingChannel) "Currently playing: ${channel.name}" else "Play ${channel.name}"
                     if (section == "Live TV" || section == "Movies") setOnClickListener { play(channel) }
                 }
                 val topLine = LinearLayout(this).apply {
@@ -1458,7 +1463,7 @@ class MainActivity : AppCompatActivity() {
                         } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
                     }
                 }
-                card.addView(text(channel.name, 17, white, true).apply {
+                card.addView(text(channel.name, 17, if (isPlayingChannel) 0xFF72B9FF.toInt() else white, true).apply {
                     maxLines = 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     setPadding(0, dp(8), 0, dp(4))
@@ -2913,6 +2918,13 @@ class MainActivity : AppCompatActivity() {
         if (oldChannel != null && oldChannel.url != channel.url) previousChannel = oldChannel
         closePlayer(keepOrientation = true)
         currentChannel = channel
+        // Move the single active-channel highlight immediately when playback selection changes.
+        if (::listContainer.isInitialized && section == "Live TV") {
+            val scroll = listContainer.parent as? ScrollView
+            val previousScrollY = scroll?.scrollY ?: 0
+            renderChannelRows(listContainer)
+            scroll?.post { scroll.scrollTo(0, previousScrollY) }
+        }
 
         val httpFactory = DefaultHttpDataSource.Factory()
             // Common IPTV endpoints reject minimal/custom user agents; send normal
