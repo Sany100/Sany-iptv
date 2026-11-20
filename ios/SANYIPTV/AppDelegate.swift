@@ -103,7 +103,7 @@ private final class MaintenanceViewController: UIViewController {
         view.backgroundColor = UIColor(red: 0.018, green: 0.035, blue: 0.085, alpha: 1)
         let heading = UILabel(); heading.text = "SANY IPTV — MAINTENANCE"; heading.textColor = .white; heading.font = .boldSystemFont(ofSize: 22); heading.textAlignment = .center
         let detail = UILabel(); detail.text = message; detail.textColor = .white; detail.numberOfLines = 0; detail.textAlignment = .center
-        let id = UILabel(); id.text = "iPhone Installation ID\\n\\(deviceID)"; id.textColor = .lightGray; id.numberOfLines = 0; id.textAlignment = .center; id.font = .systemFont(ofSize: 12)
+        let id = UILabel(); id.text = "iPhone Installation ID\n\(deviceID)"; id.textColor = .lightGray; id.numberOfLines = 0; id.textAlignment = .center; id.font = .systemFont(ofSize: 12)
         let copy = UIButton(type: .system); copy.setTitle("COPY DEVICE ID (ADMIN)", for: .normal); copy.addTarget(self, action: #selector(copyID), for: .touchUpInside)
         let stack = UIStackView(arrangedSubviews: [heading, detail, id, copy]); stack.axis = .vertical; stack.spacing = 22; stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
@@ -861,14 +861,14 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
 
     private func showEPGSources() {
         let last = UserDefaults.standard.string(forKey: "sany.ios.epgLastUpdated") ?? "Never"
-        showMessage(epgSources.enumerated().map { "Source \\( $0.offset + 1): \\( $0.element)" }.joined(separator: "\\n\\n") + "\\n\\nLast successful update: \\(last)\\niOS background refresh is best-effort; iOS controls when it runs.")
+        showMessage(epgSources.enumerated().map { "Source \( $0.offset + 1): \( $0.element)" }.joined(separator: "\n\n") + "\n\nLast successful update: \(last)\niOS background refresh is best-effort; iOS controls when it runs.")
     }
 
     private func updateEPG() {
         _ = EPGRepository.update { result in
             switch result {
             case .success(let summary): self.showMessage(summary)
-            case .failure(let error): self.showMessage("EPG update failed: \\(error.localizedDescription)")
+            case .failure(let error): self.showMessage("EPG update failed: \(error.localizedDescription)")
             }
         }
     }}
@@ -907,7 +907,7 @@ private enum EPGRepository {
         var bodies: [Int: String] = [:]
         var failures: [String] = []
         for (index, source) in allSources.enumerated() {
-            guard let url = URL(string: source) else { failures.append("Source \\(index + 1): invalid URL"); continue }
+            guard let url = URL(string: source) else { failures.append("Source \(index + 1): invalid URL"); continue }
             group.enter()
             var request = URLRequest(url: url)
             request.timeoutInterval = 75
@@ -923,8 +923,8 @@ private enum EPGRepository {
                     let parser = XMLParser(data: decoded)
                     parser.shouldResolveExternalEntities = false
                     guard parser.parse() else { throw parser.parserError ?? NSError(domain: "SANYEPG", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid XMLTV document"]) }
-                    let openRegex = try NSRegularExpression(pattern: "(?is)<tv\\b[^>]*>")
-                    let closeRegex = try NSRegularExpression(pattern: "(?is)</tv\\s*>")
+                    let openRegex = try NSRegularExpression(pattern: "(?is)<tv\b[^>]*>")
+                    let closeRegex = try NSRegularExpression(pattern: "(?is)</tv\s*>")
                     let ns = NSRange(xml.startIndex..., in: xml)
                     guard let openMatch = openRegex.firstMatch(in: xml, range: ns),
                           let openRange = Range(openMatch.range, in: xml),
@@ -933,7 +933,7 @@ private enum EPGRepository {
                     let body = String(xml[openRange.upperBound..<closeRange.lowerBound])
                     lock.lock(); bodies[index] = body; lock.unlock()
                 } catch {
-                    lock.lock(); failures.append("Source \\(index + 1): \\(error.localizedDescription)"); lock.unlock()
+                    lock.lock(); failures.append("Source \(index + 1): \(error.localizedDescription)"); lock.unlock()
                 }
             }
             operation.add(task)
@@ -947,14 +947,14 @@ private enum EPGRepository {
                 return
             }
             do {
-                let merged = "<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\\n<tv>" + ordered.joined(separator: "\\n") + "</tv>"
+                let merged = "<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?>\n<tv>" + ordered.joined(separator: "\n") + "</tv>"
                 let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 let destination = folder.appendingPathComponent("epg_data.xml")
                 try Data(merged.utf8).write(to: destination, options: .atomic)
                 let stamp = ISO8601DateFormatter().string(from: Date())
                 UserDefaults.standard.set(stamp, forKey: "sany.ios.epgLastUpdated")
-                let summary = "EPG updated: \\(ordered.count)/\\(allSources.count) feeds downloaded and merged.\\nSaved: \\(destination.lastPathComponent)" + (errors.isEmpty ? "" : "\\nSome feeds failed: \\(errors.joined(separator: "; "))")
+                let summary = "EPG updated: \(ordered.count)/\(allSources.count) feeds downloaded and merged.\nSaved: \(destination.lastPathComponent)" + (errors.isEmpty ? "" : "\nSome feeds failed: \(errors.joined(separator: "; "))")
                 DispatchQueue.main.async { completion(.success(summary)) }
             } catch { DispatchQueue.main.async { completion(.failure(error)) } }
         }
