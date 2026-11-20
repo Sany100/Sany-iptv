@@ -814,6 +814,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCategories() {
         categoryRow.removeAllViews()
+
+        // Live TV behaves like a category browser: show either the category
+        // directory OR the selected category's channels, never both together.
+        if (section == "Live TV" && selectedGroup != "Select category") {
+            val back = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(8), dp(14), dp(8))
+                background = glass(10)
+                isFocusable = true
+                applyTvFocusStyle(this)
+                setOnClickListener {
+                    selectedGroup = "Select category"
+                    displayedLimit = 60
+                    renderListOnly()
+                }
+            }
+            back.addView(text("‹  ALL CATEGORIES", 13, accent, true),
+                LinearLayout.LayoutParams(0, -2, 1f))
+            back.addView(text(selectedGroup, 12, muted, true))
+            categoryRow.addView(back, LinearLayout.LayoutParams(-1, dp(40)))
+            return
+        }
+
         val groups = listOf("All") + channels.asSequence().map { it.group }
             .distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
         val options = when (section) {
