@@ -3207,7 +3207,8 @@ class MainActivity : AppCompatActivity() {
                 val start = e1 ?: return false
                 val dx = e2.x - start.x
                 val dy = e2.y - start.y
-                if (isPlayerFullscreen && kotlin.math.abs(dx) > swipeThreshold &&
+                // Use the same horizontal channel-swipe gesture in fullscreen and inline player.
+                if (kotlin.math.abs(dx) > swipeThreshold &&
                     kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f &&
                     kotlin.math.abs(velocityX) > swipeVelocityThreshold) {
                     playAdjacentChannel(if (dx < 0) 1 else -1)
