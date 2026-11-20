@@ -557,7 +557,7 @@ class MainActivity : AppCompatActivity() {
         }
         val brandLine = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         // The header logo is intentionally removed; keep the brand name clean and prominent.
-        val brand = text("SANY IPTV", if (isTvDevice) 24 else 30, accent, true).apply {
+        val brand = text("SANY IPTV", if (isTvDevice) 21 else 25, accent, true).apply {
             letterSpacing = 0.06f
             setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(8), 0, 0, 0)
