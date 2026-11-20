@@ -820,6 +820,9 @@ class MainActivity : AppCompatActivity() {
         // Full-height category directory inspired by the supplied reference.
         // Channel cards are hidden until the user enters a category.
         val categoryDirectory = section == "Live TV" && selectedGroup == "Select category"
+        // Movies opens directly to the movie library; category filters are not shown.
+        val movieDirectory = section == "Movies"
+        if (movieDirectory) selectedGroup = "All"
         // Entering a Live TV category switches to an immersive channel view:
         // hide the branded/title header and playlist selector, then restore them
         // when the user returns to the category directory.
@@ -828,7 +831,7 @@ class MainActivity : AppCompatActivity() {
         playlistSelectorContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
         (categoryRow.parent as? ScrollView)?.let { scroll ->
             scroll.layoutParams = (scroll.layoutParams as LinearLayout.LayoutParams).apply {
-                height = if (categoryDirectory) 0 else dp(52)
+                height = if (categoryDirectory || movieDirectory) 0 else dp(52)
                 weight = if (categoryDirectory) 1f else 0f
             }
         }
