@@ -1148,7 +1148,7 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(16), dp(10), dp(15), dp(10))
-                background = glass(10)
+                background = if (isLight) rounded(Color.WHITE, 10, Color.BLACK, 2) else glass(10)
                 elevation = dp(2).toFloat()
                 isFocusable = true
                 applyTvFocusStyle(this)
@@ -1286,7 +1286,7 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(9), dp(10), dp(9))
-                background = glass(12)
+                background = if (isLight) rounded(Color.WHITE, 12, Color.BLACK, 2) else glass(12)
                 applyTvFocusStyle(this)
             }
             val number = text((index + 1).toString().padStart(2, '0'), 12, accent, true).apply {
@@ -1316,7 +1316,7 @@ class MainActivity : AppCompatActivity() {
             }
             val logo = ImageView(this).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                background = glass(10)
+                background = if (isLight) rounded(Color.WHITE, 10, Color.rgb(25, 31, 42), 1) else glass(10)
                 setPadding(dp(4), dp(4), dp(4), dp(4))
                 contentDescription = "${channel.name} logo"
             }
@@ -1449,7 +1449,7 @@ class MainActivity : AppCompatActivity() {
                     ).apply {
                         cornerRadius = dp(16).toFloat()
                         setStroke(dp(3), 0xFF35B8FF.toInt())
-                    } else glass(16)
+                    } else if (isLight) rounded(Color.WHITE, 16, Color.BLACK, 2) else glass(16)
                     if (isPlayingChannel) {
                         elevation = dp(10).toFloat()
                         foreground = GradientDrawable().apply {
@@ -1480,7 +1480,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 val cardLogo = ImageView(this).apply {
                     scaleType = ImageView.ScaleType.FIT_CENTER
-                    background = glass(10)
+                    background = if (isLight) rounded(Color.WHITE, 10, Color.rgb(25, 31, 42), 1) else glass(10)
                     setPadding(dp(5), dp(5), dp(5), dp(5))
                     contentDescription = "${channel.name} logo"
                 }
@@ -1625,7 +1625,10 @@ class MainActivity : AppCompatActivity() {
                 applyTvFocusStyle(this)
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                background = if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
+                background = if (isLight) {
+                    if (active) rounded(Color.rgb(229, 241, 255), 14, Color.BLACK, 2)
+                    else rounded(Color.WHITE, 14, Color.BLACK, 1)
+                } else if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
                 setPadding(dp(3), 0, dp(3), 0)
                 translationY = -dp(3).toFloat()
                 setOnClickListener {
