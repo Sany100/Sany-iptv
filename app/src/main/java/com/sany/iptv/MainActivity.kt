@@ -857,9 +857,15 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(12), 0, dp(4), 0)
                 contentDescription = "Search channels"
                 isFocusable = true
+                isFocusableInTouchMode = false
+                // Keep the search control fixed at the top-right of the category header.
+                animate().cancel()
+                translationY = 0f
+                translationX = 0f
                 setOnClickListener { showChannelSearchDialog() }
             }
             back.addView(categorySearch, LinearLayout.LayoutParams(dp(42), dp(42)))
+            categorySearch.bringToFront()
             categoryRow.addView(back, LinearLayout.LayoutParams(-1, dp(46)))
             return
         }
@@ -1320,18 +1326,6 @@ class MainActivity : AppCompatActivity() {
         settingsToggleCard(box, "Auto add EPG data", "Detect playlist EPG URL automatically; daily EPG refresh remains scheduled", "auto_add_epg", true)
         settingsCard(box, "EPG sources (3)", "View the 3 built-in feeds and daily update schedule") {
             showBuiltInEpgSources()
-        }
-        settingsCard(box, "Network buffer size", "Choose buffering for unstable or slower internet") {
-            val labels = arrayOf("Low — 10 seconds (faster start)", "Balanced — 20 seconds (recommended)", "High — 40 seconds (more buffering)")
-            val values = arrayOf("low", "balanced", "high")
-            val current = prefs.getString("network_buffer_size", "balanced")
-            AlertDialog.Builder(this).setTitle("Network buffer size")
-                .setSingleChoiceItems(labels, values.indexOf(current).coerceAtLeast(0)) { dialog, which ->
-                    prefs.edit().putString("network_buffer_size", values[which]).apply()
-                    dialog.dismiss()
-                    toast("Buffer size saved. Applies to the next video playback.")
-                    renderHome()
-                }.setNegativeButton("CANCEL", null).show()
         }
         box.addView(text("ABOUT", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
@@ -2132,7 +2126,7 @@ class MainActivity : AppCompatActivity() {
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
         // Android 6 devices often have limited RAM/CPU; keep stream probes bounded.
-        val maxWorkers = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 3 else 8
+        val maxWorkers = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 3 else 12
         val workerCount = minOf(maxWorkers, snapshot.size)
         val workers = (0 until workerCount).map { worker ->
             thread(name = "SANY-Stream-Check-$worker") {
@@ -2166,11 +2160,12 @@ class MainActivity : AppCompatActivity() {
                 // refresh the complete screen/navigation so every checked channel
                 // is immediately visible without a manual tab change.
                 section = "Live TV"
-                selectedGroup = "All"
+                // Checking completion returns to the category directory; never auto-enter All.
+                selectedGroup = "Select category"
                 searchQuery = ""
                 prefs.edit()
                     .putString("ui_section", "Live TV")
-                    .putString("ui_group", "All")
+                    .putString("ui_group", "Select category")
                     .putString("ui_search", "")
                     .apply()
                 if (::contentArea.isInitialized) renderHome()
@@ -2349,8 +2344,8 @@ class MainActivity : AppCompatActivity() {
         return try {
             connection = URL(streamUrl).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
-            connection.connectTimeout = 1800
-            connection.readTimeout = 2200
+            connection.connectTimeout = 1600
+            connection.readTimeout = 1900
             connection.instanceFollowRedirects = true
             connection.useCaches = false
             connection.defaultUseCaches = false
