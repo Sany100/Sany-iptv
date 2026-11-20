@@ -3230,7 +3230,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val settingsButton = playerAction("⚙", "Player settings") {
+        fun openPlayerSettings() {
             val options = arrayOf("Playback speed", "Video quality")
             AlertDialog.Builder(this).setTitle("Player settings").setItems(options) { _, which ->
                 if (which == 0) {
@@ -3254,6 +3254,45 @@ class MainActivity : AppCompatActivity() {
                 }
             }.show()
         }
+        val settingsButton = playerAction("⚙", "Player settings") { openPlayerSettings() }
+        val topSettingsButton = playerAction("⚙\nSettings", "Player settings") {
+            openPlayerSettings()
+        }.apply {
+            textSize = 15f
+            background = glass(12)
+        }
+        val minimizeButton = playerAction("⤡\nMinimize", "Minimize player") {
+            setPlayerFullscreen(false)
+        }.apply {
+            textSize = 15f
+            minWidth = dp(86)
+            minHeight = dp(66)
+            background = GradientDrawable().apply {
+                setColor(0xB5102745.toInt())
+                cornerRadius = dp(13).toFloat()
+                setStroke(dp(2), Color.rgb(25, 135, 255))
+            }
+            elevation = dp(6).toFloat()
+        }
+        playerMinimizeButton = minimizeButton
+        val topActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+            background = GradientDrawable().apply {
+                setColor(0x9906101D.toInt())
+                cornerRadius = dp(14).toFloat()
+            }
+            visibility = View.GONE
+            addView(minimizeButton, LinearLayout.LayoutParams(dp(86), dp(66)))
+            addView(topSettingsButton, LinearLayout.LayoutParams(dp(76), dp(66)).apply {
+                leftMargin = dp(10)
+            })
+        }
+        screen.addView(topActions, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(12)
+            rightMargin = dp(14)
+        })
         val fullscreenButton = playerAction("⛶", "Fullscreen / Minimize") {
             setPlayerFullscreen(!isPlayerFullscreen)
         }.apply {
@@ -3278,6 +3317,7 @@ class MainActivity : AppCompatActivity() {
                     controlsPanel.visibility = View.GONE
                 }.start()
             }
+            topActions.visibility = View.GONE
         }
         fun revealControls(autoHide: Boolean = true) {
             controlsHandler.removeCallbacks(hideControls)
@@ -3285,6 +3325,7 @@ class MainActivity : AppCompatActivity() {
                 controlsPanel.visibility = View.VISIBLE
                 controlsPanel.animate().alpha(1f).setDuration(140).start()
             } else controlsPanel.alpha = 1f
+            topActions.visibility = if (isPlayerFullscreen) View.VISIBLE else View.GONE
             if (autoHide) controlsHandler.postDelayed(hideControls, 2500L)
         }
         progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -3456,14 +3497,8 @@ class MainActivity : AppCompatActivity() {
                 header.layoutParams = params
             }
         }
-        playerFullscreenButton?.let { button ->
-            (button.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                params.gravity = if (enabled) Gravity.BOTTOM or Gravity.END else Gravity.TOP or Gravity.END
-                params.topMargin = if (enabled) 0 else dp(249)
-                params.bottomMargin = if (enabled) dp(24) else 0
-                button.layoutParams = params
-            }
-        }
+        playerFullscreenButton?.visibility = if (enabled) View.GONE else View.VISIBLE
+        playerMinimizeButton?.visibility = if (enabled) View.VISIBLE else View.GONE
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
@@ -3485,6 +3520,7 @@ class MainActivity : AppCompatActivity() {
         }
         playerHeader = null
         playerFullscreenButton = null
+        playerMinimizeButton = null
         playerControlsPanel = null
         if (::listContainer.isInitialized) {
             listContainer.setPadding(
@@ -3570,6 +3606,7 @@ class MainActivity : AppCompatActivity() {
         if (isInPictureInPictureMode) {
             playerHeader?.visibility = View.GONE
             playerFullscreenButton?.visibility = View.GONE
+            playerMinimizeButton?.visibility = View.GONE
             playerView?.setUseController(false)
         } else if (playerView != null) {
             playerView?.let { view ->
@@ -3581,7 +3618,8 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             playerHeader?.visibility = if (isPlayerFullscreen) View.GONE else View.VISIBLE
-            playerFullscreenButton?.visibility = View.VISIBLE
+            playerFullscreenButton?.visibility = if (isPlayerFullscreen) View.GONE else View.VISIBLE
+            playerMinimizeButton?.visibility = View.GONE
         }
     }
 
