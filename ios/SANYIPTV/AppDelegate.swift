@@ -457,39 +457,68 @@ private final class LiveTVViewController: BaseViewController, UITableViewDataSou
     }
 }
 
-private final class CheckerViewController: BaseViewController {
+private final class CheckerViewController: BaseViewController, UITableViewDataSource {
     private let status = UILabel()
     private let progress = UIProgressView(progressViewStyle: .default)
     private let startButton = UIButton(type: .system)
-    private var checks: [(SANYChannel, Bool)] = []
+    private let resultsTable = UITableView(frame: .zero, style: .plain)
     private var running = false
+    private var channels: [SANYChannel] = []
+    private var results: [[String: String]] = UserDefaults.standard.array(forKey: "sany.ios.checkerResults") as? [[String: String]] ?? []
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Channel Checker"
         tabBarItem = UITabBarItem(title: "Checker", image: nil, tag: 1)
-        status.text = "প্লেলিস্ট লোড করে চ্যানেল পরীক্ষা করুন"
+        status.text = results.isEmpty ? "প্লেলিস্ট লোড করে চ্যানেল পরীক্ষা করুন" : "আগের ফলাফল সংরক্ষিত: \(results.count)টি"
         status.textColor = .white
         status.textAlignment = .center
         status.numberOfLines = 0
         progress.progressTintColor = SANYStyle.accent
-        startButton.setTitle("চেক শুরু করুন", for: .normal)
+        startButton.setTitle("চেক / পুনরায় পরীক্ষা শুরু করুন", for: .normal)
         startButton.setTitleColor(.white, for: .normal)
         startButton.backgroundColor = UIColor(red: 0.04, green: 0.38, blue: 0.52, alpha: 1)
         startButton.layer.cornerRadius = 12
         startButton.addTarget(self, action: #selector(startCheck), for: .touchUpInside)
-        let stack = UIStackView(arrangedSubviews: [status, progress, startButton])
+        resultsTable.backgroundColor = SANYStyle.background
+        resultsTable.dataSource = self
+        resultsTable.register(UITableViewCell.self, forCellReuseIdentifier: "checkerResult")
+        resultsTable.rowHeight = 54
+        let stack = UIStackView(arrangedSubviews: [status, progress, startButton, resultsTable])
         stack.axis = .vertical
-        stack.spacing = 22
-        stack.alignment = .fill
+        stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            startButton.heightAnchor.constraint(equalToConstant: 52)
+            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
+            startButton.heightAnchor.constraint(equalToConstant: 50)
         ])
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "মুছুন", style: .plain, target: self, action: #selector(clearResults))
+        resultsTable.reloadData()
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { results.count }
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "checkerResult", for: indexPath)
+        let item = results[indexPath.row]
+        let online = item["status"] == "online"
+        cell.backgroundColor = SANYStyle.panel
+        cell.textLabel?.textColor = .white
+        cell.textLabel?.numberOfLines = 2
+        cell.textLabel?.font = .systemFont(ofSize: 12)
+        cell.textLabel?.text = "\(online ? "● ONLINE" : "● OFFLINE")  \(item["name"] ?? "Unknown")\n\(item["date"] ?? "")"
+        cell.textLabel?.textColor = online ? .systemGreen : .systemRed
+        return cell
+    }
+
+    @objc private func clearResults() {
+        results.removeAll()
+        UserDefaults.standard.removeObject(forKey: "sany.ios.checkerResults")
+        resultsTable.reloadData()
+        status.text = "সংরক্ষিত Checker ফলাফল মুছে ফেলা হয়েছে"
     }
 
     @objc private func startCheck() {
@@ -501,20 +530,24 @@ private final class CheckerViewController: BaseViewController {
         PlaylistStore.shared.load { [weak self] result in
             guard let self = self else { return }
             switch result {
-            case .failure(let error):
-                self.finish("লোড ব্যর্থ: \(error.localizedDescription)")
+            case .failure(let error): self.finish("লোড ব্যর্থ: \(error.localizedDescription)")
             case .success(let channels):
-                self.checks = []
+                self.channels = channels
+                self.results.removeAll()
                 self.progress.progress = 0
-                self.checkNext(channels, index: 0, online: 0)
+                self.checkNext(index: 0, online: 0)
             }
         }
     }
 
-    private func checkNext(_ channels: [SANYChannel], index: Int, online: Int) {
+    private func checkNext(index: Int, online: Int) {
         if index >= channels.count {
             let offline = channels.count - online
-            finish("চেক সম্পন্ন: \(channels.count)টি চ্যানেলের মধ্যে \(online)টি response দিয়েছে, \(offline)টি response দেয়নি।")
+            let stamp = ISO8601DateFormatter().string(from: Date())
+            UserDefaults.standard.set(stamp, forKey: "sany.ios.checkerLastRun")
+            UserDefaults.standard.set(results, forKey: "sany.ios.checkerResults")
+            resultsTable.reloadData()
+            finish("চেক সম্পন্ন: মোট \(channels.count), Online \(online), Offline \(offline)। ফলাফল ফোনে সংরক্ষণ করা হয়েছে।")
             return
         }
         let channel = channels[index]
@@ -523,13 +556,25 @@ private final class CheckerViewController: BaseViewController {
         request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
         request.timeoutInterval = 8
         URLSession.shared.dataTask(with: request) { [weak self] _, response, error in
-            let ok = error == nil && (response as? HTTPURLResponse).map { (200...399).contains($0.statusCode) } == true
+            let http = response as? HTTPURLResponse
+            let ok = error == nil && http.map { (200...399).contains($0.statusCode) } == true
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                let stamp = ISO8601DateFormatter().string(from: Date())
+                self.results.append([
+                    "name": channel.name,
+                    "url": channel.streamURL.absoluteString,
+                    "status": ok ? "online" : "offline",
+                    "date": stamp
+                ])
                 let count = online + (ok ? 1 : 0)
-                self.progress.progress = Float(index + 1) / Float(max(channels.count, 1))
-                self.status.text = "Checking: \(index + 1)/\(channels.count)  •  \(Int(self.progress.progress * 100))%\nOnline response: \(count)"
-                self.checkNext(channels, index: index + 1, online: count)
+                self.progress.progress = Float(index + 1) / Float(max(self.channels.count, 1))
+                self.status.text = "Checking: \(index + 1)/\(self.channels.count) • \(Int(self.progress.progress * 100))%\nOnline: \(count) • Offline: \(index + 1 - count)"
+                if (index + 1) % 10 == 0 {
+                    UserDefaults.standard.set(self.results, forKey: "sany.ios.checkerResults")
+                    self.resultsTable.reloadData()
+                }
+                self.checkNext(index: index + 1, online: count)
             }
         }.resume()
     }
@@ -539,6 +584,7 @@ private final class CheckerViewController: BaseViewController {
         startButton.isEnabled = true
         startButton.alpha = 1
         status.text = message
+        resultsTable.reloadData()
     }
 }
 
