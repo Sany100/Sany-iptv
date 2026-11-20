@@ -114,7 +114,7 @@ private final class MaintenanceViewController: UIViewController {
 
 private enum SANYStyle {
     static var background: UIColor {
-        (UserDefaults.standard.string(forKey: "sany.ios.theme") == "Day" || (UserDefaults.standard.string(forKey: "sany.ios.theme") == "System default" && UITraitCollection.current.userInterfaceStyle == .light))
+        (UserDefaults.standard.string(forKey: "sany.ios.theme") == "Day" || (UserDefaults.standard.string(forKey: "sany.ios.theme") == "System default" && UIScreen.main.traitCollection.userInterfaceStyle == .light))
             ? UIColor(red: 0.95, green: 0.96, blue: 0.98, alpha: 1)
             : UIColor(red: 0.018, green: 0.035, blue: 0.085, alpha: 1)
     }
