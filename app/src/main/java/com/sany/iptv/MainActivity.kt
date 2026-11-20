@@ -209,6 +209,7 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground)
+        registerForPushUpdates()
         if (prefs.getBoolean("mandatory_update_required", false)) {
             updateRequired = true
             showMandatoryUpdateDialog()
@@ -242,6 +243,26 @@ class MainActivity : AppCompatActivity() {
             channels.firstOrNull { it.url == resumeStream }?.let { channel ->
                 Handler(Looper.getMainLooper()).post { play(channel) }
             }
+        }
+    }
+
+    // Register this installation for owner-wide update announcements through Firebase Cloud Messaging.
+    private fun registerForPushUpdates() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel(
+                    "sany_updates", "SANY IPTV Updates", android.app.NotificationManager.IMPORTANCE_HIGH
+                ).apply { description = "Important SANY IPTV update announcements" }
+                getSystemService(android.app.NotificationManager::class.java).createNotificationChannel(channel)
+            }
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 904)
+            }
+            com.google.firebase.messaging.FirebaseMessaging.getInstance()
+                .subscribeToTopic("sany_iptv_all")
+        } catch (e: Exception) {
+            android.util.Log.w("SANY-FCM", "Push registration unavailable", e)
         }
     }
 

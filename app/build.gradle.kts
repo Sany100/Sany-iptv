@@ -72,6 +72,7 @@ dependencies {
         // minimum introduced by Analytics 24.0.0 and retaining Android 6 support.
         implementation(platform("com.google.firebase:firebase-bom:34.14.1"))
         implementation("com.google.firebase:firebase-analytics")
+        implementation("com.google.firebase:firebase-messaging")
     }
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
