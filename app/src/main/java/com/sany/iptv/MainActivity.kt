@@ -3414,6 +3414,14 @@ class MainActivity : AppCompatActivity() {
                     setPlayerFullscreen(false)
                     return true
                 }
+                // A clear upward swipe on the minimized video restores fullscreen playback.
+                if (!isPlayerFullscreen &&
+                    dy < -swipeThreshold &&
+                    kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.25f &&
+                    velocityY < -swipeVelocityThreshold) {
+                    setPlayerFullscreen(true)
+                    return true
+                }
                 // Use the same horizontal channel-swipe gesture in fullscreen and inline player.
                 if (kotlin.math.abs(dx) > swipeThreshold &&
                     kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f &&
