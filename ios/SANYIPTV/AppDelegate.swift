@@ -114,12 +114,12 @@ private final class MaintenanceViewController: UIViewController {
 
 private enum SANYStyle {
     static var background: UIColor {
-        UserDefaults.standard.string(forKey: "sany.ios.theme") == "Day"
+        (UserDefaults.standard.string(forKey: "sany.ios.theme") == "Day" || (UserDefaults.standard.string(forKey: "sany.ios.theme") == "System default" && UITraitCollection.current.userInterfaceStyle == .light))
             ? UIColor(red: 0.95, green: 0.96, blue: 0.98, alpha: 1)
             : UIColor(red: 0.018, green: 0.035, blue: 0.085, alpha: 1)
     }
     static var panel: UIColor {
-        UserDefaults.standard.string(forKey: "sany.ios.theme") == "Day"
+        (UserDefaults.standard.string(forKey: "sany.ios.theme") == "Day" || (UserDefaults.standard.string(forKey: "sany.ios.theme") == "System default" && UITraitCollection.current.userInterfaceStyle == .light))
             ? .white : UIColor(red: 0.045, green: 0.075, blue: 0.14, alpha: 1)
     }
     static var accent: UIColor {
@@ -728,6 +728,7 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
     @objc private func toggleChanged(_ sender: UISwitch) {
         guard let key = sender.accessibilityIdentifier else { return }
         UserDefaults.standard.set(sender.isOn, forKey: key)
+        if key == "sany.ios.reduceMotion" { UIView.setAnimationsEnabled(!sender.isOn) }
         if key == "sany.ios.backgroundPlayback" && sender.isOn {
             do {
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [])
@@ -868,6 +869,11 @@ private final class PlaybackSettingsViewController: BaseViewController, UITableV
                 var current = UserDefaults.standard.stringArray(forKey: "sany.ios.playlists") ?? []
                 current.removeAll { $0 == value }
                 UserDefaults.standard.set(current, forKey: "sany.ios.playlists")
+                if PlaylistStore.shared.activePlaylist == value {
+                    let fallback = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
+                    UserDefaults.standard.set(fallback, forKey: "sany.ios.activePlaylist")
+                    PlaylistStore.shared.load(from: fallback, forceRefresh: true) { _ in }
+                }
                 self?.table.reloadData()
             })
         }
