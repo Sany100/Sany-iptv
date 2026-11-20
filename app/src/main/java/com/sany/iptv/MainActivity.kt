@@ -865,7 +865,7 @@ class MainActivity : AppCompatActivity() {
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(accent)
                 setHintTextColor(accent)
-                singleLine = true
+                setSingleLine(true)
                 imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
                 setPadding(dp(10), 0, dp(10), 0)
                 background = glass(10)
