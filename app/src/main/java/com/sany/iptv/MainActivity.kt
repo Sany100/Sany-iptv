@@ -1298,12 +1298,16 @@ class MainActivity : AppCompatActivity() {
             if (isPlayingChannel) {
                 row.background = GradientDrawable(
                     GradientDrawable.Orientation.TL_BR,
-                    intArrayOf(0x66439BFF, 0x44306FC8, 0x33305C9B)
+                    intArrayOf(0xFF126BDF.toInt(), 0xEE0845A4.toInt(), 0xDD071F52.toInt())
                 ).apply {
-                    cornerRadius = dp(12).toFloat()
-                    setStroke(dp(2), 0xFF55B2FF.toInt())
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(3), 0xFF35B8FF.toInt())
                 }
-                row.elevation = dp(4).toFloat()
+                row.elevation = dp(11).toFloat()
+                row.foreground = GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), 0x99BCEBFF.toInt())
+                }
             }
             row.addView(number, LinearLayout.LayoutParams(dp(30), dp(46)))
             val fallbackLogo = text(channel.name.take(1).uppercase(), 18, accent, true).apply {
@@ -1376,19 +1380,20 @@ class MainActivity : AppCompatActivity() {
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
             if (isPlayingChannel) {
                 val nowPlayingBadge = TextView(this).apply {
-                    text = "♫"
-                    textSize = 23f
+                    text = "▶"
+                    textSize = 18f
                     typeface = Typeface.DEFAULT_BOLD
                     gravity = Gravity.CENTER
                     setTextColor(Color.WHITE)
                     contentDescription = "Now playing channel"
                     background = GradientDrawable(
                         GradientDrawable.Orientation.TL_BR,
-                        intArrayOf(0xFF268CFF.toInt(), 0xFF1454B8.toInt())
+                        intArrayOf(0xFF36C5FF.toInt(), 0xFF0875F5.toInt(), 0xFF123EAA.toInt())
                     ).apply {
-                        cornerRadius = dp(12).toFloat()
-                        setStroke(dp(1), 0xFF9BCBFF.toInt())
+                        cornerRadius = dp(20).toFloat()
+                        setStroke(dp(2), 0xFFD7F3FF.toInt())
                     }
+                    setShadowLayer(dp(9).toFloat(), 0f, 0f, 0xFF168BFF.toInt())
                     setPadding(dp(7), dp(2), dp(7), dp(2))
                     val pulse = ValueAnimator.ofFloat(0.72f, 1f).apply {
                         duration = 750L
@@ -1438,11 +1443,20 @@ class MainActivity : AppCompatActivity() {
                     isFocusable = true
                     isFocusableInTouchMode = false
                     setPadding(dp(14), dp(10), dp(14), dp(10))
-                    background = if (isPlayingChannel) GradientDrawable().apply {
-                        setColor(0x332D8CFF)
+                    background = if (isPlayingChannel) GradientDrawable(
+                        GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(0xFF126BDF.toInt(), 0xEE0845A4.toInt(), 0xDD071F52.toInt())
+                    ).apply {
                         cornerRadius = dp(16).toFloat()
-                        setStroke(dp(2), 0xFF48A5FF.toInt())
+                        setStroke(dp(3), 0xFF35B8FF.toInt())
                     } else glass(16)
+                    if (isPlayingChannel) {
+                        elevation = dp(10).toFloat()
+                        foreground = GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setStroke(dp(1), 0x99BCEBFF.toInt())
+                        }
+                    }
                     applyTvFocusStyle(this)
                     contentDescription = if (isPlayingChannel) "Currently playing: ${channel.name}" else "Play ${channel.name}"
                     if (section == "Live TV" || section == "Movies") setOnClickListener { play(channel) }
@@ -1453,6 +1467,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 topLine.addView(text((itemIndex + 1).toString().padStart(2, '0'), 13, accent, true))
                 topLine.addView(text("  •  ${channel.group.ifBlank { "Other" }}", 11, muted))
+                if (isPlayingChannel) {
+                    topLine.addView(text("  ▶ NOW PLAYING", 10, 0xFF8DDCFF.toInt(), true).apply {
+                        setShadowLayer(dp(6).toFloat(), 0f, 0f, 0xFF168BFF.toInt())
+                    })
+                }
                 card.addView(topLine)
                 // Show the actual channel logo in Grid/Card mode, with a readable fallback.
                 val cardLogoFallback = text(channel.name.take(1).uppercase(), 20, accent, true).apply {
