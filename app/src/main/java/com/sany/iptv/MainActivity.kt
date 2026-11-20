@@ -3105,7 +3105,55 @@ class MainActivity : AppCompatActivity() {
         val positionLabel = timeLabel()
         val durationLabel = timeLabel().apply { setTextColor(0xFFB8C4D4.toInt()) }
         infoRow.addView(positionLabel)
-        infoRow.addView(durationLabel, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12) })
+        infoRow.addView(durationLabel, LinearLayout.LayoutParams(0, -2, 0.7f).apply { leftMargin = dp(8) })
+
+        // Compact now-playing identity: channel logo and name follow every channel switch.
+        val nowPlayingLogo = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            background = GradientDrawable().apply {
+                setColor(0x332D8CFF)
+                cornerRadius = dp(5).toFloat()
+            }
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+            contentDescription = "${channel.name} logo"
+        }
+        val nowPlayingName = TextView(this).apply {
+            text = channel.name
+            textSize = 10f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(0xFFBBD9FF.toInt())
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        infoRow.addView(nowPlayingLogo, LinearLayout.LayoutParams(dp(24), dp(24)).apply {
+            leftMargin = dp(5)
+        })
+        infoRow.addView(nowPlayingName, LinearLayout.LayoutParams(0, dp(26), 0.9f).apply {
+            leftMargin = dp(4)
+        })
+        channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
+            nowPlayingLogo.tag = logoUrl
+            logoExecutor.execute {
+                try {
+                    val connection = URL(logoUrl).openConnection().apply {
+                        connectTimeout = 3500
+                        readTimeout = 3500
+                    }
+                    val bitmap = connection.getInputStream().use { input ->
+                        BitmapFactory.Options().run {
+                            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                            BitmapFactory.decodeStream(input, null, this)
+                        }
+                    }
+                    if (bitmap != null) runOnUiThread {
+                        if (!isFinishing && nowPlayingLogo.tag == logoUrl) nowPlayingLogo.setImageBitmap(bitmap)
+                        else bitmap.recycle()
+                    }
+                } catch (_: Exception) { /* Keep compact fallback styling when no logo is available. */ }
+            }
+        }
+
         val settingsButton = playerAction("⚙", "Player settings") {
             val options = arrayOf("Playback speed", "Video quality")
             AlertDialog.Builder(this).setTitle("Player settings").setItems(options) { _, which ->
