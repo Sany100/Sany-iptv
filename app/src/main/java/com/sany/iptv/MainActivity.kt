@@ -858,14 +858,22 @@ class MainActivity : AppCompatActivity() {
                 contentDescription = "Search channels"
                 isFocusable = true
                 isFocusableInTouchMode = false
-                // Keep the search control fixed at the top-right of the category header.
+                // Keep this control visually static; do not inherit or retain any view animation.
+                clearAnimation()
                 animate().cancel()
-                translationY = 0f
-                translationX = 0f
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                setTranslationX(0f)
+                setTranslationY(0f)
+                setScaleX(1f)
+                setScaleY(1f)
+                setAlpha(1f)
                 setOnClickListener { showChannelSearchDialog() }
             }
             back.addView(categorySearch, LinearLayout.LayoutParams(dp(42), dp(42)))
-            categorySearch.bringToFront()
+            back.clearAnimation()
+            back.animate().cancel()
+            back.setTranslationY(0f)
+            back.setTranslationX(0f)
             categoryRow.addView(back, LinearLayout.LayoutParams(-1, dp(46)))
             return
         }
@@ -920,7 +928,11 @@ class MainActivity : AppCompatActivity() {
     private fun renderChannelRows(container: LinearLayout) {
         container.removeAllViews()
         val filtered = filteredChannels()
-        countLabel.text = "${filtered.size} ITEMS  •  ${channels.size} IN PLAYLIST"
+        countLabel.text = if (section == "Live TV" && streamChecks.isNotEmpty() && !checkerRunning) {
+            "${filtered.size} WORKING CHANNELS"
+        } else {
+            "${filtered.size} ITEMS  •  ${channels.size} IN PLAYLIST"
+        }
         if (filtered.isEmpty()) {
             val message = if (section == "Live TV" && selectedGroup == "Select category") "একটি Category নির্বাচন করুন — সেই Category-র চ্যানেল এখানে দেখাবে" else if (section == "Live TV" && checkerRunning) "Checking channels… ${liveTvProgressLabel()}" else "No working channels found"
             container.addView(text(message, 15, muted, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
