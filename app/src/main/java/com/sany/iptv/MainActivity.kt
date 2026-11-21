@@ -108,6 +108,8 @@ class MainActivity : AppCompatActivity() {
     private var playerView: PlayerView? = null
     private var currentChannel: Channel? = null
     private var playbackReturnScrollY = 0
+    // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
+    private var pendingListScrollRestoreY = 0
     private var playbackReturnSection = "Live TV"
     private var playbackReturnGroup = "All"
     private var playbackReturnSearch = ""
@@ -237,6 +239,11 @@ class MainActivity : AppCompatActivity() {
                 selectedGroup = liveTvSelectedGroup
                 searchQuery = liveTvSearchQuery
             }
+            playbackReturnSection = savedInstanceState?.getString("playback_return_section") ?: section
+            playbackReturnGroup = savedInstanceState?.getString("playback_return_group") ?: selectedGroup
+            playbackReturnSearch = savedInstanceState?.getString("playback_return_search") ?: searchQuery
+            playbackReturnScrollY = savedInstanceState?.getInt("playback_return_scroll_y", savedInstanceState?.getInt("list_scroll_y", 0) ?: 0) ?: 0
+            pendingListScrollRestoreY = savedInstanceState?.getInt("list_scroll_y", playbackReturnScrollY) ?: playbackReturnScrollY
         } else {
             // A fresh app launch always opens the Live TV home/category directory.
             // Do not carry the last visited category or section across a full app close.
@@ -1053,6 +1060,9 @@ class MainActivity : AppCompatActivity() {
         contentArea.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         renderCategories()
         renderChannelRows(listContainer)
+        // Restore after rows have been measured; this also survives fullscreen rotation/recreation.
+        val restoreY = pendingListScrollRestoreY
+        listScroll.post { listScroll.scrollTo(0, restoreY.coerceAtLeast(0)) }
     }
 
     private fun renderSeriesComingSoon() {
@@ -3998,6 +4008,13 @@ class MainActivity : AppCompatActivity() {
         outState.putString("ui_search", searchQuery)
         outState.putString("live_tv_group", liveTvSelectedGroup)
         outState.putString("live_tv_search", liveTvSearchQuery)
+        val visibleScrollY = if (playerView != null) playbackReturnScrollY
+            else (if (::listContainer.isInitialized) (listContainer.parent as? ScrollView)?.scrollY else null) ?: playbackReturnScrollY
+        outState.putInt("list_scroll_y", visibleScrollY)
+        outState.putString("playback_return_section", playbackReturnSection)
+        outState.putString("playback_return_group", playbackReturnGroup)
+        outState.putString("playback_return_search", playbackReturnSearch)
+        outState.putInt("playback_return_scroll_y", playbackReturnScrollY)
         super.onSaveInstanceState(outState)
     }
 
