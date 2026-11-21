@@ -3142,6 +3142,9 @@ class MainActivity : AppCompatActivity() {
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)
             setShutterBackgroundColor(Color.BLACK)
+            // Retain the last rendered frame during short surface/Activity transitions
+            // so the app icon or an empty shutter does not flash before video resumes.
+            setKeepContentOnPlayerReset(true)
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
@@ -3757,6 +3760,10 @@ class MainActivity : AppCompatActivity() {
             // This also covers Samsung's swipe-and-hold gesture when it opens
             // Recents instead of Home; Android 12+ auto-enter remains enabled
             // for the regular swipe-Home gesture.
+            // Register the current video bounds as the PiP animation source BEFORE
+            // expanding the player to the Activity bounds. Using the full Activity
+            // as the source can make Android briefly show the app icon during entry.
+            refreshPictureInPictureParams()
             // Expand the surface and its clipping parent before entering PiP,
             // otherwise the minimized 235dp player container crops the video.
             playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
@@ -3765,7 +3772,6 @@ class MainActivity : AppCompatActivity() {
                 view.layoutParams = FrameLayout.LayoutParams(-1, -1)
                 view.setUseController(false)
             }
-            refreshPictureInPictureParams()
             enterPictureInPictureMode()
         }
     }
