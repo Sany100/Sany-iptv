@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.media.audiofx.LoudnessEnhancer
 import android.graphics.BitmapFactory
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -100,6 +101,7 @@ class MainActivity : AppCompatActivity() {
     private var searchQuery = ""
     private var liveTvSearchQuery = ""
     private var player: ExoPlayer? = null
+    private var loudnessEnhancer: LoudnessEnhancer? = null
     private var trackSelector: DefaultTrackSelector? = null
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
     private var playbackRetryCount = 0
@@ -3128,6 +3130,17 @@ class MainActivity : AppCompatActivity() {
                     }
                 })
                 player = created
+                // +20% amplitude boost (20*log10(1.2) ≈ 1.58 dB = 158 mB).
+                // Attach to the shared ExoPlayer audio session so every channel gets it.
+                try {
+                    loudnessEnhancer?.release()
+                    loudnessEnhancer = LoudnessEnhancer(created.audioSessionId).apply {
+                        setTargetGain(158)
+                        enabled = true
+                    }
+                } catch (_: Exception) {
+                    loudnessEnhancer = null
+                }
             }
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
@@ -3149,6 +3162,13 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
+        // Register PiP parameters only after the real video view has a laid-out
+        // screen rectangle. Refresh it whenever the player bounds change so the
+        // system animates directly from video instead of briefly showing the app icon.
+        view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (p.isPlaying) refreshPictureInPictureParams()
+        }
+        view.post { if (p.isPlaying) refreshPictureInPictureParams() }
 
         // The minimized player is a compact top strip. The actual active menu
         // remains visible directly underneath it; never replace menu content with
@@ -3891,6 +3911,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
         }
         playerView?.player = null
+        loudnessEnhancer?.release(); loudnessEnhancer = null
         player?.release(); player = null
         logoExecutor.shutdownNow()
         super.onDestroy()
