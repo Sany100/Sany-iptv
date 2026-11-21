@@ -78,6 +78,12 @@ class MainActivity : AppCompatActivity() {
     private val muted get() = if (isLight) Color.rgb(90, 101, 118) else Color.rgb(148, 160, 180)
     private val white get() = if (isLight) Color.rgb(20, 27, 38) else Color.WHITE
     private val prefs by lazy { getSharedPreferences("sany_iptv", MODE_PRIVATE) }
+    // API 23–33 (Android 6–13): favor low-data, fast-start defaults for older devices.
+    // API 34+ (Android 14+): allow unrestricted adaptive quality on faster devices.
+    private val defaultLowInternetMode: Boolean
+        get() = Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU
+    private val defaultNetworkBufferMode: String
+        get() = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU) "low" else "balanced"
     private val pickFile = 41
     private var channels = listOf<Channel>()
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
@@ -1772,7 +1778,7 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data; keep OFF for best available quality", "low_data_mode", false)
+        settingsToggleCard(box, "Low internet mode", "Android 6–13: ON by default for faster loading; Android 14+: OFF for unrestricted quality", "low_data_mode", defaultLowInternetMode)
         settingsToggleCard(box, "Reduce UI animations", "Use simpler transitions for a quicker, calmer interface", "reduce_ui_motion", false)
         settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
             val modes = arrayOf("Day mode", "Night mode", "System default")
@@ -1817,7 +1823,7 @@ class MainActivity : AppCompatActivity() {
         settingsCard(box, "Buffer Control", "Choose buffering for slower or faster connections") {
             val labels = arrayOf("Low — faster start", "Balanced — recommended", "High — fewer interruptions")
             val values = arrayOf("low", "balanced", "high")
-            val selected = values.indexOf(prefs.getString("network_buffer_size", "balanced")).coerceAtLeast(0)
+            val selected = values.indexOf(prefs.getString("network_buffer_size", defaultNetworkBufferMode)).coerceAtLeast(0)
             AlertDialog.Builder(this).setTitle("Buffer Control")
                 .setSingleChoiceItems(labels, selected) { dialog, which ->
                     prefs.edit().putString("network_buffer_size", values[which]).apply()
@@ -3143,22 +3149,22 @@ class MainActivity : AppCompatActivity() {
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        when (prefs.getString("network_buffer_size", "balanced")) {
+                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 700
                             "high" -> 2500
                             else -> 1200
                         },
-                        when (prefs.getString("network_buffer_size", "balanced")) {
+                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 6000
                             "high" -> 18000
                             else -> 10000
                         },
-                        when (prefs.getString("network_buffer_size", "balanced")) {
+                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 250
                             "high" -> 750
                             else -> 350
                         },
-                        when (prefs.getString("network_buffer_size", "balanced")) {
+                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 750
                             "high" -> 1800
                             else -> 1000
@@ -3601,7 +3607,7 @@ class MainActivity : AppCompatActivity() {
             "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
             "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
             "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
-            else -> if (prefs.getBoolean("low_data_mode", false)) {
+            else -> if (prefs.getBoolean("low_data_mode", defaultLowInternetMode)) {
                 builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(650_000)
             } else {
                 builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
