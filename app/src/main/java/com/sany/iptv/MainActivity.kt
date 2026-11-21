@@ -4012,21 +4012,22 @@ class MainActivity : AppCompatActivity() {
     private fun returnToLiveTvHome() {
         closePlayer()
         section = "Live TV"
-        selectedGroup = "All"
+        // Return to the category directory, not an "All" channel filter.
+        selectedGroup = "Select category"
         searchQuery = ""
-        liveTvSelectedGroup = "All"
+        liveTvSelectedGroup = "Select category"
         liveTvSearchQuery = ""
         navigationHistory.clear()
         lastRenderedNavigation = null
         playbackReturnSection = "Live TV"
-        playbackReturnGroup = "All"
+        playbackReturnGroup = "Select category"
         playbackReturnSearch = ""
         playbackReturnScrollY = 0
         prefs.edit()
             .putString("ui_section", "Live TV")
-            .putString("ui_group", "All")
+            .putString("ui_group", "Select category")
             .putString("ui_search", "")
-            .putString("live_tv_group", "All")
+            .putString("live_tv_group", "Select category")
             .putString("live_tv_search", "")
             .apply()
         lastBackPressedAt = 0L
@@ -4062,7 +4063,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (section != "Live TV" || selectedGroup != "All" || searchQuery.isNotEmpty()) {
+        if (section != "Live TV" || selectedGroup != "Select category" || searchQuery.isNotEmpty()) {
             returnToLiveTvHome()
             return
         }
