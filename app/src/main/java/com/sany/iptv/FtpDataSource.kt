@@ -33,9 +33,9 @@ class FtpDataSource(
         val path = URLDecoder.decode(uri.encodedPath?.takeIf { it.isNotBlank() } ?: "/", StandardCharsets.UTF_8.name())
         val ftp = FTPClient()
         try {
-            ftp.connectTimeout = 8000
-            ftp.defaultTimeout = 8000
-            ftp.dataTimeout = 15000
+            ftp.setConnectTimeout(8000)
+            ftp.setDefaultTimeout(8000)
+            ftp.setDataTimeout(15000)
             ftp.connect(host, if (uri.port > 0) uri.port else 21)
             if (!ftp.login(username, password)) {
                 throw IOException("FTP authentication failed (reply ${ftp.replyCode})")
@@ -44,7 +44,7 @@ class FtpDataSource(
             if (!ftp.setFileType(FTP.BINARY_FILE_TYPE)) {
                 throw IOException("FTP server rejected binary transfer mode")
             }
-            if (dataSpec.position > 0L) ftp.restartOffset = dataSpec.position
+            if (dataSpec.position > 0L) ftp.setRestartOffset(dataSpec.position)
             val input = ftp.retrieveFileStream(path)
                 ?: throw IOException("FTP server could not open stream (reply ${ftp.replyCode})")
             client = ftp
