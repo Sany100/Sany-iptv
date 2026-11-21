@@ -3573,10 +3573,9 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        // Every new playback starts the visible channel list at playlist channel 1.
-        (if (::listContainer.isInitialized) listContainer.parent as? ScrollView else null)?.post {
-            (listContainer.parent as? ScrollView)?.scrollTo(0, 0)
-        }
+        // Do not reset the channel/movie list to the top when playback starts.
+        // Keep the user's current category and scroll offset; the list is restored
+        // when the player closes or returns from fullscreen.
 
         // Start channel cards immediately below the inline video; no artificial blank spacer.
         if (::listContainer.isInitialized) {
