@@ -3144,11 +3144,12 @@ class MainActivity : AppCompatActivity() {
 
         // App-owned close control overlays the minimized video at its top-right.
         // It is intentionally separate from Android's system PiP actions.
-        val miniCloseButton = playerAction("✕", "Close video") {
-            closePlayer()
-        }.apply {
+        val miniCloseButton = TextView(this).apply {
+            text = "✕"
             textSize = 18f
+            gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
+            contentDescription = "Close video"
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(0xE6D32F2F.toInt())
@@ -3156,6 +3157,9 @@ class MainActivity : AppCompatActivity() {
             }
             elevation = dp(8).toFloat()
             visibility = View.GONE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { closePlayer() }
         }
         playerMiniCloseButton = miniCloseButton
         screen.addView(miniCloseButton, FrameLayout.LayoutParams(dp(34), dp(34), Gravity.TOP or Gravity.END).apply {
