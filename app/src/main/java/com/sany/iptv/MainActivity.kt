@@ -3786,10 +3786,9 @@ class MainActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (playerView != null && isPlayerFullscreen) {
-            // First Back from fullscreen: minimize the player and return to the
-            // Live TV main category directory without stopping playback.
+            // First Back from fullscreen: minimize the player but preserve the
+            // exact section/category from which the current channel was started.
             setPlayerFullscreen(false)
-            returnToMainCategory()
             return
         }
         if (playerView != null) {
