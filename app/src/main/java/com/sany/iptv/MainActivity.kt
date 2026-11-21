@@ -3707,8 +3707,7 @@ class MainActivity : AppCompatActivity() {
     // may not deliver a reliable last-moment callback, so PiP parameters must already
     // be registered before the user swipes Home.
     private fun refreshPictureInPictureParams() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || playerView == null ||
-            player?.isPlaying != true || !prefs.getBoolean("background_playback", true)) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || playerView == null || player?.isPlaying != true) return
         val videoSize = player?.videoSize
         var width = videoSize?.width ?: 0
         var height = videoSize?.height ?: 0
@@ -3735,7 +3734,7 @@ class MainActivity : AppCompatActivity() {
             .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
             .setActions(listOf(closeAction))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(true)
+            builder.setAutoEnterEnabled(prefs.getBoolean("background_playback", true))
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val rect = android.graphics.Rect()
