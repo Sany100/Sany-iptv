@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.media.audiofx.LoudnessEnhancer
 import android.graphics.BitmapFactory
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -100,11 +101,13 @@ class MainActivity : AppCompatActivity() {
     private var searchQuery = ""
     private var liveTvSearchQuery = ""
     private var player: ExoPlayer? = null
+    private var loudnessEnhancer: LoudnessEnhancer? = null
     private var trackSelector: DefaultTrackSelector? = null
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
     private var playbackRetryCount = 0
     private var playerView: PlayerView? = null
     private var currentChannel: Channel? = null
+    private var resumeChannelOnForeground: Channel? = null
     private var previousChannel: Channel? = null
     private lateinit var root: FrameLayout
     private lateinit var home: LinearLayout
@@ -130,7 +133,6 @@ class MainActivity : AppCompatActivity() {
     private var homeHeaderContainer: View? = null
     private var playlistSelectorContainer: View? = null
     private var liveTvNavLabel: TextView? = null
-    private var pausedForBackground = false
     private var maintenanceOverlay: View? = null
     private val maintenanceHandler = Handler(Looper.getMainLooper())
     private val maintenanceConfigUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/maintenance.json"
@@ -205,8 +207,9 @@ class MainActivity : AppCompatActivity() {
                 .apply()
         }
         // Keep the Live TV channel list empty until the user opens a category.
-        val resumeStream = if (restoringBackground) prefs.getString("resume_stream", null) else null
-        prefs.edit().putBoolean("resume_without_splash", false).apply()
+        // Returning from background/PiP must not replay a stream or show the startup animation.
+        val returningFromBackground = prefs.getBoolean("resume_without_splash", false)
+        prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
         val cachedPlaylist = savedPlaylist?.let { playlistCacheFile(it) }
         if (cachedPlaylist?.exists() == true) {
             try { channels = M3uParser.parse(cachedPlaylist.readText()) } catch (_: Exception) { channels = emptyList() }
@@ -216,7 +219,7 @@ class MainActivity : AppCompatActivity() {
         // system/decor regions with the currently selected theme color.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
-        buildShell(showSplash = !restoringBackground)
+        buildShell(showSplash = !restoringBackground && !returningFromBackground)
         registerForPushUpdates()
         checkForMandatoryUpdate()
         checkMaintenanceMode()
@@ -241,11 +244,6 @@ class MainActivity : AppCompatActivity() {
         restoreStreamCheckResults()
         if (channels.isNotEmpty()) startPlaylistCheck(false)
         if (channels.isEmpty() && !savedPlaylist.isNullOrBlank()) loadFromUrl(savedPlaylist, false)
-        else if (!resumeStream.isNullOrBlank() && channels.isNotEmpty()) {
-            channels.firstOrNull { it.url == resumeStream }?.let { channel ->
-                Handler(Looper.getMainLooper()).post { play(channel) }
-            }
-        }
     }
 
     // Register this installation for owner-wide update announcements through Firebase Cloud Messaging.
@@ -762,6 +760,12 @@ class MainActivity : AppCompatActivity() {
         }, 700L)
     }
 
+    private fun updateHomeHeaderVisibility() {
+        // Keep the brand header hidden on every tab while the compact player is active.
+        // Closing the player restores the header in the normal home layout.
+        homeHeaderContainer?.visibility = if (playerView != null) View.GONE else View.VISIBLE
+    }
+
     private fun renderHome() {
         home.removeAllViews()
         // No reserved blank welcome slot: keep the selected page content directly below the player.
@@ -835,7 +839,12 @@ class MainActivity : AppCompatActivity() {
         }
         top.addView(titleRow)
         homeHeaderContainer = top
-        home.addView(top, LinearLayout.LayoutParams(-1, -2))
+        // Lower the complete branded header card slightly, matching the requested
+        // red-marked area while keeping the content below in normal flow.
+        home.addView(top, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(if (isTvDevice) 24 else 18)
+        })
+        updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
             top.alpha = 1f
@@ -1070,7 +1079,9 @@ class MainActivity : AppCompatActivity() {
         // hide the branded/title header and playlist selector, then restore them
         // when the user returns to the category directory.
         val immersiveCategory = section == "Live TV" && !categoryDirectory
-        homeHeaderContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
+        // Category rendering can run after tab changes or playback refreshes; never
+        // let it re-show the branded header while a video player is still attached.
+        homeHeaderContainer?.visibility = if (playerView != null || immersiveCategory) View.GONE else View.VISIBLE
         // The Live TV title is shown in the replacement banner below the brand header.
         headerTitleView?.visibility = View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
@@ -1684,6 +1695,7 @@ class MainActivity : AppCompatActivity() {
                             .putString("live_tv_search", liveTvSearchQuery).apply()
                     }
                     section = name
+                    updateHomeHeaderVisibility()
                     if (name == "Live TV") {
                         selectedGroup = liveTvSelectedGroup
                         searchQuery = liveTvSearchQuery
@@ -1814,7 +1826,12 @@ class MainActivity : AppCompatActivity() {
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
-        settingsToggleCard(box, "Background video playback", "Keep video playing in a floating window when you leave the app", "background_playback", true)
+        settingsToggleCard(box, "Floating window", "Show video in a floating window when you leave the app", "floating_window_enabled", true) { enabled ->
+            if (!enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+                closePlayer()
+            }
+            refreshPictureInPictureParams()
+        }
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             loadFromUrl(permanentPlaylistUrl)
         }
@@ -2231,7 +2248,8 @@ class MainActivity : AppCompatActivity() {
         title: String,
         subtitle: String,
         prefKey: String,
-        defaultValue: Boolean
+        defaultValue: Boolean,
+        onChanged: ((Boolean) -> Unit)? = null
     ) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2247,6 +2265,7 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.getBoolean(prefKey, defaultValue)
             setOnCheckedChangeListener { _, enabled ->
                 prefs.edit().putBoolean(prefKey, enabled).apply()
+                onChanged?.invoke(enabled)
                 toast(if (enabled) "$title ON" else "$title OFF")
             }
         }
@@ -2668,6 +2687,47 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) { streamChecks.clear() }
     }
 
+    private fun copyCheckerResults(statusFilter: String? = null, fullReport: Boolean = false) {
+        val selected = if (statusFilter == null || statusFilter == "All") {
+            channels.filter { fullReport || streamChecks.containsKey(it.url) }
+        } else {
+            channels.filter { streamChecks[it.url]?.first == statusFilter }
+        }
+        if (selected.isEmpty()) {
+            toast("কপি করার মতো ফলাফল নেই")
+            return
+        }
+        val working = streamChecks.values.count { it.first == "Working" }
+        val offline = streamChecks.values.count { it.first == "Offline" }
+        val restricted = streamChecks.values.count { it.first == "Restricted" }
+        val errors = streamChecks.values.count { it.first == "Error" }
+        val report = buildString {
+            if (fullReport) {
+                appendLine("SANY IPTV CHECKER REPORT")
+                appendLine("Total channels: ${channels.size}")
+                appendLine("Working: $working | Offline: $offline | Restricted: $restricted | Error: $errors")
+                appendLine("Checked: ${streamChecks.size}")
+                appendLine("--------------------------------")
+            } else {
+                appendLine("SANY IPTV - ${statusFilter ?: "All"} CHANNELS")
+                appendLine("Count: ${selected.size}")
+                appendLine("--------------------------------")
+            }
+            selected.forEachIndexed { index, channel ->
+                val result = streamChecks[channel.url]
+                val status = result?.first ?: "Not checked"
+                appendLine("${index + 1}. ${channel.name}")
+                appendLine("Status: $status")
+                appendLine("Info: ${result?.second ?: channel.group}")
+                appendLine("URL: ${channel.url}")
+                appendLine()
+            }
+        }.trim()
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SANY IPTV Checker", report))
+        toast(if (fullReport) "সম্পূর্ণ Checker Report কপি হয়েছে" else "${selected.size}টি channel কপি হয়েছে")
+    }
+
     private fun checkerSummaryText(): String {
         val working = streamChecks.values.count { it.first == "Working" }
         val offline = streamChecks.values.count { it.first == "Offline" }
@@ -2793,6 +2853,11 @@ class MainActivity : AppCompatActivity() {
             } else startPlaylistCheck(true)
         }
         box.addView(checkerRunButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
+            bottomMargin = dp(6)
+        })
+        box.addView(actionButton("▤  COPY REPORT") {
+            copyCheckerResults(fullReport = true)
+        }, LinearLayout.LayoutParams(-1, dp(40)).apply {
             bottomMargin = dp(8)
         })
 
@@ -2809,15 +2874,29 @@ class MainActivity : AppCompatActivity() {
                 "Checking" -> if (checkerRunning) channels.size - streamChecks.size else 0
                 else -> streamChecks.values.count { it.first == filter }
             }
-            filters.addView(text(filter + " (" + count + ")", 11, if (checkerFilter == filter) bg else muted, true).apply {
+            val filterGroup = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = glass(24)
+            }
+            filterGroup.addView(text(filter + " (" + count + ")", 11, if (checkerFilter == filter) bg else muted, true).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(12), 0, dp(12), 0)
-                background = if (checkerFilter == filter) rounded(accent, 24) else glass(24)
+                setPadding(dp(12), 0, dp(10), 0)
+                background = if (checkerFilter == filter) rounded(accent, 24) else null
                 setOnClickListener {
                     checkerFilter = filter
                     renderCheckerSection()
                 }
-            }, LinearLayout.LayoutParams(-2, dp(36)).apply { rightMargin = dp(6) })
+            }, LinearLayout.LayoutParams(-2, dp(36)))
+            if (filter != "Checking") {
+                filterGroup.addView(text("⧉", 16, accent, true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), 0, dp(10), 0)
+                    contentDescription = "Copy $filter channels"
+                    setOnClickListener { copyCheckerResults(statusFilter = filter) }
+                }, LinearLayout.LayoutParams(-2, dp(36)))
+            }
+            filters.addView(filterGroup, LinearLayout.LayoutParams(-2, dp(36)).apply { rightMargin = dp(6) })
         }
         box.addView(filterScroll, LinearLayout.LayoutParams(-1, dp(44)))
 
@@ -2990,7 +3069,7 @@ class MainActivity : AppCompatActivity() {
         input.requestFocus()
     }
 
-    private fun play(channel: Channel) {
+    private fun play(channel: Channel, startPlayback: Boolean = true) {
         if (section != "Live TV" && section != "Movies") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
@@ -3108,10 +3187,30 @@ class MainActivity : AppCompatActivity() {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) {
                             playbackRetryCount = 0
+                            refreshPictureInPictureParams()
                         }
+                    }
+                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                        refreshPictureInPictureParams()
+                    }
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        // Enable PiP auto-entry only while an actual video is playing.
+                        // Pausing/stopping immediately unregisters the PiP entry path.
+                        refreshPictureInPictureParams()
                     }
                 })
                 player = created
+                // Raise all-channel amplitude to approximately +70% (4.6 dB).
+                // This is applied to the shared audio session used by every channel.
+                try {
+                    loudnessEnhancer?.release()
+                    loudnessEnhancer = LoudnessEnhancer(created.audioSessionId).apply {
+                        setTargetGain(460)
+                        enabled = true
+                    }
+                } catch (_: Exception) {
+                    loudnessEnhancer = null
+                }
             }
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
@@ -3119,16 +3218,27 @@ class MainActivity : AppCompatActivity() {
         isPlayerFullscreen = keepFullscreenMode
         playerHeader = null
 
-        val view = PlayerView(this).apply {
+        val view = (layoutInflater.inflate(R.layout.player_view_texture, screen, false) as PlayerView).apply {
             useController = false
             player = p
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)
             setShutterBackgroundColor(Color.BLACK)
+            // Retain the last rendered frame during short surface/Activity transitions
+            // so the app icon or an empty shutter does not flash before video resumes.
+            setKeepContentOnPlayerReset(true)
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
+        updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
+        // Register PiP parameters only after the real video view has a laid-out
+        // screen rectangle. Refresh it whenever the player bounds change so the
+        // system animates directly from video instead of briefly showing the app icon.
+        view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (p.isPlaying) refreshPictureInPictureParams()
+        }
+        view.post { if (p.isPlaying) refreshPictureInPictureParams() }
 
         // The minimized player is a compact top strip. The actual active menu
         // remains visible directly underneath it; never replace menu content with
@@ -3484,7 +3594,7 @@ class MainActivity : AppCompatActivity() {
         p.setMediaItem(itemBuilder.build())
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
         p.prepare()
-        p.playWhenReady = true
+        p.playWhenReady = startPlayback
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
 
@@ -3649,6 +3759,7 @@ class MainActivity : AppCompatActivity() {
         playerView = null
         playerScreen?.let { root.removeView(it) }
         playerScreen = null
+        updateHomeHeaderVisibility()
         if (!keepOrientation) isPlayerFullscreen = false
     }
 
@@ -3684,56 +3795,86 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Prepare Android 12+ auto-enter PiP while playback is active. Gesture navigation
+    // may not deliver a reliable last-moment callback, so PiP parameters must already
+    // be registered before the user swipes Home.
+    private fun refreshPictureInPictureParams() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+        val videoSize = player?.videoSize
+        val hasVideo = videoSize != null && videoSize.width > 0 && videoSize.height > 0
+        val canEnterFloatingWindow = prefs.getBoolean("floating_window_enabled", true) &&
+            playerView != null && player?.isPlaying == true && hasVideo
+
+        var width = videoSize?.width ?: 0
+        var height = videoSize?.height ?: 0
+        if (videoSize?.unappliedRotationDegrees == 90 || videoSize?.unappliedRotationDegrees == 270) {
+            val swap = width; width = height; height = swap
+        }
+        val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
+        // PiP entry is enabled only for active video playback, never audio-only,
+        // paused, stopped, or empty-player states.
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Always update this flag, including false, so a previous video
+            // cannot leave stale auto-enter enabled after pause/stop.
+            builder.setAutoEnterEnabled(canEnterFloatingWindow)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && canEnterFloatingWindow) {
+            val rect = android.graphics.Rect()
+            if (playerView?.getGlobalVisibleRect(rect) == true && !rect.isEmpty) {
+                builder.setSourceRectHint(rect)
+            }
+        }
+        setPictureInPictureParams(builder.build())
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (playerView == null || player?.isPlaying != true) return
+        val videoSize = player?.videoSize
+        val hasVideo = videoSize != null && videoSize.width > 0 && videoSize.height > 0
+        if (playerView == null || player?.isPlaying != true || !hasVideo) return
+        if (!prefs.getBoolean("floating_window_enabled", true)) return
 
-        if (!prefs.getBoolean("background_playback", true)) {
-            pausedForBackground = true
-            player?.pause()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Android 12+ uses the pre-registered auto-enter transition.
             return
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // PiP must use the whole Activity bounds. Keeping the portrait 230dp
-            // inline-player height here makes Android crop the floating video.
-            // Expand both the video surface AND its parent to the full Activity
-            // bounds before entering PiP. Expanding only PlayerView leaves it
-            // clipped by the 235dp minimized-player container.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
+            refreshPictureInPictureParams()
             playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
             playerView?.let { view ->
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.layoutParams = FrameLayout.LayoutParams(-1, -1)
                 view.setUseController(false)
             }
-            val videoSize = player?.videoSize
-            var width = videoSize?.width ?: 0
-            var height = videoSize?.height ?: 0
-            if (videoSize?.unappliedRotationDegrees == 90 || videoSize?.unappliedRotationDegrees == 270) {
-                val swap = width; width = height; height = swap
-            }
-            val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
-                .build()
-            enterPictureInPictureMode(params)
+            enterPictureInPictureMode()
         }
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
+            // Android 12+ can auto-enter PiP directly from the Home gesture,
+            // without onUserLeaveHint. Expand the video and its clipping parent
+            // here as well so the PiP surface contains only the video.
+            playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
+            playerView?.let { view ->
+                view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                view.layoutParams = FrameLayout.LayoutParams(-1, -1)
+                view.setUseController(false)
+            }
             playerHeader?.visibility = View.GONE
             playerFullscreenButton?.visibility = View.GONE
             playerMinimizeButton?.visibility = View.GONE
-            playerView?.setUseController(false)
         } else if (playerView != null) {
             // Restore the normal embedded-player container after PiP closes.
             playerScreen?.layoutParams = FrameLayout.LayoutParams(
                 -1, if (isPlayerFullscreen) -1 else dp(235), Gravity.TOP
             )
             playerView?.let { view ->
-                view.setUseController(true)
+                view.setUseController(false)
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.layoutParams = FrameLayout.LayoutParams(
                     -1, if (isPlayerFullscreen) -1 else dp(235),
@@ -3749,55 +3890,86 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         scheduleOfflineChannelRecheck()
-        if (pausedForBackground) {
-            pausedForBackground = false
-            player?.play()
+        // Restore the exact playback intent after returning from Home when Floating
+        // Window is disabled. The player is stopped in onStop to prevent background audio.
+        if (!prefs.getBoolean("floating_window_enabled", true)) {
+            val savedUrl = prefs.getString("resume_channel_url", null)
+            if (!savedUrl.isNullOrBlank()) {
+                val savedSection = prefs.getString("resume_channel_section", "Live TV") ?: "Live TV"
+                val shouldResumePlaying = prefs.getBoolean("resume_channel_playing", false)
+                window.decorView.postDelayed({
+                    if (!isFinishing && !isDestroyed &&
+                        !prefs.getBoolean("floating_window_enabled", true)) {
+                        val existingChannel = currentChannel?.takeIf { it.url.trim() == savedUrl }
+                        if (playerView != null && existingChannel != null && player != null) {
+                            // Same Activity instance: re-prepare the stopped media item.
+                            player?.prepare()
+                            player?.playWhenReady = shouldResumePlaying
+                            refreshPictureInPictureParams()
+                        } else if (playerView == null) {
+                            // Activity/process was recreated: rebuild the player from playlist data.
+                            val channel = channels.firstOrNull { it.url.trim() == savedUrl }
+                            if (channel != null) {
+                                section = if (savedSection == "Movies") "Movies" else "Live TV"
+                                play(channel, startPlayback = shouldResumePlaying)
+                            }
+                        }
+                        prefs.edit().remove("resume_channel_url")
+                            .remove("resume_channel_section")
+                            .remove("resume_channel_playing").apply()
+                    }
+                }, 700L)
+            }
         }
     }
 
     private var lastBackPressedAt = 0L
 
+    companion object {
+    }
+
+    private fun returnToMainCategory() {
+        section = "Live TV"
+        selectedGroup = "Select category"
+        liveTvSelectedGroup = "Select category"
+        searchQuery = ""
+        liveTvSearchQuery = ""
+        displayedLimit = 60
+        prefs.edit()
+            .putString("ui_section", "Live TV")
+            .putString("ui_group", "Select category")
+            .putString("ui_search", "")
+            .putString("live_tv_group", "Select category")
+            .putString("live_tv_search", "")
+            .apply()
+        renderHome()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (playerView != null && isPlayerFullscreen) {
+            // First Back from fullscreen: minimize the player but preserve the
+            // exact section/category from which the current channel was started.
             setPlayerFullscreen(false)
             return
         }
         if (playerView != null) {
+            // While playback is active, Back navigates to the main category first.
+            // Only a Back press from that directory is allowed to close the player.
+            if (section != "Live TV" || selectedGroup != "Select category") {
+                returnToMainCategory()
+                return
+            }
             closePlayer()
             return
         }
-        // From a channel category, return to the Live TV category directory.
         if (section == "Live TV" && selectedGroup != "Select category") {
-            selectedGroup = "Select category"
-            liveTvSelectedGroup = "Select category"
-            searchQuery = ""
-            liveTvSearchQuery = ""
-            displayedLimit = 60
-            prefs.edit()
-                .putString("live_tv_group", "Select category")
-                .putString("live_tv_search", "")
-                .putString("ui_group", "Select category")
-                .putString("ui_search", "")
-                .apply()
-            renderHome()
+            returnToMainCategory()
             return
         }
         // Other sections return to the Live TV category directory first.
         if (section != "Live TV") {
-            section = "Live TV"
-            selectedGroup = "Select category"
-            liveTvSelectedGroup = "Select category"
-            searchQuery = ""
-            liveTvSearchQuery = ""
-            prefs.edit()
-                .putString("ui_section", "Live TV")
-                .putString("ui_group", "Select category")
-                .putString("ui_search", "")
-                .putString("live_tv_group", "Select category")
-                .putString("live_tv_search", "")
-                .apply()
-            renderHome()
+            returnToMainCategory()
             return
         }
         // Require two Back presses within two seconds to exit the app.
@@ -3823,12 +3995,25 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         checkerUiHandler.removeCallbacks(offlineRecheckRunnable)
         val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
-        if (closingPip) {
-            // Android's PiP close (X) dismisses the Activity; explicitly stop playback
-            // so audio cannot continue after the floating window is closed.
-            player?.pause()
-            player?.stop()
+        // Save both channel identity and whether playback was running before minimizing.
+        // Stop the engine while backgrounded, then restore the same play/pause intent on return.
+        val shouldRestorePlayer = !closingPip && !prefs.getBoolean("floating_window_enabled", true) &&
+            playerView != null && currentChannel != null && player?.playbackState != Player.STATE_IDLE
+        val stateEditor = prefs.edit()
+        if (shouldRestorePlayer) {
+            stateEditor.putString("resume_channel_url", currentChannel?.url)
+                .putString("resume_channel_section", section)
+                .putBoolean("resume_channel_playing", player?.playWhenReady == true)
+        } else {
+            stateEditor.remove("resume_channel_url")
+                .remove("resume_channel_section")
+                .remove("resume_channel_playing")
         }
+        stateEditor.apply()
+        resumeChannelOnForeground = null
+        // No background audio: stop the player after saving its state for foreground restoration.
+        player?.pause()
+        player?.stop()
         prefs.edit()
             .putString("ui_section", section)
             .putString("ui_group", selectedGroup)
@@ -3836,9 +4021,9 @@ class MainActivity : AppCompatActivity() {
             .putString("live_tv_group", liveTvSelectedGroup)
             .putString("live_tv_search", liveTvSearchQuery)
             .putBoolean("resume_without_splash", true)
-            .putString("resume_stream", if (!closingPip && player?.isPlaying == true) currentChannel?.url else null)
+            .remove("resume_stream")
             .apply()
-        if (closingPip) prefs.edit().remove("resume_stream").putBoolean("resume_without_splash", false).apply()
+        if (closingPip) prefs.edit().putBoolean("resume_without_splash", false).apply()
         super.onStop()
     }
 
@@ -3848,6 +4033,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
         }
         playerView?.player = null
+        loudnessEnhancer?.release(); loudnessEnhancer = null
         player?.release(); player = null
         logoExecutor.shutdownNow()
         super.onDestroy()
