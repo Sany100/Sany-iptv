@@ -3830,16 +3830,26 @@ class MainActivity : AppCompatActivity() {
         // With Floating Window OFF, playback is stopped when leaving the app.
         // Resume the same channel only after the Activity returns to the foreground.
         if (!prefs.getBoolean("floating_window_enabled", true) && !isFinishing) {
+            // Resolve from memory first, then persisted URL in case Android recreated
+            // the Activity while it was in the background.
+            val savedUrl = prefs.getString("resume_channel_url", null)
             val pending = resumeChannelOnForeground
+                ?: savedUrl?.let { url -> channels.firstOrNull { it.url == url } }
             if (pending != null) {
                 resumeChannelOnForeground = null
+                prefs.edit().remove("resume_channel_url").apply()
                 window.decorView.postDelayed({
                     if (!isFinishing && !isDestroyed &&
                         !isInPictureInPictureMode &&
                         !prefs.getBoolean("floating_window_enabled", true)) {
+                        // play() accepts Live TV/Movies only; preserve the user's
+                        // current section after rebuilding the player.
+                        val previousSection = section
+                        section = if (previousSection == "Movies") "Movies" else "Live TV"
                         play(pending)
+                        section = previousSection
                     }
-                }, 350L)
+                }, 500L)
             }
         }
     }
@@ -3918,8 +3928,17 @@ class MainActivity : AppCompatActivity() {
         val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
         // If Floating Window is OFF, remember the selected channel for foreground
         // restoration. Playback itself is still stopped here, so no background audio leaks.
-        resumeChannelOnForeground = if (!closingPip &&
-            !prefs.getBoolean("floating_window_enabled", true)) currentChannel else null
+        val shouldRestoreChannel = !closingPip &&
+            !prefs.getBoolean("floating_window_enabled", true) &&
+            currentChannel != null
+        resumeChannelOnForeground = if (shouldRestoreChannel) currentChannel else null
+        val editor = prefs.edit()
+        if (shouldRestoreChannel) {
+            editor.putString("resume_channel_url", currentChannel?.url)
+        } else {
+            editor.remove("resume_channel_url")
+        }
+        editor.apply()
         // Audio/video may continue only while the Activity is visibly in PiP.
         // Leaving the app without PiP always stops playback; closing PiP does too.
         player?.pause()
