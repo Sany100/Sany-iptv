@@ -3124,6 +3124,9 @@ class MainActivity : AppCompatActivity() {
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                         refreshPictureInPictureParams()
                     }
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        if (isPlaying) refreshPictureInPictureParams()
+                    }
                 })
                 player = created
             }
