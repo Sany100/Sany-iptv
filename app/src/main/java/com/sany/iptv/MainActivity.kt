@@ -107,6 +107,7 @@ class MainActivity : AppCompatActivity() {
     private var playbackRetryCount = 0
     private var playerView: PlayerView? = null
     private var currentChannel: Channel? = null
+    private var resumeChannelOnForeground: Channel? = null
     private var previousChannel: Channel? = null
     private lateinit var root: FrameLayout
     private lateinit var home: LinearLayout
@@ -3130,12 +3131,12 @@ class MainActivity : AppCompatActivity() {
                     }
                 })
                 player = created
-                // +20% amplitude boost (20*log10(1.2) ≈ 1.58 dB = 158 mB).
-                // Attach to the shared ExoPlayer audio session so every channel gets it.
+                // Total +50% amplitude boost (30% previous + another 20% requested).
+                // 20*log10(1.5) ≈ 3.52 dB = 352 mB; shared session covers every channel.
                 try {
                     loudnessEnhancer?.release()
                     loudnessEnhancer = LoudnessEnhancer(created.audioSessionId).apply {
-                        setTargetGain(228)
+                        setTargetGain(352)
                         enabled = true
                     }
                 } catch (_: Exception) {
@@ -3814,6 +3815,21 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         scheduleOfflineChannelRecheck()
+        // With Floating Window OFF, playback is stopped when leaving the app.
+        // Resume the same channel only after the Activity returns to the foreground.
+        if (!prefs.getBoolean("floating_window_enabled", true) && !isFinishing) {
+            val pending = resumeChannelOnForeground
+            if (pending != null) {
+                resumeChannelOnForeground = null
+                window.decorView.postDelayed({
+                    if (!isFinishing && !isDestroyed &&
+                        !isInPictureInPictureMode &&
+                        !prefs.getBoolean("floating_window_enabled", true)) {
+                        play(pending)
+                    }
+                }, 350L)
+            }
+        }
     }
 
     private var lastBackPressedAt = 0L
@@ -3888,6 +3904,10 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         checkerUiHandler.removeCallbacks(offlineRecheckRunnable)
         val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
+        // If Floating Window is OFF, remember the selected channel for foreground
+        // restoration. Playback itself is still stopped here, so no background audio leaks.
+        resumeChannelOnForeground = if (!closingPip &&
+            !prefs.getBoolean("floating_window_enabled", true)) currentChannel else null
         // Audio/video may continue only while the Activity is visibly in PiP.
         // Leaving the app without PiP always stops playback; closing PiP does too.
         player?.pause()
