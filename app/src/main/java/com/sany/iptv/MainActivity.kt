@@ -3087,7 +3087,7 @@ class MainActivity : AppCompatActivity() {
         closePlayer(keepOrientation = true)
         currentChannel = channel
         // Move the single active-channel highlight immediately when playback selection changes.
-        if (::listContainer.isInitialized && section == "Live TV") {
+        if (::listContainer.isInitialized && (section == "Live TV" || section == "Movies")) {
             val scroll = listContainer.parent as? ScrollView
             val previousScrollY = scroll?.scrollY ?: 0
             renderChannelRows(listContainer)
