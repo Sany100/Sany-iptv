@@ -3940,52 +3940,79 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Back flow: fullscreen -> Fit Screen -> All Categories -> double-Back to exit.
-    private var awaitingCategoryBackAfterMinimize = false
+    // Back navigation is section-aware in Fit Screen; fullscreen keeps its existing minimize behavior.
     private var lastBackPressedAt = 0L
+    private var liveCategoriesShownAfterBack = false
+    private var movieClosedAwaitingLiveTv = false
 
     companion object {
     }
 
+    private fun showAllLiveCategoriesAfterBack() {
+        section = "Live TV"
+        selectedGroup = "Select category"
+        searchQuery = ""
+        liveTvSelectedGroup = "Select category"
+        liveTvSearchQuery = ""
+        playbackReturnSection = "Live TV"
+        playbackReturnGroup = "Select category"
+        playbackReturnSearch = ""
+        playbackReturnScrollY = 0
+        prefs.edit()
+            .putString("ui_section", "Live TV")
+            .putString("ui_group", "Select category")
+            .putString("ui_search", "")
+            .putString("live_tv_group", "Select category")
+            .putString("live_tv_search", "")
+            .apply()
+        renderHome()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // First Back: leave fullscreen and keep playback running in Fit Screen.
+        // Preserve existing fullscreen behavior: Back minimizes to Fit Screen.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
-            awaitingCategoryBackAfterMinimize = true
             lastBackPressedAt = 0L
             return
         }
 
-        // Second Back: return to the section's complete category/library directory.
-        if (playerView != null && awaitingCategoryBackAfterMinimize) {
-            awaitingCategoryBackAfterMinimize = false
-            section = if (playbackReturnSection == "Movies") "Movies" else "Live TV"
-            selectedGroup = if (section == "Movies") "All" else "Select category"
-            searchQuery = ""
-            if (section == "Live TV") {
-                liveTvSelectedGroup = "Select category"
-                liveTvSearchQuery = ""
-            }
-            playbackReturnSection = section
-            playbackReturnGroup = selectedGroup
-            playbackReturnSearch = ""
-            playbackReturnScrollY = 0
-            prefs.edit()
-                .putString("ui_section", section)
-                .putString("ui_group", selectedGroup)
-                .putString("ui_search", "")
-                .putString("live_tv_group", liveTvSelectedGroup)
-                .putString("live_tv_search", liveTvSearchQuery)
-                .apply()
+        // Live TV Fit Screen: first Back reveals all categories while video keeps playing.
+        if (playerView != null && !isPlayerFullscreen && section == "Live TV" &&
+            !liveCategoriesShownAfterBack) {
+            liveCategoriesShownAfterBack = true
+            showAllLiveCategoriesAfterBack()
             lastBackPressedAt = 0L
-            renderHome()
             return
         }
 
-        // On the category/library screen, two consecutive Back presses exit.
+        // Live TV Fit Screen: second Back closes the video.
+        if (playerView != null && !isPlayerFullscreen && section == "Live TV" &&
+            liveCategoriesShownAfterBack) {
+            closePlayer()
+            liveCategoriesShownAfterBack = false
+            lastBackPressedAt = 0L
+            return
+        }
+
+        // Movies Fit Screen: first Back closes the movie; next Back returns to Live TV.
+        if (playerView != null && !isPlayerFullscreen && section == "Movies") {
+            closePlayer()
+            movieClosedAwaitingLiveTv = true
+            lastBackPressedAt = 0L
+            return
+        }
+
+        if (movieClosedAwaitingLiveTv) {
+            movieClosedAwaitingLiveTv = false
+            showAllLiveCategoriesAfterBack()
+            lastBackPressedAt = 0L
+            return
+        }
+
+        // After the section-specific steps, two consecutive Back presses exit the app.
         val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastBackPressedAt <= 2000L) {
+        if (now - lastBackPressedAt in 1..2000L) {
             lastBackPressedAt = 0L
             finish()
         } else {
