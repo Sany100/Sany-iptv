@@ -1830,7 +1830,6 @@ class MainActivity : AppCompatActivity() {
             }
             refreshPictureInPictureParams()
         }
-        settingsToggleCard(box, "Background video playback", "Allow video audio to continue when the app is in the background", "background_playback", true)
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             loadFromUrl(permanentPlaylistUrl)
         }
