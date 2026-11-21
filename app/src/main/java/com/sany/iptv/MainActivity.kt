@@ -3935,6 +3935,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var lastBackPressedAt = 0L
+    // Keeps compact-player and category-directory Back actions as separate steps.
+    private var awaitingCategoryBackAfterMinimize = false
 
     companion object {
     }
@@ -3959,29 +3961,32 @@ class MainActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (playerView != null && isPlayerFullscreen) {
-            // First Back from fullscreen: keep playback alive in the compact player
-            // and show the Live TV category directory underneath it.
+            // Step 1: leave fullscreen and keep the same stream playing in the compact player.
             setPlayerFullscreen(false)
-            if (section != "Live TV" || selectedGroup != "Select category") {
-                returnToMainCategory()
-            }
+            awaitingCategoryBackAfterMinimize = true
             lastBackPressedAt = 0L
             return
         }
-        // A minimized player must keep playing while Back navigates the app.
-        // Do not close or stop the player here.
+        // Step 2: show All Categories only after the compact-player step.
+        if (awaitingCategoryBackAfterMinimize) {
+            awaitingCategoryBackAfterMinimize = false
+            returnToMainCategory()
+            lastBackPressedAt = 0L
+            return
+        }
+        // Keep a minimized player alive while navigating the app.
         if (section == "Live TV" && selectedGroup != "Select category") {
             returnToMainCategory()
             lastBackPressedAt = 0L
             return
         }
-        // Other sections return to the Live TV category directory first.
+        // Movies and other sections return to the Live TV category directory first.
         if (section != "Live TV") {
             returnToMainCategory()
             lastBackPressedAt = 0L
             return
         }
-        // On the category directory: first Back warns, the next Back exits.
+        // Step 3: warn. Step 4: exit on the next Back press within 2 seconds.
         val now = System.currentTimeMillis()
         if (now - lastBackPressedAt <= 2_000L) {
             lastBackPressedAt = 0L
