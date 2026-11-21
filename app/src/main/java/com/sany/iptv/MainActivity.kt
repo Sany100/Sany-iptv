@@ -3154,24 +3154,24 @@ class MainActivity : AppCompatActivity() {
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 2500
-                            "high" -> 6000
-                            else -> 4000
+                            "low" -> 1000
+                            "high" -> 4000
+                            else -> 2500
                         },
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 5000
-                            "high" -> 12000
-                            else -> 8000
+                            "low" -> 3500
+                            "high" -> 10000
+                            else -> 5000
                         },
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 750
+                            "low" -> 500
                             "high" -> 1000
-                            else -> 1000
+                            else -> 750
                         },
                         when (prefs.getString("network_buffer_size", "balanced")) {
                             "low" -> 1500
-                            "high" -> 2500
-                            else -> 2000
+                            "high" -> 2000
+                            else -> 1500
                         }
                     )
                     .build()
