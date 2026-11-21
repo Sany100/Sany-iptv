@@ -5,8 +5,6 @@ import android.animation.ValueAnimator
 import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
-import android.app.PendingIntent
-import android.app.RemoteAction
 import android.content.Intent
 import android.net.Uri
 import android.content.pm.ActivityInfo
@@ -3720,24 +3718,10 @@ class MainActivity : AppCompatActivity() {
             val swap = width; width = height; height = swap
         }
         val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
-        val closeIntent = Intent(this, MainActivity::class.java).apply {
-            action = ACTION_CLOSE_PIP_PLAYER
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val closePendingIntent = PendingIntent.getActivity(
-            this, 7301, closeIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or
-                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
-        )
-        val closeAction = RemoteAction(
-            Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
-            "ভিডিও বন্ধ করুন",
-            "ভিডিও বন্ধ করুন",
-            closePendingIntent
-        )
+        // Let Android provide its single native PiP close control; a custom RemoteAction
+        // duplicates the system X button on some devices (including Samsung).
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
-            .setActions(listOf(closeAction))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setAutoEnterEnabled(prefs.getBoolean("floating_window_enabled", true))
         }
@@ -3773,14 +3757,6 @@ class MainActivity : AppCompatActivity() {
                 view.setUseController(false)
             }
             enterPictureInPictureMode()
-        }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        if (intent.action == ACTION_CLOSE_PIP_PLAYER) {
-            closePlayer()
         }
     }
 
@@ -3826,7 +3802,6 @@ class MainActivity : AppCompatActivity() {
     private var lastBackPressedAt = 0L
 
     companion object {
-        private const val ACTION_CLOSE_PIP_PLAYER = "com.sany.iptv.action.CLOSE_PIP_PLAYER"
     }
 
     private fun returnToMainCategory() {
