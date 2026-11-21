@@ -3934,69 +3934,76 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var lastBackPressedAt = 0L
-    // Keeps compact-player and category-directory Back actions as separate steps.
+    // Back-button sequence: fullscreen -> compact player -> category/library -> stop -> warning -> exit.
     private var awaitingCategoryBackAfterMinimize = false
+    private var exitWarningDialog: AlertDialog? = null
 
     companion object {
     }
 
-    private fun returnToMainCategory() {
-        section = "Live TV"
-        selectedGroup = "Select category"
-        liveTvSelectedGroup = "Select category"
-        searchQuery = ""
-        liveTvSearchQuery = ""
-        displayedLimit = 60
-        prefs.edit()
-            .putString("ui_section", "Live TV")
-            .putString("ui_group", "Select category")
-            .putString("ui_search", "")
-            .putString("live_tv_group", "Select category")
-            .putString("live_tv_search", "")
-            .apply()
-        renderHome()
-    }
-
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        // Step 1: leave fullscreen and keep playback running in the compact TV player.
         if (playerView != null && isPlayerFullscreen) {
-            // Step 1: leave fullscreen and keep the same stream playing in the compact player.
             setPlayerFullscreen(false)
             awaitingCategoryBackAfterMinimize = true
-            lastBackPressedAt = 0L
             return
         }
-        // Step 2: show All Categories only after the compact-player step.
-        if (awaitingCategoryBackAfterMinimize) {
-            // Step 2: stop playback completely, then show the category directory.
-            // This applies equally to Live TV and Movies because the player is shared.
+
+        // Step 2: show the current section's category/library while playback continues.
+        if (playerView != null && awaitingCategoryBackAfterMinimize) {
+            awaitingCategoryBackAfterMinimize = false
+            section = if (playbackReturnSection == "Movies") "Movies" else "Live TV"
+            selectedGroup = if (section == "Movies") "All" else "Select category"
+            searchQuery = ""
+            if (section == "Live TV") {
+                liveTvSelectedGroup = "Select category"
+                liveTvSearchQuery = ""
+            }
+            // Keep closePlayer() on this directory after playback stops in Step 3.
+            playbackReturnSection = section
+            playbackReturnGroup = selectedGroup
+            playbackReturnSearch = ""
+            playbackReturnScrollY = 0
+            prefs.edit()
+                .putString("ui_section", section)
+                .putString("ui_group", selectedGroup)
+                .putString("ui_search", "")
+                .putString("live_tv_group", liveTvSelectedGroup)
+                .putString("live_tv_search", liveTvSearchQuery)
+                .apply()
+            renderHome()
+            return
+        }
+
+        // Step 3: stop the video only after the category/library has been shown.
+        if (playerView != null) {
             awaitingCategoryBackAfterMinimize = false
             closePlayer()
-            returnToMainCategory()
-            lastBackPressedAt = 0L
             return
         }
-        // Keep a minimized player alive while navigating the app.
-        if (section == "Live TV" && selectedGroup != "Select category") {
-            returnToMainCategory()
-            lastBackPressedAt = 0L
-            return
-        }
-        // Movies and other sections return to the Live TV category directory first.
-        if (section != "Live TV") {
-            returnToMainCategory()
-            lastBackPressedAt = 0L
-            return
-        }
-        // Step 3: warn. Step 4: exit on the next Back press within 2 seconds.
-        val now = System.currentTimeMillis()
-        if (now - lastBackPressedAt <= 2_000L) {
-            lastBackPressedAt = 0L
-            finish()
-        } else {
-            lastBackPressedAt = now
-            Toast.makeText(this, "অ্যাপ থেকে বের হতে আবার Back চাপুন", Toast.LENGTH_SHORT).show()
+
+        // Step 4: show an exit warning. The next Back press (Step 5) exits the app.
+        if (exitWarningDialog == null) {
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("Exit SANY IPTV?")
+                .setMessage("অ্যাপ বন্ধ করতে আবার Back চাপুন।")
+                .setCancelable(false)
+                .create()
+            exitWarningDialog = dialog
+            dialog.setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                    exitWarningDialog = null
+                    finish()
+                    true
+                } else {
+                    keyCode == KeyEvent.KEYCODE_BACK
+                }
+            }
+            dialog.setOnDismissListener {
+                if (!isFinishing) exitWarningDialog = null
+            }
+            dialog.show()
         }
     }
 
