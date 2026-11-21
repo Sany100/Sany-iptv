@@ -3766,47 +3766,49 @@ class MainActivity : AppCompatActivity() {
 
     private var lastBackPressedAt = 0L
 
+    private fun returnToMainCategory() {
+        section = "Live TV"
+        selectedGroup = "Select category"
+        liveTvSelectedGroup = "Select category"
+        searchQuery = ""
+        liveTvSearchQuery = ""
+        displayedLimit = 60
+        prefs.edit()
+            .putString("ui_section", "Live TV")
+            .putString("ui_group", "Select category")
+            .putString("ui_search", "")
+            .putString("live_tv_group", "Select category")
+            .putString("live_tv_search", "")
+            .apply()
+        renderHome()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (playerView != null && isPlayerFullscreen) {
+            // First Back from fullscreen: minimize the player and return to the
+            // Live TV main category directory without stopping playback.
             setPlayerFullscreen(false)
+            returnToMainCategory()
             return
         }
         if (playerView != null) {
+            // While playback is active, Back navigates to the main category first.
+            // Only a Back press from that directory is allowed to close the player.
+            if (section != "Live TV" || selectedGroup != "Select category") {
+                returnToMainCategory()
+                return
+            }
             closePlayer()
             return
         }
-        // From a channel category, return to the Live TV category directory.
         if (section == "Live TV" && selectedGroup != "Select category") {
-            selectedGroup = "Select category"
-            liveTvSelectedGroup = "Select category"
-            searchQuery = ""
-            liveTvSearchQuery = ""
-            displayedLimit = 60
-            prefs.edit()
-                .putString("live_tv_group", "Select category")
-                .putString("live_tv_search", "")
-                .putString("ui_group", "Select category")
-                .putString("ui_search", "")
-                .apply()
-            renderHome()
+            returnToMainCategory()
             return
         }
         // Other sections return to the Live TV category directory first.
         if (section != "Live TV") {
-            section = "Live TV"
-            selectedGroup = "Select category"
-            liveTvSelectedGroup = "Select category"
-            searchQuery = ""
-            liveTvSearchQuery = ""
-            prefs.edit()
-                .putString("ui_section", "Live TV")
-                .putString("ui_group", "Select category")
-                .putString("ui_search", "")
-                .putString("live_tv_group", "Select category")
-                .putString("live_tv_search", "")
-                .apply()
-            renderHome()
+            returnToMainCategory()
             return
         }
         // Require two Back presses within two seconds to exit the app.
