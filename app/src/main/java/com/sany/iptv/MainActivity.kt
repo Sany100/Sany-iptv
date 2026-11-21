@@ -304,8 +304,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
         restoreStreamCheckResults()
-        if (channels.isNotEmpty()) startPlaylistCheck(false)
-        if (channels.isEmpty() && !savedPlaylist.isNullOrBlank()) loadFromUrl(savedPlaylist, false)
+        if (!restoringBackground && !savedPlaylist.isNullOrBlank()) {
+            // Refresh the owner playlist on every fresh launch; loadFromUrl falls back to cache offline.
+            loadFromUrl(savedPlaylist, false)
+        } else if (channels.isNotEmpty()) {
+            startPlaylistCheck(false)
+        }
     }
 
     // Register this installation for owner-wide update announcements through Firebase Cloud Messaging.
