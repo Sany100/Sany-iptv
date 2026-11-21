@@ -10,6 +10,88 @@
 #==================================
 #EXTM3U
 
+# SANY IPTV - CHECKER VERIFIED WORKING ADDITIONS (2026-11-21)
+#EXTINF:-1 tvg-id="" tvg-logo="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQzayWMQexbfPV-jTx3ZNoq-XOmlHKSX1SCjg&s" group-title="BANGLADESH",Probashi TV
+http://158.69.24.53:8080/probashi_tv/index.m3u8
+
+#EXTINF:-1 tvg-logo="https://otapp.store/uploads/tv_image/sm/nagorik-tv.png" group-title="BANGLADESH",Nagorik TV
+https://box.bbaria.net/Nagorik_TV/tracks-v1a1/mono.m3u8
+
+#EXTINF:-1 tvg-id="141000" tvg-logo="https://tstatic.akash-go.com/cms-ui/images/custom-content/1746005940155.png" group-title="BANGLADESH",SRK TV
+https://srknowapp.ncare.live/srktvhlswodrm/srktv.stream/playlist.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://news21bangla.tv/wp-content/uploads/2025/07/Screenshot_23.png" group-title="BANGLADESH",NEWS 21 BANGLA
+http://103.190.133.68:1935/news21live/live/playlist.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://raw.githubusercontent.com/BadhanStrom/img/refs/heads/main/jhonmobhumitv.png" group-title="BANGLADESH",JonmoBhumi TV
+https://jtvs.ncare.live/Gznr84Woj7UEye3OPVeWq2ForboWAgdV/jonmobhumitv.stream/tracks-v1a1/mono.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://www.metvbd.com/media/common/logo-fb.png" group-title="BANGLADESH",ME TV
+https://iptvbd.live/metv1080/1080.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://www.jagobd.com/wp-content/uploads/2024/08/jagonews.jpg" group-title="BANGLADESH",Jago News 24
+https://app.ncare.live/live-orgin/jagonews24.stream/playlist.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRctL8rD_FYfZ1rHUDhs_Q3rJwRYGSDbMX0-XHpHFXLjeTC2D9iYwo8Gq3J&s=10" group-title="BANGLADESH",NRB HD
+https://app.ncare.live/live-orgin/nrb-eu.stream/playlist.m3u8
+
+#EXTINF:-1 tvg-logo="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgBhxAik9rvkpRV33kdDl-2drT2X3Y2cU_-lrjlMpmIxzBAGCN50afZnqx8vvxgmbaTVZmYITeOyTW1Fg_CAItfNfgRwsrTcxaB1pecb0Z74oky6LcgXFGIAOz8w8IijqMpMo4dUJ8aMsAF4A0x9Xwt57UCZYxhtEpRfOdqTzmfwVjICILOqg9QPbOFww/s1080/1000021053.png" group-title="BANGLADESH",Ayna TV
+https://app24.jagobd.com.bd/c3VydmVyX8RpbEU9Mi8xNy8yMFDEEHGcfRgzQ6NTAgdEoaeFzbF92YWxIZTO0U0ezN1IzMyfvcEdsEfeDeKiNkVN3PTOmdFseWRtaW51aiPhnPTI2/ayna.stream/tracks-v1a1/mono.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://i.postimg.cc/yNQfGnnb/RLr-MBlm.png" group-title="SPORTS",Bein Sports xtra
+https://bein-esp-xumo.amagi.tv/playlistR720P.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://bugsfreeweb.github.io/LiveTVCollector/BugsfreeLogo/default-logo.png" group-title="KIDS",Mr Bean Animated
+https://amg00627-amg00627c29-rakuten-it-3989.playouts.now.amagi.tv/playlist/amg00627-banijayfast-mrbeanitcc-rakutenit/playlist.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://i.ibb.co/Ns62bY2/2021-04-22-10-24-01.png" group-title="ENGLISH MOVIES",Star Movies HD
+http://rgkkw.live/live/1Aoen7elp5/IgMJ60tmAa/98842.ts
+
+#EXTINF:-1 tvg-logo="https://static.wikia.nocookie.net/logopedia/images/0/04/Jalsha_Movies_HD.png" group-title="INDIAN BANGLA",Jalsha Movies HD
+https://box.bbaria.net:8083/Jalsha_Movie/tracks-v1a1/mono.m3u8
+
+#EXTINF:-1 tvg-logo="https://i.postimg.cc/3w6F5VZ5/20240822-231514.png" group-title="INDIAN BANGLA",Colors Bangla
+http://premiumtvs.space:80/live/1Aoen7elp5/IgMJ60tmAa/98882.ts
+
+#EXTINF:-1 tvg-logo="https://i.postimg.cc/y88mJsQC/20240823_020415.png" group-title="INDIAN BANGLA",Sun Bangla
+http://27.124.71.27/Sun_Bangla/index.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://i.postimg.cc/MZR248Yw/20240823-024104.png" group-title="DOCUMENTARY",Love Natural
+http://27.124.71.27/Love_Nature/index.m3u8
+
+#EXTINF:-1 tvg-logo="https://otapp.store/uploads/tv_image/sm/zoom.png",Zoom
+https://d2esfk1pb9cdob.cloudfront.net/master.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://static.wikia.nocookie.net/logopedia/images/d/db/DD_Bharati_english.png" group-title="",DD Bharati
+https://d2lk5u59tns74c.cloudfront.net/out/v1/67cec794d8b14f9ba21f73924ac65797/index.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://static.wikia.nocookie.net/logopedia/images/2/2a/Ddnational2023.png" group-title="",DD National HD
+https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/40492a64c1db4a1385ba1a397d357d3a/index.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://static.wikia.nocookie.net/logopedia/images/9/93/Aaj_Tak_HD_v2.png" group-title="",Aaj Tak HD
+https://aajtaklive-amd.akamaized.net/hls/live/2014416/aajtak/aajtaklive/live_720p/chunks.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://yt3.googleusercontent.com/-LKDkXmG8y-gkKDzES5aUI8SYFtDXR8F7351cCACb8OP0ap9MkI5moxwFLoAWNRjVEXKJmH3pQ=s72-c-k-c0x00ffffff-no-rj" group-title="",Aap Ki Adalat
+https://amg01550-indiatv-indiatv-aapkiadalat-mi-xiaomi-n5tuk.amagi.tv/playlist/amg01550-indiatv-indiatv-aapkiadalat-mi-xiaomi/playlist.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://static.wikia.nocookie.net/logopedia/images/f/fe/Republic-logo2.svg" group-title="",Republic TV
+https://d3qs3d2rkhfqrt.cloudfront.net/out/v1/2e31d831f08640ff92f65003bdc89991/index.m3u8
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://static.wikia.nocookie.net/logopedia/images/0/07/Zee_Business_%282025%29.svg" group-title="",ZEE BUSINESS
+https://dwby15d04agvq.cloudfront.net/index_1.m3u8
+
+#EXTINF:-1 tvg-logo="https://images.toffeelive.com/images/program/2429/logo/240x240/mobile_logo_009938001674474908.png" group-title="DOCUMENTARY",history
+https://n18syndication.akamaized.net/bpk-tv/History_TV18_Hindi_NW18_MOB/output01/master.m3u8
+
+#EXTINF:-1 tvg-logo="https://i.postimg.cc/Zn6Gyrqn/20240823-024051.png" group-title="DOCUMENTARY",Travel XP Bangla
+http://premiumtvs.space/live/YqXTywueEV/damp2purchase/20622.ts
+
+#EXTINF:-1 tvg-logo="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRWZvoj7sQem7dOoLMmPtCzKgSxaHVEJi6L6uBRFeJ33gfyFug_Yh96Z1U&s=10" group-title="HINDI",Big Magic
+http://rgkkw.live:80/live/1Aoen7elp5/IgMJ60tmAa/355253.ts
+
+#EXTINF:-1 tvg-id="" tvg-logo="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQj4QJIbm5AJUR2DxA4ChOekh2jveNwgRSfqjvBkoyomA&s=10" group-title="HINDI MUSIC",Baallee
+https://mcncdndigital.com/balleballetv/tracks-v1a1/mono.ts.m3u8
+
 #EXTINF:-1 tvg-name="Welcome to PlayZ TV" group-title="Welcome to PlayZ TV | New App" tvg-logo="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgyniKyW9pUz1OKx5bgzLASwGVSuP0e7hX9FxVMTJMHxhu8X0tpucgSplBZgM8pCYrJJH0P2_dTC1-wzp4mMUU4sKnOzghGPCwWdbYOOa4jTyhpr7ydNj-UK-bc56IMsk2H3WZJ-SzSZIk0dTpyABCFR2_zjC2_c86W1pv7odFBT_Y-hyJs62g-3zCJkPGd/s1024/1000398131.png",Welcome to PlayZ TV
 https://playztv.pages.dev/promo/master.m3u8
 #EXTINF:-1 tvg-logo="https://origin-staticv2.sonyliv.com/videoasset_images/manage_file/1000029396/1795085973106996_NZvsIND_1st_Test_Day2_landscape_thumb.jpg" group-title="Live Event", 1st Test - Day 2 - 20 Nov 2026 [ENG] - India Tour of New Zealand 2026
