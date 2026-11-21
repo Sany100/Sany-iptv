@@ -3738,17 +3738,15 @@ class MainActivity : AppCompatActivity() {
         if (playerView == null || player?.isPlaying != true) return
         if (!prefs.getBoolean("floating_window_enabled", true)) return
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Android 12+ must use the pre-registered auto-enter transition.
+            // Calling enterPictureInPictureMode() here bypasses that optimized
+            // gesture path and can animate through the launcher app icon first.
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
-            // Enter PiP explicitly when Android reports a user-initiated departure.
-            // This also covers Samsung's swipe-and-hold gesture when it opens
-            // Recents instead of Home; Android 12+ auto-enter remains enabled
-            // for the regular swipe-Home gesture.
-            // Register the current video bounds as the PiP animation source BEFORE
-            // expanding the player to the Activity bounds. Using the full Activity
-            // as the source can make Android briefly show the app icon during entry.
+            // Android 8–11 do not support auto-enter; explicitly enter PiP.
             refreshPictureInPictureParams()
-            // Expand the surface and its clipping parent before entering PiP,
-            // otherwise the minimized 235dp player container crops the video.
             playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
             playerView?.let { view ->
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
