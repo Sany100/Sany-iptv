@@ -3951,12 +3951,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (playerView != null) {
-            // While playback is active, Back navigates to the main category first.
-            // Only a Back press from that directory is allowed to close the player.
-            if (section != "Live TV" || selectedGroup != "Select category") {
-                returnToMainCategory()
-                return
-            }
+            // Keep the exact category, search filter, and scroll position that launched
+            // playback. Once fullscreen has been minimized, the next Back only closes
+            // the player overlay; it must not navigate to the category directory.
             closePlayer()
             return
         }
