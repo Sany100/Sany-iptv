@@ -3969,7 +3969,10 @@ class MainActivity : AppCompatActivity() {
         }
         // Step 2: show All Categories only after the compact-player step.
         if (awaitingCategoryBackAfterMinimize) {
+            // Step 2: stop playback completely, then show the category directory.
+            // This applies equally to Live TV and Movies because the player is shared.
             awaitingCategoryBackAfterMinimize = false
+            closePlayer()
             returnToMainCategory()
             lastBackPressedAt = 0L
             return
