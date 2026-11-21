@@ -1052,8 +1052,7 @@ class MainActivity : AppCompatActivity() {
         contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, 0, 1f).apply {
             topMargin = dp(5)
         })
-        renderCategories()
-
+        // Build the category directory once, after list/count views are initialized.
         countLabel = text("", 12, muted).apply { setPadding(dp(2), dp(4), 0, dp(8)) }
         contentArea.addView(countLabel)
         val listScroll = ScrollView(this).apply {
@@ -3941,23 +3940,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Back-button sequence: fullscreen -> compact player -> category/library -> stop -> warning -> exit.
+    // Back flow: fullscreen -> Fit Screen -> All Categories -> double-Back to exit.
     private var awaitingCategoryBackAfterMinimize = false
-    private var exitWarningDialog: AlertDialog? = null
+    private var lastBackPressedAt = 0L
 
     companion object {
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Step 1: leave fullscreen and keep playback running in the compact TV player.
+        // First Back: leave fullscreen and keep playback running in Fit Screen.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
             awaitingCategoryBackAfterMinimize = true
+            lastBackPressedAt = 0L
             return
         }
 
-        // Step 2: show the current section's category/library while playback continues.
+        // Second Back: return to the section's complete category/library directory.
         if (playerView != null && awaitingCategoryBackAfterMinimize) {
             awaitingCategoryBackAfterMinimize = false
             section = if (playbackReturnSection == "Movies") "Movies" else "Live TV"
@@ -3967,7 +3967,6 @@ class MainActivity : AppCompatActivity() {
                 liveTvSelectedGroup = "Select category"
                 liveTvSearchQuery = ""
             }
-            // Keep closePlayer() on this directory after playback stops in Step 3.
             playbackReturnSection = section
             playbackReturnGroup = selectedGroup
             playbackReturnSearch = ""
@@ -3979,38 +3978,19 @@ class MainActivity : AppCompatActivity() {
                 .putString("live_tv_group", liveTvSelectedGroup)
                 .putString("live_tv_search", liveTvSearchQuery)
                 .apply()
+            lastBackPressedAt = 0L
             renderHome()
             return
         }
 
-        // Step 3: stop the video only after the category/library has been shown.
-        if (playerView != null) {
-            awaitingCategoryBackAfterMinimize = false
-            closePlayer()
-            return
-        }
-
-        // Step 4: show an exit warning. The next Back press (Step 5) exits the app.
-        if (exitWarningDialog == null) {
-            val dialog = AlertDialog.Builder(this)
-                .setTitle("Exit SANY IPTV?")
-                .setMessage("অ্যাপ বন্ধ করতে আবার Back চাপুন।")
-                .setCancelable(false)
-                .create()
-            exitWarningDialog = dialog
-            dialog.setOnKeyListener { _, keyCode, event ->
-                if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
-                    exitWarningDialog = null
-                    finish()
-                    true
-                } else {
-                    keyCode == KeyEvent.KEYCODE_BACK
-                }
-            }
-            dialog.setOnDismissListener {
-                if (!isFinishing) exitWarningDialog = null
-            }
-            dialog.show()
+        // On the category/library screen, two consecutive Back presses exit.
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastBackPressedAt <= 2000L) {
+            lastBackPressedAt = 0L
+            finish()
+        } else {
+            lastBackPressedAt = now
+            toast("অ্যাপ বন্ধ করতে আবার Back চাপুন")
         }
     }
 
