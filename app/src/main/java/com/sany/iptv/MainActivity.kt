@@ -1824,7 +1824,13 @@ class MainActivity : AppCompatActivity() {
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
-        settingsToggleCard(box, "Background video playback", "Keep video playing in a floating window when you leave the app", "background_playback", true)
+        settingsToggleCard(box, "Floating window", "Show video in a floating window when you leave the app", "floating_window_enabled", true) { enabled ->
+            if (!enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+                closePlayer()
+            }
+            refreshPictureInPictureParams()
+        }
+        settingsToggleCard(box, "Background video playback", "Allow video audio to continue when the app is in the background", "background_playback", true)
         settingsCard(box, "Reload playlist", "Fetch the saved playlist again") {
             loadFromUrl(permanentPlaylistUrl)
         }
@@ -2241,7 +2247,8 @@ class MainActivity : AppCompatActivity() {
         title: String,
         subtitle: String,
         prefKey: String,
-        defaultValue: Boolean
+        defaultValue: Boolean,
+        onChanged: ((Boolean) -> Unit)? = null
     ) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2257,6 +2264,7 @@ class MainActivity : AppCompatActivity() {
             isChecked = prefs.getBoolean(prefKey, defaultValue)
             setOnCheckedChangeListener { _, enabled ->
                 prefs.edit().putBoolean(prefKey, enabled).apply()
+                onChanged?.invoke(enabled)
                 toast(if (enabled) "$title ON" else "$title OFF")
             }
         }
@@ -3740,7 +3748,7 @@ class MainActivity : AppCompatActivity() {
             .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
             .setActions(listOf(closeAction))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(true)
+            builder.setAutoEnterEnabled(prefs.getBoolean("floating_window_enabled", true))
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val rect = android.graphics.Rect()
@@ -3754,9 +3762,7 @@ class MainActivity : AppCompatActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (playerView == null || player?.isPlaying != true) return
-
-        // PiP availability is independent of the background-playback preference.
-        // Keep the video eligible for PiP even when background playback is disabled.
+        if (!prefs.getBoolean("floating_window_enabled", true)) return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
             // Enter PiP explicitly when Android reports a user-initiated departure.
