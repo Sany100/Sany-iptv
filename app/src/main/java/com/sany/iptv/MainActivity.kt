@@ -3707,7 +3707,8 @@ class MainActivity : AppCompatActivity() {
     // may not deliver a reliable last-moment callback, so PiP parameters must already
     // be registered before the user swipes Home.
     private fun refreshPictureInPictureParams() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || playerView == null || player?.isPlaying != true) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || playerView == null ||
+            player?.isPlaying != true || !prefs.getBoolean("background_playback", true)) return
         val videoSize = player?.videoSize
         var width = videoSize?.width ?: 0
         var height = videoSize?.height ?: 0
@@ -3788,10 +3789,18 @@ class MainActivity : AppCompatActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
+            // Android 12+ can auto-enter PiP directly from the Home gesture,
+            // without onUserLeaveHint. Expand the video and its clipping parent
+            // here as well so the PiP surface contains only the video.
+            playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
+            playerView?.let { view ->
+                view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                view.layoutParams = FrameLayout.LayoutParams(-1, -1)
+                view.setUseController(false)
+            }
             playerHeader?.visibility = View.GONE
             playerFullscreenButton?.visibility = View.GONE
             playerMinimizeButton?.visibility = View.GONE
-            playerView?.setUseController(false)
         } else if (playerView != null) {
             // Restore the normal embedded-player container after PiP closes.
             playerScreen?.layoutParams = FrameLayout.LayoutParams(
