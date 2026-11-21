@@ -825,6 +825,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderHome() {
+        val currentNavigation = currentNavigationSnapshot()
+        val previousNavigation = lastRenderedNavigation
+        if (!restoringNavigation && previousNavigation != null &&
+            (previousNavigation.section != currentNavigation.section ||
+             previousNavigation.selectedGroup != currentNavigation.selectedGroup ||
+             previousNavigation.liveTvSelectedGroup != currentNavigation.liveTvSelectedGroup)) {
+            // Avoid duplicate adjacent entries when several UI refreshes target the same destination.
+            if (navigationHistory.isEmpty() || navigationHistory.peekLast() != previousNavigation) {
+                navigationHistory.addLast(previousNavigation)
+            }
+        }
+        lastRenderedNavigation = currentNavigation
+        restoringNavigation = false
         home.removeAllViews()
         // No reserved blank welcome slot: keep the selected page content directly below the player.
         val top = LinearLayout(this).apply {
@@ -3940,77 +3953,84 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Back navigation is section-aware in Fit Screen; fullscreen keeps its existing minimize behavior.
+    // A screen snapshot lets Back unwind the actual section/category path one step at a time.
+    private data class NavigationSnapshot(
+        val section: String,
+        val selectedGroup: String,
+        val searchQuery: String,
+        val liveTvSelectedGroup: String,
+        val liveTvSearchQuery: String,
+        val scrollY: Int
+    )
+    private val navigationHistory = java.util.ArrayDeque<NavigationSnapshot>()
+    private var lastRenderedNavigation: NavigationSnapshot? = null
+    private var restoringNavigation = false
     private var lastBackPressedAt = 0L
-    private var liveCategoriesShownAfterBack = false
-    private var movieClosedAwaitingLiveTv = false
 
     companion object {
     }
 
-    private fun showAllLiveCategoriesAfterBack() {
-        section = "Live TV"
-        selectedGroup = "Select category"
-        searchQuery = ""
-        liveTvSelectedGroup = "Select category"
-        liveTvSearchQuery = ""
-        playbackReturnSection = "Live TV"
-        playbackReturnGroup = "Select category"
-        playbackReturnSearch = ""
-        playbackReturnScrollY = 0
+    private fun currentNavigationSnapshot() = NavigationSnapshot(
+        section = section,
+        selectedGroup = selectedGroup,
+        searchQuery = searchQuery,
+        liveTvSelectedGroup = liveTvSelectedGroup,
+        liveTvSearchQuery = liveTvSearchQuery,
+        scrollY = if (::listContainer.isInitialized)
+            ((listContainer.parent as? ScrollView)?.scrollY ?: playbackReturnScrollY)
+        else playbackReturnScrollY
+    )
+
+    private fun restorePreviousNavigation() {
+        if (navigationHistory.isEmpty()) return
+        val previous = navigationHistory.removeLast()
+        section = previous.section
+        selectedGroup = previous.selectedGroup
+        searchQuery = previous.searchQuery
+        liveTvSelectedGroup = previous.liveTvSelectedGroup
+        liveTvSearchQuery = previous.liveTvSearchQuery
+        playbackReturnSection = previous.section
+        playbackReturnGroup = previous.selectedGroup
+        playbackReturnSearch = previous.searchQuery
+        playbackReturnScrollY = previous.scrollY
         prefs.edit()
-            .putString("ui_section", "Live TV")
-            .putString("ui_group", "Select category")
-            .putString("ui_search", "")
-            .putString("live_tv_group", "Select category")
-            .putString("live_tv_search", "")
+            .putString("ui_section", section)
+            .putString("ui_group", selectedGroup)
+            .putString("ui_search", searchQuery)
+            .putString("live_tv_group", liveTvSelectedGroup)
+            .putString("live_tv_search", liveTvSearchQuery)
             .apply()
+        restoringNavigation = true
         renderHome()
+        if (::listContainer.isInitialized) {
+            (listContainer.parent as? ScrollView)?.post {
+                (listContainer.parent as? ScrollView)?.scrollTo(0, previous.scrollY)
+            }
+        }
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Preserve existing fullscreen behavior: Back minimizes to Fit Screen.
+        // Player navigation is always consistent: Full Screen -> Fit Screen -> close player.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
             lastBackPressedAt = 0L
             return
         }
-
-        // Live TV Fit Screen: first Back reveals all categories while video keeps playing.
-        if (playerView != null && !isPlayerFullscreen && section == "Live TV" &&
-            !liveCategoriesShownAfterBack) {
-            liveCategoriesShownAfterBack = true
-            showAllLiveCategoriesAfterBack()
-            lastBackPressedAt = 0L
-            return
-        }
-
-        // Live TV Fit Screen: second Back closes the video.
-        if (playerView != null && !isPlayerFullscreen && section == "Live TV" &&
-            liveCategoriesShownAfterBack) {
+        if (playerView != null) {
             closePlayer()
-            liveCategoriesShownAfterBack = false
             lastBackPressedAt = 0L
             return
         }
 
-        // Movies Fit Screen: first Back closes the movie; next Back returns to Live TV.
-        if (playerView != null && !isPlayerFullscreen && section == "Movies") {
-            closePlayer()
-            movieClosedAwaitingLiveTv = true
+        // Unwind every visited section/category in reverse order until the Live TV home.
+        if (navigationHistory.isNotEmpty()) {
             lastBackPressedAt = 0L
+            restorePreviousNavigation()
             return
         }
 
-        if (movieClosedAwaitingLiveTv) {
-            movieClosedAwaitingLiveTv = false
-            showAllLiveCategoriesAfterBack()
-            lastBackPressedAt = 0L
-            return
-        }
-
-        // After the section-specific steps, two consecutive Back presses exit the app.
+        // At the root (Live TV home), require two consecutive Back presses to exit.
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastBackPressedAt in 1..2000L) {
             lastBackPressedAt = 0L
