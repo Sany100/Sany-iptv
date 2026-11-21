@@ -3959,28 +3959,29 @@ class MainActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (playerView != null && isPlayerFullscreen) {
-            // First Back from fullscreen: minimize the player but preserve the
-            // exact section/category from which the current channel was started.
+            // First Back from fullscreen: keep playback alive in the compact player
+            // and show the Live TV category directory underneath it.
             setPlayerFullscreen(false)
+            if (section != "Live TV" || selectedGroup != "Select category") {
+                returnToMainCategory()
+            }
+            lastBackPressedAt = 0L
             return
         }
-        if (playerView != null) {
-            // Keep the exact category, search filter, and scroll position that launched
-            // playback. Once fullscreen has been minimized, the next Back only closes
-            // the player overlay; it must not navigate to the category directory.
-            closePlayer()
-            return
-        }
+        // A minimized player must keep playing while Back navigates the app.
+        // Do not close or stop the player here.
         if (section == "Live TV" && selectedGroup != "Select category") {
             returnToMainCategory()
+            lastBackPressedAt = 0L
             return
         }
         // Other sections return to the Live TV category directory first.
         if (section != "Live TV") {
             returnToMainCategory()
+            lastBackPressedAt = 0L
             return
         }
-        // Require two Back presses within two seconds to exit the app.
+        // On the category directory: first Back warns, the next Back exits.
         val now = System.currentTimeMillis()
         if (now - lastBackPressedAt <= 2_000L) {
             lastBackPressedAt = 0L
