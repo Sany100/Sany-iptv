@@ -107,6 +107,10 @@ class MainActivity : AppCompatActivity() {
     private var playbackRetryCount = 0
     private var playerView: PlayerView? = null
     private var currentChannel: Channel? = null
+    private var playbackReturnScrollY = 0
+    private var playbackReturnSection = "Live TV"
+    private var playbackReturnGroup = "All"
+    private var playbackReturnSearch = ""
     private var resumeChannelOnForeground: Channel? = null
     private var previousChannel: Channel? = null
     private lateinit var root: FrameLayout
@@ -3081,6 +3085,16 @@ class MainActivity : AppCompatActivity() {
         // Preserve the current viewing mode when switching channels.
         // First playback opens fullscreen; a switch from portrait stays portrait.
         val wasAlreadyPlaying = playerView != null
+        if (!wasAlreadyPlaying) {
+            playbackReturnSection = section
+            playbackReturnGroup = selectedGroup
+            playbackReturnSearch = searchQuery
+            playbackReturnScrollY = (listContainer.parent as? ScrollView)?.scrollY ?: 0
+            if (section == "Live TV") {
+                liveTvSelectedGroup = selectedGroup
+                liveTvSearchQuery = searchQuery
+            }
+        }
         val keepFullscreenMode = if (wasAlreadyPlaying) isPlayerFullscreen else true
         val oldChannel = currentChannel
         if (oldChannel != null && oldChannel.url != channel.url) previousChannel = oldChannel
@@ -3757,7 +3771,24 @@ class MainActivity : AppCompatActivity() {
         playerScreen?.let { root.removeView(it) }
         playerScreen = null
         updateHomeHeaderVisibility()
-        if (!keepOrientation) isPlayerFullscreen = false
+        if (!keepOrientation) {
+            isPlayerFullscreen = false
+            // Restore the exact list context after the player overlay is removed.
+            section = playbackReturnSection
+            selectedGroup = playbackReturnGroup
+            searchQuery = playbackReturnSearch
+            if (section == "Live TV") {
+                liveTvSelectedGroup = selectedGroup
+                liveTvSearchQuery = searchQuery
+                prefs.edit().putString("live_tv_group", selectedGroup)
+                    .putString("live_tv_search", searchQuery).apply()
+            }
+            if (::listContainer.isInitialized) {
+                (listContainer.parent as? ScrollView)?.post {
+                    (listContainer.parent as? ScrollView)?.scrollTo(0, playbackReturnScrollY)
+                }
+            }
+        }
     }
 
     @Deprecated("Deprecated in Android API")
