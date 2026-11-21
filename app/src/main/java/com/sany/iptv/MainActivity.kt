@@ -3131,7 +3131,9 @@ class MainActivity : AppCompatActivity() {
                         refreshPictureInPictureParams()
                     }
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        if (isPlaying) refreshPictureInPictureParams()
+                        // Enable PiP auto-entry only while an actual video is playing.
+                        // Pausing/stopping immediately unregisters the PiP entry path.
+                        refreshPictureInPictureParams()
                     }
                 })
                 player = created
@@ -3747,7 +3749,9 @@ class MainActivity : AppCompatActivity() {
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(prefs.getBoolean("floating_window_enabled", true))
+            val allowFloatingWindow = prefs.getBoolean("floating_window_enabled", true) &&
+                playerView != null && player?.isPlaying == true
+            builder.setAutoEnterEnabled(allowFloatingWindow)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val rect = android.graphics.Rect()
