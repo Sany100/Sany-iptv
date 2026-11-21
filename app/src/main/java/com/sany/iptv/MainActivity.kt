@@ -41,6 +41,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -3090,16 +3091,65 @@ class MainActivity : AppCompatActivity() {
         input.requestFocus()
     }
 
-    private fun play(channel: Channel, startPlayback: Boolean = true) {
+    private fun play(channel: Channel, startPlayback: Boolean = true, ftpCredentials: Pair<String, String>? = null) {
         if (section != "Live TV" && section != "Movies") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
         }
         val streamUrl = channel.url.trim()
-        if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
-            toast("Unsupported stream URL — FTP needs server credentials and setup")
+        val isFtpStream = streamUrl.startsWith("ftp://", true)
+        if (!isFtpStream && !streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
+            toast("Unsupported stream type. HTTP, HTTPS and FTP links are supported.")
             return
+        }
+
+        // Accept credentials embedded in an FTP URL (ftp://user:pass@host/path).
+        // If the playlist omits them, ask the user at playback time; never store them.
+        var resolvedFtpCredentials = ftpCredentials
+        if (isFtpStream && resolvedFtpCredentials == null) {
+            val userInfo = try { java.net.URI(streamUrl).rawUserInfo } catch (_: Exception) { null }
+            if (!userInfo.isNullOrBlank()) {
+                val decoded = java.net.URLDecoder.decode(userInfo, "UTF-8")
+                val separator = decoded.indexOf(':')
+                if (separator > 0) {
+                    resolvedFtpCredentials = decoded.substring(0, separator) to decoded.substring(separator + 1)
+                }
+            }
+            if (resolvedFtpCredentials == null) {
+                val usernameInput = EditText(this).apply {
+                    hint = "FTP username"
+                    setSingleLine(true)
+                    setText("anonymous")
+                }
+                val passwordInput = EditText(this).apply {
+                    hint = "FTP password"
+                    inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    setSingleLine(true)
+                }
+                val form = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(20), dp(8), dp(20), 0)
+                    addView(usernameInput)
+                    addView(passwordInput)
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("FTP server login")
+                    .setMessage("এই FTP stream চালাতে সার্ভারের username ও password দিন।")
+                    .setView(form)
+                    .setNegativeButton("CANCEL", null)
+                    .setPositiveButton("CONNECT") { _, _ ->
+                        val username = usernameInput.text.toString().trim()
+                        val password = passwordInput.text.toString()
+                        if (username.isBlank()) {
+                            toast("FTP username দিন")
+                        } else {
+                            play(channel, startPlayback, username to password)
+                        }
+                    }
+                    .show()
+                return
+            }
         }
 
         // Preserve the current viewing mode when switching channels.
@@ -3140,8 +3190,15 @@ class MainActivity : AppCompatActivity() {
             .setReadTimeoutMs(15000)
             .setAllowCrossProtocolRedirects(true)
 
+        val streamDataSourceFactory: DataSource.Factory = if (isFtpStream) {
+            FtpDataSource.Factory(
+                resolvedFtpCredentials?.first ?: "anonymous",
+                resolvedFtpCredentials?.second ?: ""
+            )
+        } else httpFactory
+
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(httpFactory)
+            .setDataSourceFactory(streamDataSourceFactory)
 
         val p = player ?: ExoPlayer.Builder(
             this,
@@ -3200,11 +3257,14 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             if (httpStatus != null) {
                                 toast("সার্ভার HTTP $httpStatus দিয়েছে — অন্য stream link চেষ্টা করুন")
+                            } else if (currentChannel?.url?.startsWith("ftp://", true) == true) {
+                                toast("FTP stream চালানো যায়নি। Username/password, server permission ও FTP port পরীক্ষা করুন।")
                             } else {
                                 toast("প্লে হচ্ছে না: ${error.errorCodeName}")
                             }
                             val permanentHttpError = httpStatus == 401 || httpStatus == 403 || httpStatus == 404
-                            if (prefs.getBoolean("auto_retry_playback", true) && !permanentHttpError && playbackRetryCount < 2) {
+                            val isCurrentFtp = currentChannel?.url?.startsWith("ftp://", true) == true
+                            if (!isCurrentFtp && prefs.getBoolean("auto_retry_playback", true) && !permanentHttpError && playbackRetryCount < 2) {
                                 playbackRetryCount++
                                 toast("Auto retry ${playbackRetryCount}/2…")
                                 playbackRetryHandler.postDelayed({
