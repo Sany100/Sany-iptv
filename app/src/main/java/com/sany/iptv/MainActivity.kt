@@ -760,9 +760,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateHomeHeaderVisibility() {
-        // While a video is active, reclaim the brand-header space on secondary tabs.
-        // Returning to Live TV or closing the player restores the original header.
-        homeHeaderContainer?.visibility = if (playerView != null && section != "Live TV") View.GONE else View.VISIBLE
+        // Keep the brand header hidden on every tab while the compact player is active.
+        // Closing the player restores the header in the normal home layout.
+        homeHeaderContainer?.visibility = if (playerView != null) View.GONE else View.VISIBLE
     }
 
     private fun renderHome() {
@@ -1074,7 +1074,9 @@ class MainActivity : AppCompatActivity() {
         // hide the branded/title header and playlist selector, then restore them
         // when the user returns to the category directory.
         val immersiveCategory = section == "Live TV" && !categoryDirectory
-        homeHeaderContainer?.visibility = if (immersiveCategory) View.GONE else View.VISIBLE
+        // Category rendering can run after tab changes or playback refreshes; never
+        // let it re-show the branded header while a video player is still attached.
+        homeHeaderContainer?.visibility = if (playerView != null || immersiveCategory) View.GONE else View.VISIBLE
         // The Live TV title is shown in the replacement banner below the brand header.
         headerTitleView?.visibility = View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
