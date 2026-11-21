@@ -3118,7 +3118,11 @@ class MainActivity : AppCompatActivity() {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) {
                             playbackRetryCount = 0
+                            refreshPictureInPictureParams()
                         }
+                    }
+                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                        refreshPictureInPictureParams()
                     }
                 })
                 player = created
@@ -3696,6 +3700,48 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Prepare Android 12+ auto-enter PiP while playback is active. Gesture navigation
+    // may not deliver a reliable last-moment callback, so PiP parameters must already
+    // be registered before the user swipes Home.
+    private fun refreshPictureInPictureParams() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || playerView == null || player?.isPlaying != true) return
+        val videoSize = player?.videoSize
+        var width = videoSize?.width ?: 0
+        var height = videoSize?.height ?: 0
+        if (videoSize?.unappliedRotationDegrees == 90 || videoSize?.unappliedRotationDegrees == 270) {
+            val swap = width; width = height; height = swap
+        }
+        val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
+        val closeIntent = Intent(this, MainActivity::class.java).apply {
+            action = ACTION_CLOSE_PIP_PLAYER
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val closePendingIntent = PendingIntent.getActivity(
+            this, 7301, closeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+        val closeAction = RemoteAction(
+            Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+            "ভিডিও বন্ধ করুন",
+            "ভিডিও বন্ধ করুন",
+            closePendingIntent
+        )
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
+            .setActions(listOf(closeAction))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(true)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val rect = android.graphics.Rect()
+            if (playerView?.getGlobalVisibleRect(rect) == true && !rect.isEmpty) {
+                builder.setSourceRectHint(rect)
+            }
+        }
+        setPictureInPictureParams(builder.build())
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (playerView == null || player?.isPlaying != true) return
@@ -3718,33 +3764,13 @@ class MainActivity : AppCompatActivity() {
                 view.layoutParams = FrameLayout.LayoutParams(-1, -1)
                 view.setUseController(false)
             }
-            val videoSize = player?.videoSize
-            var width = videoSize?.width ?: 0
-            var height = videoSize?.height ?: 0
-            if (videoSize?.unappliedRotationDegrees == 90 || videoSize?.unappliedRotationDegrees == 270) {
-                val swap = width; width = height; height = swap
+            refreshPictureInPictureParams()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                val params = PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(16, 9))
+                    .build()
+                enterPictureInPictureMode(params)
             }
-            val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
-            val closeIntent = Intent(this, MainActivity::class.java).apply {
-                action = ACTION_CLOSE_PIP_PLAYER
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val closePendingIntent = PendingIntent.getActivity(
-                this, 7301, closeIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or
-                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
-            )
-            val closeAction = RemoteAction(
-                Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
-                "ভিডিও বন্ধ করুন",
-                "ভিডিও বন্ধ করুন",
-                closePendingIntent
-            )
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
-                .setActions(listOf(closeAction))
-                .build()
-            enterPictureInPictureMode(params)
         }
     }
 
