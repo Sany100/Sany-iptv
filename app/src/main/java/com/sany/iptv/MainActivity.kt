@@ -124,7 +124,6 @@ class MainActivity : AppCompatActivity() {
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
     private var playerMinimizeButton: TextView? = null
-    private var playerMiniCloseButton: TextView? = null
     private var playerSettingsButton: TextView? = null
     private var playerTopActions: View? = null
     private var playerChannelScroll: ScrollView? = null
@@ -3142,31 +3141,6 @@ class MainActivity : AppCompatActivity() {
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
 
-        // App-owned close control overlays the minimized video at its top-right.
-        // It is intentionally separate from Android's system PiP actions.
-        val miniCloseButton = TextView(this).apply {
-            text = "✕"
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            contentDescription = "Close video"
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0xE6D32F2F.toInt())
-                setStroke(dp(1), 0xFFFFFFFF.toInt())
-            }
-            elevation = dp(8).toFloat()
-            visibility = View.GONE
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { closePlayer() }
-        }
-        playerMiniCloseButton = miniCloseButton
-        screen.addView(miniCloseButton, FrameLayout.LayoutParams(dp(34), dp(34), Gravity.TOP or Gravity.END).apply {
-            topMargin = dp(8)
-            marginEnd = dp(8)
-        })
-
         // The minimized player is a compact top strip. The actual active menu
         // remains visible directly underneath it; never replace menu content with
         // a channel directory while navigating between sections.
@@ -3643,7 +3617,6 @@ class MainActivity : AppCompatActivity() {
         playerFullscreenButton?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerSettingsButton?.visibility = if (enabled) View.VISIBLE else View.GONE
         playerMinimizeButton?.visibility = if (enabled) View.VISIBLE else View.GONE
-        playerMiniCloseButton?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerChannelScroll?.visibility = View.GONE
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -3667,7 +3640,6 @@ class MainActivity : AppCompatActivity() {
         playerHeader = null
         playerFullscreenButton = null
         playerMinimizeButton = null
-        playerMiniCloseButton = null
         playerSettingsButton = null
         playerTopActions = null
         playerChannelScroll = null
