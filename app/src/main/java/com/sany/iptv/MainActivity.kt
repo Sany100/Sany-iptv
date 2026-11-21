@@ -120,6 +120,12 @@ class MainActivity : AppCompatActivity() {
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
+    private var playerMinimizeButton: TextView? = null
+    private var playerSettingsButton: TextView? = null
+    private var playerTopActions: View? = null
+    private var playerChannelScroll: ScrollView? = null
+    private var playerChannelRows: LinearLayout? = null
+    private var playerControlsPanel: View? = null
     private var headerTitleView: TextView? = null
     private var homeHeaderContainer: View? = null
     private var playlistSelectorContainer: View? = null
@@ -579,8 +585,9 @@ class MainActivity : AppCompatActivity() {
         // Android 15+ enforces edge-to-edge for targetSdk 35. Explicitly color
         // the decor and system-bar surfaces so Day mode never reveals black gaps.
         window.decorView.setBackgroundColor(bg)
-        window.statusBarColor = bg
-        window.navigationBarColor = bg
+        // Use fully opaque system bars in both Day and Night themes.
+        window.statusBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
+        window.navigationBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             window.navigationBarDividerColor = bg
         }
@@ -642,7 +649,9 @@ class MainActivity : AppCompatActivity() {
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
         center.addView(logo, LinearLayout.LayoutParams(dp(260), dp(260)).apply {
-            topMargin = dp(95)
+            // Lift the splash logo higher while keeping the welcome text and
+            // loading progress grouped comfortably below it.
+            topMargin = dp(5)
             bottomMargin = dp(0)
         })
 
@@ -660,17 +669,23 @@ class MainActivity : AppCompatActivity() {
             letterSpacing = 0.01f
             setPadding(dp(8), 0, dp(8), 0)
             alpha = 0f
-            translationY = dp(-4).toFloat()
+            translationY = dp(-40).toFloat()
         }
-        center.addView(welcome)
+        center.addView(welcome, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(4)
+        })
 
         val thankYou = text("Thank you for choosing SANY IPTV", 12, Color.rgb(126, 220, 255), true).apply {
             gravity = Gravity.CENTER
             letterSpacing = 0.025f
             setPadding(0, dp(7), 0, dp(14))
             alpha = 0f
+            // Keep this line in its own layout row beneath the welcome message.
+            translationY = 0f
         }
-        center.addView(thankYou)
+        center.addView(thankYou, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(10)
+        })
 
         // Static welcome text colors: color/lighting animation intentionally disabled.
         welcome.setTextColor(if (isLight) Color.rgb(25, 55, 100) else Color.WHITE)
@@ -682,11 +697,13 @@ class MainActivity : AppCompatActivity() {
             progress = 0
             progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(64, 170, 255))
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.argb(85, 210, 230, 255))
+            translationY = 0f
         }
         center.addView(loadingBar, LinearLayout.LayoutParams(dp(230), dp(7)))
         val percentLabel = text("0%", 13, Color.WHITE, true).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(9), 0, 0)
+            translationY = 0f
         }
         center.addView(percentLabel)
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
@@ -747,19 +764,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHome() {
         home.removeAllViews()
-        // Preserve the exact welcome-message slot as blank space on the Home screen.
-        val homeWelcomeSpacer = text(" ", 14, accent, true).apply {
-            gravity = Gravity.CENTER
-            letterSpacing = 0.025f
-            setPadding(dp(8), dp(5), dp(8), dp(9))
-            visibility = View.INVISIBLE
-        }
-        home.addView(homeWelcomeSpacer, LinearLayout.LayoutParams(-1, -2))
+        // No reserved blank welcome slot: keep the selected page content directly below the player.
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(6))
-            background = glass(22)
-            // Premium 3D glass header: perspective, depth and a soft raised-card finish.
+            setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 14 else 12))
+            // Opaque theme-matched header: no translucent grey tint in either theme.
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                if (isLight) intArrayOf(Color.WHITE, Color.rgb(246, 250, 255))
+                else intArrayOf(Color.rgb(7, 22, 45), Color.rgb(10, 28, 55))
+            ).apply {
+                cornerRadius = dp(22).toFloat()
+                setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
+            }
+            // Premium raised header; opaque fill prevents the content behind it tinting the surface.
             cameraDistance = 11000f * resources.displayMetrics.density
             rotationX = 2.2f
             translationZ = dp(10).toFloat()
@@ -834,7 +852,7 @@ class MainActivity : AppCompatActivity() {
 
         contentArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(14), dp(18), 0)
+            setPadding(dp(18), 0, dp(18), 0)
             setBackgroundColor(bg)
         }
         home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -842,7 +860,15 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(2), dp(5), dp(2))
-            background = glass(18)
+            // Solid bottom dock keeps the gesture/navigation area visually consistent.
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                if (isLight) intArrayOf(Color.WHITE, Color.rgb(245, 249, 255))
+                else intArrayOf(Color.rgb(6, 18, 38), Color.rgb(9, 25, 49))
+            ).apply {
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
+            }
         }
         home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
         renderSection()
@@ -943,7 +969,7 @@ class MainActivity : AppCompatActivity() {
             visibility = View.VISIBLE
         }
         contentArea.addView(categoryHeaderContainer, LinearLayout.LayoutParams(-1, dp(42)).apply {
-            topMargin = dp(2)
+            topMargin = dp(18)
         })
         val categoriesScroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
@@ -1048,6 +1074,7 @@ class MainActivity : AppCompatActivity() {
         // The Live TV title is shown in the replacement banner below the brand header.
         headerTitleView?.visibility = View.VISIBLE
         playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
+        // Keep the category back, view-mode and search toolbar visible above channel rows.
         categoryHeaderContainer.visibility = if (section == "Live TV" && (categoryDirectory || immersiveCategory)) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
             if (categoryDirectory) View.VISIBLE else View.GONE
@@ -1091,7 +1118,14 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener {
                     selectedGroup = "Select category"
                     liveTvSelectedGroup = selectedGroup
-                    prefs.edit().putString("live_tv_group", liveTvSelectedGroup).apply()
+                    searchQuery = ""
+                    liveTvSearchQuery = ""
+                    prefs.edit()
+                        .putString("live_tv_group", liveTvSelectedGroup)
+                        .putString("live_tv_search", "")
+                        .putString("ui_group", selectedGroup)
+                        .putString("ui_search", "")
+                        .apply()
                     displayedLimit = 60
                     renderListOnly()
                 }
@@ -1149,15 +1183,22 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(16), dp(10), dp(15), dp(10))
-                background = glass(10)
+                background = if (isLight) rounded(Color.WHITE, 10, Color.BLACK, 2) else glass(10)
                 elevation = dp(2).toFloat()
                 isFocusable = true
                 applyTvFocusStyle(this)
                 setOnClickListener {
                     selectedGroup = item
+                    searchQuery = ""
                     if (section == "Live TV") {
                         liveTvSelectedGroup = item
-                        prefs.edit().putString("live_tv_group", liveTvSelectedGroup).apply()
+                        liveTvSearchQuery = ""
+                        prefs.edit()
+                            .putString("live_tv_group", liveTvSelectedGroup)
+                            .putString("live_tv_search", "")
+                            .putString("ui_group", selectedGroup)
+                            .putString("ui_search", "")
+                            .apply()
                     }
                     displayedLimit = 60
                     renderListOnly()
@@ -1287,13 +1328,28 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(9), dp(10), dp(9))
-                background = glass(12)
+                background = if (isLight) rounded(Color.WHITE, 12, Color.BLACK, 2) else glass(12)
                 applyTvFocusStyle(this)
             }
             val number = text((index + 1).toString().padStart(2, '0'), 12, accent, true).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(2), 0, dp(8), 0)
                 minWidth = dp(28)
+            }
+            val isPlayingChannel = currentChannel?.url == channel.url
+            if (isPlayingChannel) {
+                row.background = GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(0xFF126BDF.toInt(), 0xEE0845A4.toInt(), 0xDD071F52.toInt())
+                ).apply {
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(3), 0xFF35B8FF.toInt())
+                }
+                row.elevation = dp(11).toFloat()
+                row.foreground = GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setStroke(dp(1), 0x99BCEBFF.toInt())
+                }
             }
             row.addView(number, LinearLayout.LayoutParams(dp(30), dp(46)))
             val fallbackLogo = text(channel.name.take(1).uppercase(), 18, accent, true).apply {
@@ -1302,7 +1358,7 @@ class MainActivity : AppCompatActivity() {
             }
             val logo = ImageView(this).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                background = glass(10)
+                background = if (isLight) rounded(Color.WHITE, 10, Color.rgb(25, 31, 42), 1) else glass(10)
                 setPadding(dp(4), dp(4), dp(4), dp(4))
                 contentDescription = "${channel.name} logo"
             }
@@ -1337,7 +1393,7 @@ class MainActivity : AppCompatActivity() {
             }
             row.addView(logoFrame, LinearLayout.LayoutParams(dp(46), dp(46)))
             val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0) }
-            details.addView(text(channel.name, 14, white, true))
+            details.addView(text(channel.name, 14, if (isPlayingChannel) 0xFF72B9FF.toInt() else white, true))
             details.addView(text(channel.group.ifBlank { "Other" }, 11, muted).apply { setPadding(0, dp(4), 0, 0) })
             // Subtle channel watermark beneath each channel label.
             val watermarkLine = LinearLayout(this).apply {
@@ -1364,6 +1420,35 @@ class MainActivity : AppCompatActivity() {
             })
             details.addView(watermarkLine)
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            if (isPlayingChannel) {
+                val nowPlayingBadge = TextView(this).apply {
+                    text = "▶"
+                    textSize = 18f
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    contentDescription = "Now playing channel"
+                    background = GradientDrawable(
+                        GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(0xFF36C5FF.toInt(), 0xFF0875F5.toInt(), 0xFF123EAA.toInt())
+                    ).apply {
+                        cornerRadius = dp(20).toFloat()
+                        setStroke(dp(2), 0xFFD7F3FF.toInt())
+                    }
+                    setShadowLayer(dp(9).toFloat(), 0f, 0f, 0xFF168BFF.toInt())
+                    setPadding(dp(7), dp(2), dp(7), dp(2))
+                    val pulse = ValueAnimator.ofFloat(0.72f, 1f).apply {
+                        duration = 750L
+                        repeatCount = ValueAnimator.INFINITE
+                        repeatMode = ValueAnimator.REVERSE
+                        addUpdateListener { alpha = it.animatedValue as Float }
+                    }
+                    pulse.start()
+                }
+                row.addView(nowPlayingBadge, LinearLayout.LayoutParams(dp(42), dp(38)).apply {
+                    leftMargin = dp(6)
+                })
+            }
             // Keep the original full-width, front-facing channel logo presentation.
             logoFrame.rotationY = 0f
             logoFrame.rotationX = 0f
@@ -1393,15 +1478,29 @@ class MainActivity : AppCompatActivity() {
             }
             pair.forEachIndexed { columnIndex, channel ->
                 val itemIndex = rowIndex * 2 + columnIndex
+                val isPlayingChannel = currentChannel?.url == channel.url
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_VERTICAL
                     isFocusable = true
                     isFocusableInTouchMode = false
                     setPadding(dp(14), dp(10), dp(14), dp(10))
-                    background = glass(16)
+                    background = if (isPlayingChannel) GradientDrawable(
+                        GradientDrawable.Orientation.TL_BR,
+                        intArrayOf(0xFF126BDF.toInt(), 0xEE0845A4.toInt(), 0xDD071F52.toInt())
+                    ).apply {
+                        cornerRadius = dp(16).toFloat()
+                        setStroke(dp(3), 0xFF35B8FF.toInt())
+                    } else if (isLight) rounded(Color.WHITE, 16, Color.BLACK, 2) else glass(16)
+                    if (isPlayingChannel) {
+                        elevation = dp(10).toFloat()
+                        foreground = GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setStroke(dp(1), 0x99BCEBFF.toInt())
+                        }
+                    }
                     applyTvFocusStyle(this)
-                    contentDescription = "Play ${channel.name}"
+                    contentDescription = if (isPlayingChannel) "Currently playing: ${channel.name}" else "Play ${channel.name}"
                     if (section == "Live TV" || section == "Movies") setOnClickListener { play(channel) }
                 }
                 val topLine = LinearLayout(this).apply {
@@ -1410,6 +1509,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 topLine.addView(text((itemIndex + 1).toString().padStart(2, '0'), 13, accent, true))
                 topLine.addView(text("  •  ${channel.group.ifBlank { "Other" }}", 11, muted))
+                if (isPlayingChannel) {
+                    topLine.addView(text("  ▶ NOW PLAYING", 10, 0xFF8DDCFF.toInt(), true).apply {
+                        setShadowLayer(dp(6).toFloat(), 0f, 0f, 0xFF168BFF.toInt())
+                    })
+                }
                 card.addView(topLine)
                 // Show the actual channel logo in Grid/Card mode, with a readable fallback.
                 val cardLogoFallback = text(channel.name.take(1).uppercase(), 20, accent, true).apply {
@@ -1418,7 +1522,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 val cardLogo = ImageView(this).apply {
                     scaleType = ImageView.ScaleType.FIT_CENTER
-                    background = glass(10)
+                    background = if (isLight) rounded(Color.WHITE, 10, Color.rgb(25, 31, 42), 1) else glass(10)
                     setPadding(dp(5), dp(5), dp(5), dp(5))
                     contentDescription = "${channel.name} logo"
                 }
@@ -1452,7 +1556,7 @@ class MainActivity : AppCompatActivity() {
                         } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
                     }
                 }
-                card.addView(text(channel.name, 17, white, true).apply {
+                card.addView(text(channel.name, 17, if (isPlayingChannel) 0xFF72B9FF.toInt() else white, true).apply {
                     maxLines = 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     setPadding(0, dp(8), 0, dp(4))
@@ -1563,7 +1667,10 @@ class MainActivity : AppCompatActivity() {
                 applyTvFocusStyle(this)
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                background = if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
+                background = if (isLight) {
+                    if (active) rounded(Color.rgb(229, 241, 255), 14, Color.BLACK, 2)
+                    else rounded(Color.WHITE, 14, Color.BLACK, 1)
+                } else if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
                 setPadding(dp(3), 0, dp(3), 0)
                 translationY = -dp(3).toFloat()
                 setOnClickListener {
@@ -2688,10 +2795,6 @@ class MainActivity : AppCompatActivity() {
         box.addView(checkerRunButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
             bottomMargin = dp(8)
         })
-        box.addView(actionButton("↻  RETRY OFFLINE CHANNELS") {
-            if (!checkerRunning) startPlaylistCheck(true, onlyOffline = true)
-            else toast("আগে চলমান পরীক্ষা Pause বা শেষ করুন")
-        }, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(10) })
 
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val filterScroll = HorizontalScrollView(this).apply {
@@ -2907,6 +3010,13 @@ class MainActivity : AppCompatActivity() {
         if (oldChannel != null && oldChannel.url != channel.url) previousChannel = oldChannel
         closePlayer(keepOrientation = true)
         currentChannel = channel
+        // Move the single active-channel highlight immediately when playback selection changes.
+        if (::listContainer.isInitialized && section == "Live TV") {
+            val scroll = listContainer.parent as? ScrollView
+            val previousScrollY = scroll?.scrollY ?: 0
+            renderChannelRows(listContainer)
+            scroll?.post { scroll.scrollTo(0, previousScrollY) }
+        }
 
         val httpFactory = DefaultHttpDataSource.Factory()
             // Common IPTV endpoints reject minimal/custom user agents; send normal
@@ -3006,8 +3116,328 @@ class MainActivity : AppCompatActivity() {
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         playerScreen = screen
+        isPlayerFullscreen = keepFullscreenMode
+        playerHeader = null
+
+        val view = PlayerView(this).apply {
+            useController = false
+            player = p
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            setBackgroundColor(Color.BLACK)
+            setShutterBackgroundColor(Color.BLACK)
+            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+        }
+        playerView = view
+        screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
+
+        // The minimized player is a compact top strip. The actual active menu
+        // remains visible directly underneath it; never replace menu content with
+        // a channel directory while navigating between sections.
+        val miniChannelScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            setBackgroundColor(bg)
+            visibility = View.GONE
+        }
+        val miniChannelRows = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(12))
+        }
+        miniChannelScroll.addView(miniChannelRows)
+        screen.addView(miniChannelScroll, FrameLayout.LayoutParams(-1, -1).apply {
+            topMargin = dp(235)
+        })
+        playerChannelScroll = miniChannelScroll
+        playerChannelRows = miniChannelRows
+
+        // Custom control dock sits below the video, keeping the channel list unobstructed.
+        val controlsPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(3), dp(8), dp(3))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xA6101A2A.toInt(), 0xB20A1220.toInt())
+            ).apply {
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), 0x884D8DDA.toInt())
+            }
+            visibility = View.GONE
+            alpha = 0f
+            elevation = dp(5).toFloat()
+        }
+        val transportRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        fun playerAction(label: String, description: String, action: () -> Unit) =
+            TextView(this).apply {
+                text = label
+                contentDescription = description
+                textSize = if (label == "Ⅱ" || label == "▶") 25f else 22f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                isFocusable = true
+                applyTvFocusStyle(this)
+                setOnClickListener { action() }
+            }
+        // Channel identity is anchored at the far-left of the transport row.
+        val channelIdentity = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(3), 0, dp(4), 0)
+        }
+        val previousButton = playerAction("|◀", "Previous channel") { playAdjacentChannel(-1) }
+        val playPauseButton = playerAction(if (p.isPlaying) "Ⅱ" else "▶", "Play or pause") {
+            if (p.isPlaying) p.pause() else p.play()
+        }
+        val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
+        transportRow.addView(channelIdentity, LinearLayout.LayoutParams(dp(126), -1))
+        listOf(previousButton, playPauseButton, nextButton).forEachIndexed { index, button ->
+            button.textSize = if (index == 1) 21f else 19f
+            button.typeface = if (index == 1) Typeface.create("sans-serif-light", Typeface.NORMAL) else Typeface.DEFAULT
+            transportRow.addView(button, LinearLayout.LayoutParams(0, dp(27), 1f).apply {
+                if (index == 1) { leftMargin = dp(4); rightMargin = dp(4) }
+            })
+        }
+        controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(27)))
+
+        val progressBar = SeekBar(this).apply {
+            max = 1000
+            progressTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x668899AA)
+            setPadding(dp(2), 0, dp(2), 0)
+        }
+        controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(15)))
+        val infoRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        fun timeLabel() = TextView(this).apply {
+            text = "00:00"
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        }
+        val positionLabel = timeLabel()
+        val durationLabel = timeLabel().apply { setTextColor(0xFFB8C4D4.toInt()) }
+        infoRow.addView(positionLabel)
+        infoRow.addView(durationLabel, LinearLayout.LayoutParams(0, -2, 0.7f).apply { leftMargin = dp(8) })
+
+        // Compact now-playing identity: channel logo and name follow every channel switch.
+        val nowPlayingLogo = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            background = GradientDrawable().apply {
+                setColor(0x332D8CFF)
+                cornerRadius = dp(5).toFloat()
+            }
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+            contentDescription = "${channel.name} logo"
+        }
+        val nowPlayingName = TextView(this).apply {
+            text = channel.name
+            textSize = 10f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(0xFFBBD9FF.toInt())
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        channelIdentity.addView(nowPlayingLogo, LinearLayout.LayoutParams(dp(27), dp(27)))
+        channelIdentity.addView(nowPlayingName, LinearLayout.LayoutParams(0, -1, 1f).apply {
+            leftMargin = dp(5)
+        })
+        channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
+            nowPlayingLogo.tag = logoUrl
+            logoExecutor.execute {
+                try {
+                    val connection = URL(logoUrl).openConnection().apply {
+                        connectTimeout = 3500
+                        readTimeout = 3500
+                    }
+                    val bitmap = connection.getInputStream().use { input ->
+                        BitmapFactory.Options().run {
+                            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                            BitmapFactory.decodeStream(input, null, this)
+                        }
+                    }
+                    if (bitmap != null) runOnUiThread {
+                        if (!isFinishing && nowPlayingLogo.tag == logoUrl) nowPlayingLogo.setImageBitmap(bitmap)
+                        else bitmap.recycle()
+                    }
+                } catch (_: Exception) { /* Keep compact fallback styling when no logo is available. */ }
+            }
+        }
+
+        fun openPlayerSettings() {
+            val options = arrayOf("Playback speed", "Video quality")
+            AlertDialog.Builder(this).setTitle("Player settings").setItems(options) { _, which ->
+                if (which == 0) {
+                    val speeds = arrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+                    val labels = speeds.map { if (it == 1f) "1.0× (Normal)" else "${it}×" }.toTypedArray()
+                    val selected = speeds.indexOf(prefs.getFloat("playback_speed", 1.0f)).coerceAtLeast(0)
+                    AlertDialog.Builder(this).setTitle("Playback speed").setSingleChoiceItems(labels, selected) { dialog, choice ->
+                        prefs.edit().putFloat("playback_speed", speeds[choice]).apply()
+                        p.setPlaybackSpeed(speeds[choice])
+                        dialog.dismiss()
+                    }.setNegativeButton("CLOSE", null).show()
+                } else {
+                    val qualities = arrayOf("auto", "480", "720", "1080")
+                    val labels = arrayOf("Auto", "480p", "720p", "1080p")
+                    val selected = qualities.indexOf(prefs.getString("video_quality", "auto")).coerceAtLeast(0)
+                    AlertDialog.Builder(this).setTitle("Video quality").setSingleChoiceItems(labels, selected) { dialog, choice ->
+                        prefs.edit().putString("video_quality", qualities[choice]).apply()
+                        applyVideoQuality()
+                        dialog.dismiss()
+                    }.setNegativeButton("CLOSE", null).show()
+                }
+            }.show()
+        }
+        val settingsButton = playerAction("⚙", "Player settings") { openPlayerSettings() }
+        // Compact player actions are placed at the far-right of the lower
+        // control strip, replacing the duplicate floating settings buttons.
+        val topSettingsButton = playerAction("⚙", "Player settings") {
+            openPlayerSettings()
+        }.apply {
+            textSize = 20f
+            background = glass(9)
+            minWidth = dp(38)
+            minHeight = dp(34)
+        }
+        playerSettingsButton = topSettingsButton
+        val minimizeButton = playerAction("⤡", "Minimize player") {
+            setPlayerFullscreen(false)
+        }.apply {
+            textSize = 21f
+            minWidth = dp(38)
+            minHeight = dp(34)
+            background = GradientDrawable().apply {
+                setColor(0xB5102745.toInt())
+                cornerRadius = dp(9).toFloat()
+                setStroke(dp(1), Color.rgb(25, 135, 255))
+            }
+        }
+        playerMinimizeButton = minimizeButton
+        val fullscreenButton = playerAction("⛶", "Fullscreen / Minimize") {
+            setPlayerFullscreen(!isPlayerFullscreen)
+        }.apply {
+            textSize = 19f
+            minWidth = dp(38)
+            minHeight = dp(34)
+        }
+        playerFullscreenButton = fullscreenButton
+        playerControlsPanel = controlsPanel
+        infoRow.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        infoRow.addView(topSettingsButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
+            leftMargin = dp(5)
+        })
+        infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
+            leftMargin = dp(5)
+        })
+        infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
+            leftMargin = dp(5)
+        })
+        controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(88), Gravity.TOP).apply {
+            topMargin = dp(155)
+            leftMargin = dp(8); rightMargin = dp(8)
+        })
+
+        val controlsHandler = Handler(Looper.getMainLooper())
+        val hideControls = Runnable {
+            if (controlsPanel.visibility == View.VISIBLE) {
+                controlsPanel.animate().alpha(0f).setDuration(180).withEndAction {
+                    controlsPanel.visibility = View.GONE
+                }.start()
+            }
+        }
+        fun revealControls(autoHide: Boolean = true) {
+            controlsHandler.removeCallbacks(hideControls)
+            if (controlsPanel.visibility != View.VISIBLE) {
+                controlsPanel.visibility = View.VISIBLE
+                controlsPanel.animate().alpha(1f).setDuration(140).start()
+            } else controlsPanel.alpha = 1f
+            if (autoHide) controlsHandler.postDelayed(hideControls, 2500L)
+        }
+        progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && p.duration > 0) {
+                    val target = p.duration * progress / 1000L
+                    positionLabel.text = formatPlayerTime(target)
+                }
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                controlsHandler.removeCallbacks(hideControls)
+            }
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                val duration = p.duration
+                if (duration > 0) p.seekTo(duration * (seekBar?.progress ?: 0) / 1000L)
+                revealControls()
+            }
+        })
+        val progressUpdater = object : Runnable {
+            override fun run() {
+                if (player !== p || playerView == null) return
+                val duration = p.duration
+                val position = p.currentPosition
+                if (!progressBar.isPressed && duration > 0) {
+                    progressBar.progress = ((position * 1000L) / duration).toInt().coerceIn(0, 1000)
+                }
+                positionLabel.text = formatPlayerTime(position)
+                durationLabel.text = formatPlayerTime(if (duration > 0) duration else 0L)
+                playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
+                controlsHandler.postDelayed(this, 500L)
+            }
+        }
+        controlsHandler.post(progressUpdater)
+
+        val tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            private val swipeThreshold = dp(64)
+            private val swipeVelocityThreshold = dp(120)
+            override fun onDown(e: MotionEvent) = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (controlsPanel.visibility == View.VISIBLE) {
+                    controlsHandler.removeCallbacks(hideControls)
+                    hideControls.run()
+                } else revealControls()
+                return true
+            }
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                val start = e1 ?: return false
+                val dx = e2.x - start.x
+                val dy = e2.y - start.y
+                // A clear downward swipe minimizes fullscreen playback to the inline player.
+                // Keep horizontal swipes reserved for channel navigation.
+                if (isPlayerFullscreen &&
+                    dy > swipeThreshold &&
+                    dy > kotlin.math.abs(dx) * 1.25f &&
+                    velocityY > swipeVelocityThreshold) {
+                    setPlayerFullscreen(false)
+                    return true
+                }
+                // A clear upward swipe on the minimized video restores fullscreen playback.
+                if (!isPlayerFullscreen &&
+                    dy < -swipeThreshold &&
+                    kotlin.math.abs(dy) > kotlin.math.abs(dx) * 1.25f &&
+                    velocityY < -swipeVelocityThreshold) {
+                    setPlayerFullscreen(true)
+                    return true
+                }
+                // Use the same horizontal channel-swipe gesture in fullscreen and inline player.
+                if (kotlin.math.abs(dx) > swipeThreshold &&
+                    kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f &&
+                    kotlin.math.abs(velocityX) > swipeVelocityThreshold) {
+                    playAdjacentChannel(if (dx < 0) 1 else -1)
+                    return true
+                }
+                return true
+            }
+        })
+        view.setOnTouchListener { _, event -> tapDetector.onTouchEvent(event); true }
+
         val tvRemoteHint: TextView? = if (isTvDevice) TextView(this).apply {
-            // TV-friendly channel switch hint stays visible when the player controls fade.
             text = "▲ / ▼  CHANGE CHANNEL     BACK  •  EXIT"
             textSize = 11f
             typeface = Typeface.DEFAULT_BOLD
@@ -3022,104 +3452,26 @@ class MainActivity : AppCompatActivity() {
             isFocusable = false
             contentDescription = "Use Up or Down on the TV remote to change channel"
         } else null
-        isPlayerFullscreen = keepFullscreenMode
-        playerHeader = null
-        val view = PlayerView(this).apply {
-            useController = true
-            player = p
-            // Crop slightly when needed so the video fills the entire landscape display.
-            // The PlayerView and its shutter remain black, never showing the home screen behind it.
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            setBackgroundColor(Color.BLACK)
-            setShutterBackgroundColor(Color.BLACK)
-            setControllerShowTimeoutMs(2500)
-            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-        }
-        playerView = view
-        screen.addView(view, FrameLayout.LayoutParams(-1, dp(230), Gravity.TOP).apply {
-            leftMargin = dp(0); rightMargin = dp(0)
-        })
         tvRemoteHint?.let { hint ->
             screen.addView(hint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
                 bottomMargin = dp(18)
             })
         }
 
-        val swipeDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            private val threshold = dp(65)
-            private val velocity = dp(120)
-            override fun onDown(e: MotionEvent) = true
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                val start = e1 ?: return false
-                val dx = e2.x - start.x
-                val dy = e2.y - start.y
-                if (kotlin.math.abs(dx) > threshold && kotlin.math.abs(dx) > kotlin.math.abs(dy) &&
-                    kotlin.math.abs(velocityX) > velocity) {
-                    playAdjacentChannel(if (dx < 0) 1 else -1)
-                    return true
-                }
-                return false
-            }
-        })
-        view.setOnTouchListener { _, event ->
-            swipeDetector.onTouchEvent(event)
-            false
+        // Every new playback starts the visible channel list at playlist channel 1.
+        (if (::listContainer.isInitialized) listContainer.parent as? ScrollView else null)?.post {
+            (listContainer.parent as? ScrollView)?.scrollTo(0, 0)
         }
 
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xCC000000.toInt(), Color.TRANSPARENT)
+        // Start channel cards immediately below the inline video; no artificial blank spacer.
+        if (::listContainer.isInitialized) {
+            listContainer.setPadding(
+                listContainer.paddingLeft, 0,
+                listContainer.paddingRight, listContainer.paddingBottom
             )
         }
-        val back = text("‹", 34, Color.WHITE, true).apply {
-            isFocusable = true
-            applyTvFocusStyle(this)
-            gravity = Gravity.CENTER
-            setOnClickListener { closePlayer() }
-        }
-        header.addView(back, LinearLayout.LayoutParams(dp(42), dp(48)))
-        header.addView(text(channel.name, 16, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f))
-        playerHeader = header
-        screen.addView(header, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
-            topMargin = dp(230)
-        })
-        val fullscreenButton = text("⛶  FULL", 13, Color.WHITE, true).apply {
-            isFocusable = true
-            applyTvFocusStyle(this)
-            gravity = Gravity.CENTER
-            setPadding(dp(13), 0, dp(13), 0)
-            background = GradientDrawable().apply {
-                setColor(0xCC101A28.toInt())
-                cornerRadius = dp(14).toFloat()
-                setStroke(dp(1), 0x99FFFFFF.toInt())
-            }
-            elevation = dp(8).toFloat()
-            setOnClickListener { setPlayerFullscreen(!isPlayerFullscreen) }
-            contentDescription = "Toggle fullscreen"
-        }
-        playerFullscreenButton = fullscreenButton
-        screen.addView(fullscreenButton, FrameLayout.LayoutParams(-2, dp(46), Gravity.TOP or Gravity.END).apply {
-            topMargin = dp(244); rightMargin = dp(16)
-        })
-        // Hide the custom fullscreen button together with Media3 controls.
-        // It reappears when the user taps the video to show the controls again.
-        view.setControllerVisibilityListener(
-            PlayerView.ControllerVisibilityListener { visibility ->
-                val controlsVisible = visibility == View.VISIBLE
-                playerFullscreenButton?.visibility = if (controlsVisible) View.VISIBLE else View.GONE
-                playerHeader?.visibility = if (isPlayerFullscreen && controlsVisible) View.VISIBLE
-                    else if (isPlayerFullscreen) View.GONE else View.VISIBLE
-            }
-        )
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
-        // Retain portrait/fullscreen mode across channel changes.
         setPlayerFullscreen(keepFullscreenMode)
-        view.showController()
-
         val lowerUrl = streamUrl.substringBefore("?").substringBefore("#").lowercase()
         val itemBuilder = MediaItem.Builder().setUri(streamUrl)
         when {
@@ -3153,6 +3505,15 @@ class MainActivity : AppCompatActivity() {
         target.setParameters(builder)
     }
 
+    private fun formatPlayerTime(milliseconds: Long): String {
+        val totalSeconds = (milliseconds.coerceAtLeast(0L) / 1000L)
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) String.format("%d:%02d:%02d", hours, minutes, seconds)
+            else String.format("%02d:%02d", minutes, seconds)
+    }
+
     private fun playAdjacentChannel(direction: Int) {
         val current = currentChannel ?: return
         val index = channels.indexOfFirst { it.url == current.url }
@@ -3165,28 +3526,87 @@ class MainActivity : AppCompatActivity() {
         toast("Playing: ${channels[nextIndex].name}")
     }
 
+    private fun renderMinimizedPlayerChannels() {
+        val container = playerChannelRows ?: return
+        container.removeAllViews()
+        container.addView(text("ALL CHANNELS  •  PLAYLIST ORDER", 11, accent, true).apply {
+            setPadding(dp(4), dp(4), dp(4), dp(10))
+            letterSpacing = 0.04f
+        })
+        channels.forEachIndexed { index, channel ->
+            val isPlaying = currentChannel?.url == channel.url
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isFocusable = true
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                background = if (isPlaying) GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(0xFF126BDF.toInt(), 0xEE0845A4.toInt(), 0xDD071F52.toInt())
+                ).apply {
+                    cornerRadius = dp(13).toFloat()
+                    setStroke(dp(2), 0xFF35B8FF.toInt())
+                } else if (isLight) rounded(Color.WHITE, 12, Color.BLACK, 1) else glass(12)
+                if (isPlaying) elevation = dp(7).toFloat()
+                applyTvFocusStyle(this)
+                setOnClickListener { play(channel) }
+            }
+            row.addView(text((index + 1).toString().padStart(2, '0'), 12, accent, true).apply {
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(dp(34), dp(44)))
+            val title = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), 0, 0, 0)
+            }
+            title.addView(text(channel.name, 14, if (isPlaying) Color.WHITE else white, true))
+            title.addView(text(channel.group.ifBlank { "Other" }, 10, if (isPlaying) 0xFFD6E9FF.toInt() else muted))
+            row.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+            if (isPlaying) row.addView(text("▶", 17, Color.WHITE, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(8), 0, dp(4), 0)
+            })
+            container.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(6)
+            })
+        }
+    }
+
     private fun setPlayerFullscreen(enabled: Boolean) {
         isPlayerFullscreen = enabled
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
-        playerFullscreenButton?.text = if (enabled) "⤢  EXIT" else "⛶  FULL"
-        if (!enabled) playerFullscreenButton?.visibility = View.VISIBLE
+        playerFullscreenButton?.text = if (enabled) "⤢" else "⛶"
+        playerControlsPanel?.let { panel ->
+            (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
+                params.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
+                params.topMargin = if (enabled) 0 else dp(155)
+                params.bottomMargin = if (enabled) dp(18) else 0
+                panel.layoutParams = params
+            }
+        }
         playerView?.layoutParams = FrameLayout.LayoutParams(
-            -1, if (enabled) -1 else dp(230), if (enabled) Gravity.CENTER else Gravity.TOP
+            -1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP
         )
+        // In minimized mode, reserve the top 235dp for video and lay out the
+        // currently selected menu in the remaining screen area.
+        playerScreen?.layoutParams = FrameLayout.LayoutParams(
+            -1, if (enabled) -1 else dp(235), Gravity.TOP
+        )
+        if (::home.isInitialized) {
+            home.layoutParams = FrameLayout.LayoutParams(-1, -1).apply {
+                topMargin = if (enabled) 0 else dp(235)
+            }
+        }
         playerHeader?.let { header ->
             (header.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                params.topMargin = if (enabled) 0 else dp(230)
+                params.topMargin = if (enabled) 0 else dp(235)
                 header.layoutParams = params
             }
         }
-        playerFullscreenButton?.let { button ->
-            (button.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
-                params.gravity = if (enabled) Gravity.BOTTOM or Gravity.END else Gravity.TOP or Gravity.END
-                params.topMargin = if (enabled) 0 else dp(244)
-                params.bottomMargin = if (enabled) dp(24) else 0
-                button.layoutParams = params
-            }
-        }
+        playerFullscreenButton?.visibility = if (enabled) View.GONE else View.VISIBLE
+        playerSettingsButton?.visibility = if (enabled) View.VISIBLE else View.GONE
+        playerMinimizeButton?.visibility = if (enabled) View.VISIBLE else View.GONE
+        playerChannelScroll?.visibility = View.GONE
         requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
@@ -3208,6 +3628,21 @@ class MainActivity : AppCompatActivity() {
         }
         playerHeader = null
         playerFullscreenButton = null
+        playerMinimizeButton = null
+        playerSettingsButton = null
+        playerTopActions = null
+        playerChannelScroll = null
+        playerChannelRows = null
+        playerControlsPanel = null
+        if (::listContainer.isInitialized) {
+            listContainer.setPadding(
+                listContainer.paddingLeft, 0,
+                listContainer.paddingRight, listContainer.paddingBottom
+            )
+        }
+        if (::home.isInitialized) {
+            home.layoutParams = FrameLayout.LayoutParams(-1, -1)
+        }
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
         playerView?.player = null
@@ -3262,6 +3697,10 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // PiP must use the whole Activity bounds. Keeping the portrait 230dp
             // inline-player height here makes Android crop the floating video.
+            // Expand both the video surface AND its parent to the full Activity
+            // bounds before entering PiP. Expanding only PlayerView leaves it
+            // clipped by the 235dp minimized-player container.
+            playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
             playerView?.let { view ->
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.layoutParams = FrameLayout.LayoutParams(-1, -1)
@@ -3286,18 +3725,24 @@ class MainActivity : AppCompatActivity() {
         if (isInPictureInPictureMode) {
             playerHeader?.visibility = View.GONE
             playerFullscreenButton?.visibility = View.GONE
+            playerMinimizeButton?.visibility = View.GONE
             playerView?.setUseController(false)
         } else if (playerView != null) {
+            // Restore the normal embedded-player container after PiP closes.
+            playerScreen?.layoutParams = FrameLayout.LayoutParams(
+                -1, if (isPlayerFullscreen) -1 else dp(235), Gravity.TOP
+            )
             playerView?.let { view ->
                 view.setUseController(true)
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.layoutParams = FrameLayout.LayoutParams(
-                    -1, if (isPlayerFullscreen) -1 else dp(230),
+                    -1, if (isPlayerFullscreen) -1 else dp(235),
                     if (isPlayerFullscreen) Gravity.CENTER else Gravity.TOP
                 )
             }
             playerHeader?.visibility = if (isPlayerFullscreen) View.GONE else View.VISIBLE
-            playerFullscreenButton?.visibility = View.VISIBLE
+            playerFullscreenButton?.visibility = if (isPlayerFullscreen) View.GONE else View.VISIBLE
+            playerMinimizeButton?.visibility = View.GONE
         }
     }
 
