@@ -1772,7 +1772,7 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data", "low_data_mode", true)
+        settingsToggleCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data; keep OFF for best available quality", "low_data_mode", false)
         settingsToggleCard(box, "Reduce UI animations", "Use simpler transitions for a quicker, calmer interface", "reduce_ui_motion", false)
         settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
             val modes = arrayOf("Day mode", "Night mode", "System default")
@@ -3118,8 +3118,8 @@ class MainActivity : AppCompatActivity() {
                 "Accept" to "*/*",
                 "Connection" to "keep-alive"
             ))
-            .setConnectTimeoutMs(8000)
-            .setReadTimeoutMs(20000)
+            .setConnectTimeoutMs(5000)
+            .setReadTimeoutMs(15000)
             .setAllowCrossProtocolRedirects(true)
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
@@ -3144,26 +3144,27 @@ class MainActivity : AppCompatActivity() {
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 1000
-                            "high" -> 4000
-                            else -> 2500
+                            "low" -> 700
+                            "high" -> 2500
+                            else -> 1200
                         },
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 3500
-                            "high" -> 10000
-                            else -> 5000
+                            "low" -> 6000
+                            "high" -> 18000
+                            else -> 10000
                         },
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 500
-                            "high" -> 1000
-                            else -> 750
+                            "low" -> 250
+                            "high" -> 750
+                            else -> 350
                         },
                         when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 1500
-                            "high" -> 2000
-                            else -> 1500
+                            "low" -> 750
+                            "high" -> 1800
+                            else -> 1000
                         }
                     )
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
             )
             .build().also { created ->
@@ -3600,7 +3601,7 @@ class MainActivity : AppCompatActivity() {
             "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
             "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
             "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
-            else -> if (prefs.getBoolean("low_data_mode", true)) {
+            else -> if (prefs.getBoolean("low_data_mode", false)) {
                 builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(650_000)
             } else {
                 builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
