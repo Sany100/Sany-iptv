@@ -4009,28 +4009,65 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun returnToLiveTvHome() {
+        closePlayer()
+        section = "Live TV"
+        selectedGroup = "All"
+        searchQuery = ""
+        liveTvSelectedGroup = "All"
+        liveTvSearchQuery = ""
+        navigationHistory.clear()
+        lastRenderedNavigation = null
+        playbackReturnSection = "Live TV"
+        playbackReturnGroup = "All"
+        playbackReturnSearch = ""
+        playbackReturnScrollY = 0
+        prefs.edit()
+            .putString("ui_section", "Live TV")
+            .putString("ui_group", "All")
+            .putString("ui_search", "")
+            .putString("live_tv_group", "All")
+            .putString("live_tv_search", "")
+            .apply()
+        lastBackPressedAt = 0L
+        renderHome()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Player navigation is always consistent: Full Screen -> Fit Screen -> close player.
+        // Video navigation has priority over page navigation.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
             lastBackPressedAt = 0L
             return
         }
+
         if (playerView != null) {
-            closePlayer()
-            lastBackPressedAt = 0L
+            // Live TV: close the fit-screen player and reveal All Categories.
+            // Movies: close the player and return directly to the Live TV section.
+            if (section == "Live TV" || section == "Movies") {
+                returnToLiveTvHome()
+            } else {
+                closePlayer()
+                lastBackPressedAt = 0L
+            }
             return
         }
 
-        // Unwind every visited section/category in reverse order until the Live TV home.
+        // Settings, Checker, Series and other pages unwind one screen at a time.
+        // Once their history is exhausted, return to the Live TV home before exit.
         if (navigationHistory.isNotEmpty()) {
             lastBackPressedAt = 0L
             restorePreviousNavigation()
             return
         }
 
-        // At the root (Live TV home), require two consecutive Back presses to exit.
+        if (section != "Live TV" || selectedGroup != "All" || searchQuery.isNotEmpty()) {
+            returnToLiveTvHome()
+            return
+        }
+
+        // Only the Live TV home can be exited, using two consecutive Back presses.
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastBackPressedAt in 1..2000L) {
             lastBackPressedAt = 0L
