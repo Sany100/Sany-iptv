@@ -3006,7 +3006,7 @@ class MainActivity : AppCompatActivity() {
         input.requestFocus()
     }
 
-    private fun play(channel: Channel) {
+    private fun play(channel: Channel, startPlayback: Boolean = true) {
         if (section != "Live TV" && section != "Movies") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
@@ -3531,7 +3531,7 @@ class MainActivity : AppCompatActivity() {
         p.setMediaItem(itemBuilder.build())
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
         p.prepare()
-        p.playWhenReady = true
+        p.playWhenReady = startPlayback
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
 
@@ -3827,10 +3827,25 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         scheduleOfflineChannelRecheck()
-        // Floating Window OFF means returning to the app must show the normal
-        // app screen. Never recreate or auto-resume the previous player.
-        resumeChannelOnForeground = null
-        prefs.edit().remove("resume_channel_url").apply()
+        // Restore only a channel that the user had explicitly paused before
+        // minimizing. Rebuild its player in paused state so the Resume control works.
+        if (!prefs.getBoolean("floating_window_enabled", true)) {
+            val savedUrl = prefs.getString("paused_channel_url", null)
+            if (!savedUrl.isNullOrBlank() && playerView == null) {
+                val savedSection = prefs.getString("paused_channel_section", "Live TV") ?: "Live TV"
+                window.decorView.postDelayed({
+                    if (!isFinishing && !isDestroyed && playerView == null &&
+                        !prefs.getBoolean("floating_window_enabled", true)) {
+                        val channel = channels.firstOrNull { it.url.trim() == savedUrl }
+                        if (channel != null) {
+                            section = if (savedSection == "Movies") "Movies" else "Live TV"
+                            prefs.edit().remove("paused_channel_url").remove("paused_channel_section").apply()
+                            play(channel, startPlayback = false)
+                        }
+                    }
+                }, 700L)
+            }
+        }
     }
 
     private var lastBackPressedAt = 0L
@@ -3905,12 +3920,21 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         checkerUiHandler.removeCallbacks(offlineRecheckRunnable)
         val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
-        // Never persist a channel for automatic playback when Floating Window is OFF.
-        // Leaving the app stops playback and returning shows the regular app screen.
+        // Preserve the player screen only when the user had explicitly paused it.
+        // Do not auto-play on return; restore a prepared, paused player for Resume.
+        val wasExplicitlyPaused = !closingPip && !prefs.getBoolean("floating_window_enabled", true) &&
+            playerView != null && currentChannel != null && player?.playWhenReady == false &&
+            player?.playbackState != Player.STATE_IDLE
+        val stateEditor = prefs.edit()
+        if (wasExplicitlyPaused) {
+            stateEditor.putString("paused_channel_url", currentChannel?.url)
+                .putString("paused_channel_section", section)
+        } else {
+            stateEditor.remove("paused_channel_url").remove("paused_channel_section")
+        }
+        stateEditor.apply()
         resumeChannelOnForeground = null
-        prefs.edit().remove("resume_channel_url").apply()
-        // Audio/video may continue only while the Activity is visibly in PiP.
-        // Leaving the app without PiP always stops playback; closing PiP does too.
+        // No background audio: stop the player after saving the paused channel identity.
         player?.pause()
         player?.stop()
         prefs.edit()
