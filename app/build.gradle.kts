@@ -38,11 +38,11 @@ android {
     defaultConfig {
         applicationId = "com.sany.iptv"
         // Android 6.0 (Marshmallow), API 23, is the minimum installable version.
-        // Newer Android versions are not capped here; test on actual devices.
         minSdk = 23
         targetSdk = 35
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("3").get().toInt()
-        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.2").get()
+        // Keep the visible version name, but advance versionCode for in-place updates.
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("304").get().toInt()
+        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.2.297").get()
     }
 
     buildTypes {
