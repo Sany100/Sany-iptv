@@ -208,8 +208,9 @@ class MainActivity : AppCompatActivity() {
                 .apply()
         }
         // Keep the Live TV channel list empty until the user opens a category.
-        val resumeStream = if (restoringBackground) prefs.getString("resume_stream", null) else null
-        prefs.edit().putBoolean("resume_without_splash", false).apply()
+        // Returning from background/PiP must not replay a stream or show the startup animation.
+        val returningFromBackground = prefs.getBoolean("resume_without_splash", false)
+        prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
         val cachedPlaylist = savedPlaylist?.let { playlistCacheFile(it) }
         if (cachedPlaylist?.exists() == true) {
             try { channels = M3uParser.parse(cachedPlaylist.readText()) } catch (_: Exception) { channels = emptyList() }
@@ -219,7 +220,7 @@ class MainActivity : AppCompatActivity() {
         // system/decor regions with the currently selected theme color.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
-        buildShell(showSplash = !restoringBackground)
+        buildShell(showSplash = !restoringBackground && !returningFromBackground)
         registerForPushUpdates()
         if (prefs.getBoolean("mandatory_update_required", false)) {
             updateRequired = true
@@ -250,11 +251,6 @@ class MainActivity : AppCompatActivity() {
         restoreStreamCheckResults()
         if (channels.isNotEmpty()) startPlaylistCheck(false)
         if (channels.isEmpty() && !savedPlaylist.isNullOrBlank()) loadFromUrl(savedPlaylist, false)
-        else if (!resumeStream.isNullOrBlank() && channels.isNotEmpty()) {
-            channels.firstOrNull { it.url == resumeStream }?.let { channel ->
-                Handler(Looper.getMainLooper()).post { play(channel) }
-            }
-        }
     }
 
     // Register this installation for owner-wide update announcements through Firebase Cloud Messaging.
@@ -3905,9 +3901,9 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         checkerUiHandler.removeCallbacks(offlineRecheckRunnable)
         val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
-        if (closingPip) {
-            // Android's PiP close (X) dismisses the Activity; explicitly stop playback
-            // so audio cannot continue after the floating window is closed.
+        // Audio/video may continue only while the Activity is visibly in PiP.
+        // Leaving the app without PiP always stops playback; closing PiP does too.
+        if (!closingPip || isFinishing) {
             player?.pause()
             player?.stop()
         }
@@ -3918,9 +3914,9 @@ class MainActivity : AppCompatActivity() {
             .putString("live_tv_group", liveTvSelectedGroup)
             .putString("live_tv_search", liveTvSearchQuery)
             .putBoolean("resume_without_splash", true)
-            .putString("resume_stream", if (!closingPip && player?.isPlaying == true) currentChannel?.url else null)
+            .remove("resume_stream")
             .apply()
-        if (closingPip) prefs.edit().remove("resume_stream").putBoolean("resume_without_splash", false).apply()
+        if (closingPip) prefs.edit().putBoolean("resume_without_splash", false).apply()
         super.onStop()
     }
 
