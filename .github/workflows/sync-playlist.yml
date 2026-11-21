@@ -26,12 +26,74 @@ jobs:
         run: |
           set -euo pipefail
           SOURCE="https://raw.githubusercontent.com/abusaeeidx/Mrgify-BDIX-IPTV/main/playlist.m3u"
-          curl --location --fail --silent --show-error --retry 3 --retry-delay 5 --connect-timeout 20 --max-time 240 "$SOURCE" -o playlist.m3u.tmp
-          test -s playlist.m3u.tmp
-          grep -q '^#EXTM3U' playlist.m3u.tmp
-          grep -q '^#EXTINF' playlist.m3u.tmp
-          mv playlist.m3u.tmp playlist.m3u
-          echo "Downloaded $(wc -l < playlist.m3u) lines ($(du -h playlist.m3u | cut -f1))."
+          curl --location --fail --silent --show-error --retry 3 --retry-delay 5 --connect-timeout 20 --max-time 240 "$SOURCE" -o playlist.upstream.m3u
+          test -s playlist.upstream.m3u
+          grep -q '^#EXTM3U' playlist.upstream.m3u
+          grep -q '^#EXTINF' playlist.upstream.m3u
+
+      - name: Merge upstream playlist and preserve custom channels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def parse(path):
+              lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+              first = next((i for i, line in enumerate(lines) if line.startswith("#EXTINF")), len(lines))
+              header = "\n".join(lines[:first]).strip()
+              entries = []
+              starts = [i for i, line in enumerate(lines) if line.startswith("#EXTINF")]
+              for pos, start in enumerate(starts):
+                  end = starts[pos + 1] if pos + 1 < len(starts) else len(lines)
+                  block = lines[start:end]
+                  extinf = block[0]
+                  name_match = re.search(r",([^,]*)$", extinf)
+                  group_match = re.search(r'group-title="([^"]*)"', extinf, re.I)
+                  name = name_match.group(1).strip() if name_match else ""
+                  url = next((line.strip() for line in block[1:] if line.strip() and not line.lstrip().startswith("#")), "")
+                  entries.append({
+                      "block": "\n".join(block).strip(),
+                      "name": name,
+                      "url": url,
+                      "group": group_match.group(1).strip().lower() if group_match else "",
+                  })
+              return header, entries
+
+          def norm(value):
+              return re.sub(r"[^a-z0-9]", "", value.lower())
+
+          upstream_header, upstream = parse("playlist.upstream.m3u")
+          _, current = parse("playlist.m3u")
+
+          upstream_names = {norm(e["name"]) for e in upstream if e["name"]}
+          upstream_urls = {e["url"] for e in upstream if e["url"]}
+          custom_bangla, custom_other = [], []
+          seen_names, seen_urls = set(upstream_names), set(upstream_urls)
+
+          for entry in current:
+              name_key, url = norm(entry["name"]), entry["url"]
+              if not name_key or not url or name_key in seen_names or url in seen_urls:
+                  continue
+              seen_names.add(name_key)
+              seen_urls.add(url)
+              if "bangladesh" in entry["group"] or "bangla" in entry["group"]:
+                  custom_bangla.append(entry)
+              else:
+                  custom_other.append(entry)
+
+          ordered = custom_bangla + upstream + custom_other
+          output = upstream_header + "\n\n" + "\n\n".join(e["block"] for e in ordered) + "\n"
+          Path("playlist.m3u").write_text(output, encoding="utf-8")
+          print(f"Upstream channels: {len(upstream)}")
+          print(f"Preserved custom Bangla channels: {len(custom_bangla)}")
+          print(f"Preserved other custom channels: {len(custom_other)}")
+          print(f"Final playlist channels: {len(ordered)}")
+          PY
+          test -s playlist.m3u
+          grep -q '^#EXTM3U' playlist.m3u
+          grep -q '^#EXTINF' playlist.m3u
 
       - name: Commit only when changed
         shell: bash
@@ -43,6 +105,6 @@ jobs:
             exit 0
           fi
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: sync SANY IPTV playlist"
+          git config user.email "41898282+users.noreply.github.com"
+          git commit -m "chore: merge upstream playlist and preserve custom channels"
           git push
