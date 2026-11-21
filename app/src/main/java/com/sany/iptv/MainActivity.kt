@@ -133,7 +133,6 @@ class MainActivity : AppCompatActivity() {
     private var homeHeaderContainer: View? = null
     private var playlistSelectorContainer: View? = null
     private var liveTvNavLabel: TextView? = null
-    private var pausedForBackground = false
     private var maintenanceOverlay: View? = null
     private val maintenanceHandler = Handler(Looper.getMainLooper())
     private val maintenanceConfigUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/maintenance.json"
@@ -3822,10 +3821,6 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         scheduleOfflineChannelRecheck()
-        if (pausedForBackground) {
-            pausedForBackground = false
-            player?.play()
-        }
     }
 
     private var lastBackPressedAt = 0L
@@ -3903,10 +3898,8 @@ class MainActivity : AppCompatActivity() {
         val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
         // Audio/video may continue only while the Activity is visibly in PiP.
         // Leaving the app without PiP always stops playback; closing PiP does too.
-        if (!closingPip || isFinishing) {
-            player?.pause()
-            player?.stop()
-        }
+        player?.pause()
+        player?.stop()
         prefs.edit()
             .putString("ui_section", section)
             .putString("ui_group", selectedGroup)
