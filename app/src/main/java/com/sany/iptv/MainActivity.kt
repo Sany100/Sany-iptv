@@ -1449,13 +1449,8 @@ class MainActivity : AppCompatActivity() {
             // Always-on blinking green live indicator beside the SANY IPTV watermark.
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV active indicator"
-                val pulse = ValueAnimator.ofFloat(0.25f, 1f).apply {
-                    duration = 850L
-                    repeatCount = ValueAnimator.INFINITE
-                    repeatMode = ValueAnimator.REVERSE
-                    addUpdateListener { alpha = it.animatedValue as Float }
-                }
-                pulse.start()
+                // Static live indicator: avoid one infinite animator per channel row.
+                alpha = 1f
             }
             watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
@@ -1481,13 +1476,8 @@ class MainActivity : AppCompatActivity() {
                     }
                     setShadowLayer(dp(9).toFloat(), 0f, 0f, 0xFF168BFF.toInt())
                     setPadding(dp(7), dp(2), dp(7), dp(2))
-                    val pulse = ValueAnimator.ofFloat(0.72f, 1f).apply {
-                        duration = 750L
-                        repeatCount = ValueAnimator.INFINITE
-                        repeatMode = ValueAnimator.REVERSE
-                        addUpdateListener { alpha = it.animatedValue as Float }
-                    }
-                    pulse.start()
+                    // Keep the now-playing badge static to reduce UI-thread animation work.
+                    alpha = 1f
                 }
                 row.addView(nowPlayingBadge, LinearLayout.LayoutParams(dp(42), dp(38)).apply {
                     leftMargin = dp(6)
