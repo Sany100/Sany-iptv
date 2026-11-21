@@ -3755,12 +3755,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // PiP must use the whole Activity bounds. Keeping the portrait 230dp
-            // inline-player height here makes Android crop the floating video.
-            // Expand both the video surface AND its parent to the full Activity
-            // bounds before entering PiP. Expanding only PlayerView leaves it
-            // clipped by the 235dp minimized-player container.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
+            // Enter PiP explicitly when Android reports a user-initiated departure.
+            // This also covers Samsung's swipe-and-hold gesture when it opens
+            // Recents instead of Home; Android 12+ auto-enter remains enabled
+            // for the regular swipe-Home gesture.
+            // Expand the surface and its clipping parent before entering PiP,
+            // otherwise the minimized 235dp player container crops the video.
             playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
             playerView?.let { view ->
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -3768,12 +3769,7 @@ class MainActivity : AppCompatActivity() {
                 view.setUseController(false)
             }
             refreshPictureInPictureParams()
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
-                    .build()
-                enterPictureInPictureMode(params)
-            }
+            enterPictureInPictureMode()
         }
     }
 
