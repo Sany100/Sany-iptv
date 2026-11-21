@@ -72,10 +72,10 @@ jobs:
           test -n "$SANY_KEYSTORE_PASSWORD" || (echo "Missing release store password" && exit 1)
           test -n "$SANY_KEY_ALIAS" || (echo "Missing release key alias" && exit 1)
           test -n "$SANY_KEY_PASSWORD" || (echo "Missing release key password" && exit 1)
-          gradle assembleRelease -PAPP_VERSION_NAME="1.2.297" -PAPP_VERSION_CODE="$GITHUB_RUN_NUMBER"
+          gradle assembleRelease -PAPP_VERSION_NAME="1.2.312" -PAPP_VERSION_CODE="$GITHUB_RUN_NUMBER"
       - uses: actions/upload-artifact@v4
         with:
-          name: sany-iptv-1.2.297-update-code${{ github.run_number }}
+          name: sany-iptv-1.2.312-update-code${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
