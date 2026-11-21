@@ -759,6 +759,12 @@ class MainActivity : AppCompatActivity() {
         }, 700L)
     }
 
+    private fun updateHomeHeaderVisibility() {
+        // While a video is active, reclaim the brand-header space on secondary tabs.
+        // Returning to Live TV or closing the player restores the original header.
+        homeHeaderContainer?.visibility = if (playerView != null && section != "Live TV") View.GONE else View.VISIBLE
+    }
+
     private fun renderHome() {
         home.removeAllViews()
         // No reserved blank welcome slot: keep the selected page content directly below the player.
@@ -833,6 +839,7 @@ class MainActivity : AppCompatActivity() {
         top.addView(titleRow)
         homeHeaderContainer = top
         home.addView(top, LinearLayout.LayoutParams(-1, -2))
+        updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
             top.alpha = 1f
@@ -1681,6 +1688,7 @@ class MainActivity : AppCompatActivity() {
                             .putString("live_tv_search", liveTvSearchQuery).apply()
                     }
                     section = name
+                    updateHomeHeaderVisibility()
                     if (name == "Live TV") {
                         selectedGroup = liveTvSelectedGroup
                         searchQuery = liveTvSearchQuery
@@ -3125,6 +3133,7 @@ class MainActivity : AppCompatActivity() {
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
+        updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
 
         // The minimized player is a compact top strip. The actual active menu
@@ -3646,6 +3655,7 @@ class MainActivity : AppCompatActivity() {
         playerView = null
         playerScreen?.let { root.removeView(it) }
         playerScreen = null
+        updateHomeHeaderVisibility()
         if (!keepOrientation) isPlayerFullscreen = false
     }
 
