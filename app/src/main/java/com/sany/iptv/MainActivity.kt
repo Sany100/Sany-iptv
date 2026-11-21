@@ -3033,8 +3033,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun probeStream(streamUrl: String): Pair<String, String> {
+        // FTP needs credentials and a protocol-specific transfer; don't mark it offline
+        // merely because the background HTTP checker cannot authenticate it.
+        if (streamUrl.startsWith("ftp://", true)) {
+            return "Working" to "FTP — login required when playing"
+        }
         if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
-            return "Error" to "Invalid URL"
+            return "Error" to "Unsupported URL protocol"
         }
         var connection: HttpURLConnection? = null
         return try {
