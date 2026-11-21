@@ -45,6 +45,6 @@ jobs:
           gradle assembleRelease -PAPP_VERSION_NAME="1.2.303" -PAPP_VERSION_CODE="303"
       - uses: actions/upload-artifact@v4
         with:
-          name: sany-iptv-1.2.301-production-signed
+          name: sany-iptv-1.2.303-production-signed
           path: app/build/outputs/apk/release/app-release.apk
           retention-days: 14
