@@ -3135,7 +3135,7 @@ class MainActivity : AppCompatActivity() {
                 try {
                     loudnessEnhancer?.release()
                     loudnessEnhancer = LoudnessEnhancer(created.audioSessionId).apply {
-                        setTargetGain(158)
+                        setTargetGain(228)
                         enabled = true
                     }
                 } catch (_: Exception) {
@@ -3798,7 +3798,7 @@ class MainActivity : AppCompatActivity() {
                 -1, if (isPlayerFullscreen) -1 else dp(235), Gravity.TOP
             )
             playerView?.let { view ->
-                view.setUseController(true)
+                view.setUseController(false)
                 view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.layoutParams = FrameLayout.LayoutParams(
                     -1, if (isPlayerFullscreen) -1 else dp(235),
