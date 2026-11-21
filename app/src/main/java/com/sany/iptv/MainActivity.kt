@@ -3144,7 +3144,7 @@ class MainActivity : AppCompatActivity() {
         isPlayerFullscreen = keepFullscreenMode
         playerHeader = null
 
-        val view = PlayerView(this).apply {
+        val view = (layoutInflater.inflate(R.layout.player_view_texture, screen, false) as PlayerView).apply {
             useController = false
             player = p
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
