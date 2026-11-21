@@ -283,12 +283,6 @@ class MainActivity : AppCompatActivity() {
         applySystemBars()
         buildShell(showSplash = !restoringBackground && !returningFromBackground)
         registerForPushUpdates()
-        if (prefs.getBoolean("mandatory_update_required", false)) {
-            updateRequired = true
-            showMandatoryUpdateDialog()
-            updateReminderHandler.removeCallbacks(updateReminderRunnable)
-            updateReminderHandler.postDelayed(updateReminderRunnable, 10_000L)
-        }
         checkForMandatoryUpdate()
         checkMaintenanceMode()
         if (!restoringBackground) {
