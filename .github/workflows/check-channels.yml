@@ -1,0 +1,45 @@
+name: SANY IPTV Channel Health Check
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sany-channel-health-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout main playlist
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Check all playlist streams
+        run: python3 scripts/check_playlist.py
+
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f channel-check-report.md ]; then
+            cat channel-check-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Channel checker did not produce a report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload channel health report
+        if: always() && hashFiles('channel-check-report.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sany-iptv-channel-health-report
+          path: |
+            channel-check-report.json
+            channel-check-report.md
+          retention-days: 30
