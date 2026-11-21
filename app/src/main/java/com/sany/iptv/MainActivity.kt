@@ -3736,24 +3736,29 @@ class MainActivity : AppCompatActivity() {
     // may not deliver a reliable last-moment callback, so PiP parameters must already
     // be registered before the user swipes Home.
     private fun refreshPictureInPictureParams() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || playerView == null || player?.isPlaying != true) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
         val videoSize = player?.videoSize
+        val hasVideo = videoSize != null && videoSize.width > 0 && videoSize.height > 0
+        val canEnterFloatingWindow = prefs.getBoolean("floating_window_enabled", true) &&
+            playerView != null && player?.isPlaying == true && hasVideo
+
         var width = videoSize?.width ?: 0
         var height = videoSize?.height ?: 0
         if (videoSize?.unappliedRotationDegrees == 90 || videoSize?.unappliedRotationDegrees == 270) {
             val swap = width; width = height; height = swap
         }
         val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
-        // Let Android provide its single native PiP close control; a custom RemoteAction
-        // duplicates the system X button on some devices (including Samsung).
+        // PiP entry is enabled only for active video playback, never audio-only,
+        // paused, stopped, or empty-player states.
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val allowFloatingWindow = prefs.getBoolean("floating_window_enabled", true) &&
-                playerView != null && player?.isPlaying == true
-            builder.setAutoEnterEnabled(allowFloatingWindow)
+            // Always update this flag, including false, so a previous video
+            // cannot leave stale auto-enter enabled after pause/stop.
+            builder.setAutoEnterEnabled(canEnterFloatingWindow)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && canEnterFloatingWindow) {
             val rect = android.graphics.Rect()
             if (playerView?.getGlobalVisibleRect(rect) == true && !rect.isEmpty) {
                 builder.setSourceRectHint(rect)
@@ -3764,17 +3769,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (playerView == null || player?.isPlaying != true) return
+        val videoSize = player?.videoSize
+        val hasVideo = videoSize != null && videoSize.width > 0 && videoSize.height > 0
+        if (playerView == null || player?.isPlaying != true || !hasVideo) return
         if (!prefs.getBoolean("floating_window_enabled", true)) return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // Android 12+ must use the pre-registered auto-enter transition.
-            // Calling enterPictureInPictureMode() here bypasses that optimized
-            // gesture path and can animate through the launcher app icon first.
+            // Android 12+ uses the pre-registered auto-enter transition.
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
-            // Android 8–11 do not support auto-enter; explicitly enter PiP.
             refreshPictureInPictureParams()
             playerScreen?.layoutParams = FrameLayout.LayoutParams(-1, -1)
             playerView?.let { view ->
