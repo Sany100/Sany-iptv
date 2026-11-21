@@ -3137,6 +3137,9 @@ class MainActivity : AppCompatActivity() {
         playerHeader = null
 
         val view = PlayerView(this).apply {
+            // TextureView can be captured during Android's PiP transition animation.
+            // SurfaceView may be temporarily replaced by the launcher app icon.
+            setUseTextureView(true)
             useController = false
             player = p
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
