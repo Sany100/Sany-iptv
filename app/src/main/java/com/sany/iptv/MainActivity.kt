@@ -1928,22 +1928,25 @@ class MainActivity : AppCompatActivity() {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
                     setPadding(dp(28), 0, 0, 0)
-                    addView(text("GH", 16, Color.WHITE, true).apply {
-                        gravity = Gravity.CENTER
+                    addView(android.widget.ImageView(this@MainActivity).apply {
+                        setImageResource(R.drawable.ic_telegram)
+                        imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+                        scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                        setPadding(dp(12), dp(12), dp(12), dp(12))
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(Color.rgb(35, 40, 45))
+                            setColor(Color.rgb(0, 136, 204))
                         }
                         elevation = dp(3).toFloat()
                         setOnClickListener {
                             try {
-                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Sany100")))
-                            } catch (_: Exception) { toast("GitHub profile খুলতে সমস্যা হয়েছে") }
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/sanyiptv100")))
+                            } catch (_: Exception) { toast("Telegram link খুলতে সমস্যা হয়েছে") }
                         }
-                        contentDescription = "Open Sany100 GitHub profile"
+                        contentDescription = "Open SANY IPTV Telegram channel"
                         layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
                     })
-                    addView(text("GitHub", 11, muted, true).apply { setPadding(0, dp(6), 0, 0) })
+                    addView(text("Telegram", 11, muted, true).apply { setPadding(0, dp(6), 0, 0) })
                 })
             })
         })
