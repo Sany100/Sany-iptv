@@ -9,7 +9,6 @@ import android.content.Intent
 import android.net.Uri
 import android.content.pm.ActivityInfo
 import android.graphics.Color
-import android.graphics.drawable.Icon
 import android.graphics.BitmapFactory
 import android.view.GestureDetector
 import android.view.MotionEvent
