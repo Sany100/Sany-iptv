@@ -292,7 +292,7 @@ class MainActivity : AppCompatActivity() {
         checkMaintenanceMode()
         if (!restoringBackground) {
             // Avoid costly first-frame transforms on Android 6 devices.
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
                 home.alpha = 1f
                 home.translationY = 0f
                 home.scaleX = 1f
@@ -904,7 +904,7 @@ class MainActivity : AppCompatActivity() {
         })
         updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
             top.alpha = 1f
             top.translationY = 0f
             top.rotationX = 0f
@@ -1779,7 +1779,7 @@ class MainActivity : AppCompatActivity() {
                 }.setNegativeButton("CANCEL", null).show()
         }
         settingsToggleCard(box, "Low internet mode", "Android 6–13: ON by default for faster loading; Android 14+: OFF for unrestricted quality", "low_data_mode", defaultLowInternetMode)
-        settingsToggleCard(box, "Reduce UI animations", "Use simpler transitions for a quicker, calmer interface", "reduce_ui_motion", false)
+        settingsToggleCard(box, "Reduce UI animations", "ON by default for a smoother, faster interface", "reduce_ui_motion", true)
         settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
             val modes = arrayOf("Day mode", "Night mode", "System default")
             val values = arrayOf("light", "dark", "system")
