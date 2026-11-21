@@ -147,20 +147,64 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    // Persistent disk cache makes channel logos appear immediately on later visits.
+    private fun loadCachedChannelLogo(image: ImageView, fallback: View?, logoUrl: String) {
+        image.tag = logoUrl
+        logoExecutor.execute {
+            try {
+                val cacheDir = java.io.File(cacheDir, "channel_logos").apply { mkdirs() }
+                val cachedFile = java.io.File(cacheDir, logoUrl.hashCode().toString() + ".img")
+                if (!cachedFile.exists() || cachedFile.length() == 0L) {
+                    val tempFile = java.io.File(cacheDir, cachedFile.name + ".tmp")
+                    try {
+                        val connection = URL(logoUrl).openConnection().apply {
+                            connectTimeout = 4000
+                            readTimeout = 5000
+                            useCaches = true
+                        }
+                        connection.getInputStream().use { input ->
+                            tempFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        if (tempFile.length() > 0L) {
+                            if (!tempFile.renameTo(cachedFile)) {
+                                tempFile.copyTo(cachedFile, overwrite = true)
+                                tempFile.delete()
+                            }
+                        }
+                    } finally {
+                        if (tempFile.exists()) tempFile.delete()
+                    }
+                }
+                if (cachedFile.exists() && cachedFile.length() > 0L) {
+                    val options = BitmapFactory.Options().apply {
+                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                    }
+                    val bitmap = BitmapFactory.decodeFile(cachedFile.absolutePath, options)
+                    if (bitmap != null) runOnUiThread {
+                        if (!isFinishing && !isDestroyed && image.tag == logoUrl) {
+                            image.setImageBitmap(bitmap)
+                            fallback?.visibility = View.GONE
+                        } else bitmap.recycle()
+                    }
+                }
+            } catch (_: Exception) {
+                // Keep the channel-name fallback if the logo is unavailable.
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
-        val lastEpgUpdate = prefs.getString("epg_last_updated", "0")?.toLongOrNull() ?: 0L
-        // On Android 6, defer the non-essential EPG refresh until the UI has settled.
-        if (System.currentTimeMillis() - lastEpgUpdate >= 24L * 60L * 60L * 1000L) {
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
-                Handler(Looper.getMainLooper()).postDelayed({
-                    if (!isFinishing && !isDestroyed) refreshEpgSources(false)
-                }, 12_000L)
-            } else {
-                refreshEpgSources(false)
-            }
+        // Refresh EPG on every fresh app launch, without blocking the first screen.
+        // The existing daily worker remains as a background safety-net.
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!isFinishing && !isDestroyed) refreshEpgSources(false)
+            }, 3_000L)
+        } else {
+            refreshEpgSources(false)
         }
         // Keep automatic update checks enabled for every installation; there is no user-facing switch.
         prefs.edit().putBoolean("auto_update_check", true).apply()
@@ -1379,29 +1423,7 @@ class MainActivity : AppCompatActivity() {
                 addView(fallbackLogo, FrameLayout.LayoutParams(-1, -1))
             }
             channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
-                logo.tag = logoUrl
-                logoExecutor.execute {
-                    try {
-                        val connection = URL(logoUrl).openConnection().apply {
-                            connectTimeout = 4000
-                            readTimeout = 4000
-                        }
-                        val bitmap = connection.getInputStream().use { input ->
-                            BitmapFactory.Options().run {
-                                inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-                                BitmapFactory.decodeStream(input, null, this)
-                            }
-                        }
-                        if (bitmap != null) runOnUiThread {
-                            if (!isFinishing && logo.tag == logoUrl) {
-                                logo.setImageBitmap(bitmap)
-                                fallbackLogo.visibility = View.GONE
-                            } else {
-                                bitmap.recycle()
-                            }
-                        }
-                    } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
-                }
+                loadCachedChannelLogo(logo, fallbackLogo, logoUrl)
             }
             row.addView(logoFrame, LinearLayout.LayoutParams(dp(46), dp(46)))
             val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0) }
@@ -1546,27 +1568,7 @@ class MainActivity : AppCompatActivity() {
                     topMargin = dp(8)
                 })
                 channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
-                    cardLogo.tag = logoUrl
-                    logoExecutor.execute {
-                        try {
-                            val connection = URL(logoUrl).openConnection().apply {
-                                connectTimeout = 5000
-                                readTimeout = 5000
-                            }
-                            val bitmap = connection.getInputStream().use { input ->
-                                BitmapFactory.Options().run {
-                                    inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-                                    BitmapFactory.decodeStream(input, null, this)
-                                }
-                            }
-                            if (bitmap != null) runOnUiThread {
-                                if (!isFinishing && cardLogo.tag == logoUrl) {
-                                    cardLogo.setImageBitmap(bitmap)
-                                    cardLogoFallback.visibility = View.GONE
-                                } else bitmap.recycle()
-                            }
-                        } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
-                    }
+                    loadCachedChannelLogo(cardLogo, cardLogoFallback, logoUrl)
                 }
                 card.addView(text(channel.name, 17, if (isPlayingChannel) 0xFF72B9FF.toInt() else white, true).apply {
                     maxLines = 2
@@ -3371,25 +3373,7 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(5)
         })
         channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
-            nowPlayingLogo.tag = logoUrl
-            logoExecutor.execute {
-                try {
-                    val connection = URL(logoUrl).openConnection().apply {
-                        connectTimeout = 3500
-                        readTimeout = 3500
-                    }
-                    val bitmap = connection.getInputStream().use { input ->
-                        BitmapFactory.Options().run {
-                            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-                            BitmapFactory.decodeStream(input, null, this)
-                        }
-                    }
-                    if (bitmap != null) runOnUiThread {
-                        if (!isFinishing && nowPlayingLogo.tag == logoUrl) nowPlayingLogo.setImageBitmap(bitmap)
-                        else bitmap.recycle()
-                    }
-                } catch (_: Exception) { /* Keep compact fallback styling when no logo is available. */ }
-            }
+            loadCachedChannelLogo(nowPlayingLogo, null, logoUrl)
         }
 
         fun openPlayerSettings() {
