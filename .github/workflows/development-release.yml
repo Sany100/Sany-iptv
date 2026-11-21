@@ -49,7 +49,7 @@ jobs:
       - name: Publish APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.302
-          name: SANY IPTV 1.2.302
+          tag_name: v1.2.303
+          name: SANY IPTV 1.2.303
           generate_release_notes: true
           files: app/build/outputs/apk/release/app-release.apk
