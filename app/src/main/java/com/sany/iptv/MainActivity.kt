@@ -836,7 +836,11 @@ class MainActivity : AppCompatActivity() {
         }
         top.addView(titleRow)
         homeHeaderContainer = top
-        home.addView(top, LinearLayout.LayoutParams(-1, -2))
+        // Lower the complete branded header card slightly, matching the requested
+        // red-marked area while keeping the content below in normal flow.
+        home.addView(top, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(if (isTvDevice) 24 else 18)
+        })
         updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
@@ -3131,12 +3135,12 @@ class MainActivity : AppCompatActivity() {
                     }
                 })
                 player = created
-                // Total +50% amplitude boost (30% previous + another 20% requested).
-                // 20*log10(1.5) ≈ 3.52 dB = 352 mB; shared session covers every channel.
+                // Raise all-channel amplitude to approximately +70% (4.6 dB).
+                // This is applied to the shared audio session used by every channel.
                 try {
                     loudnessEnhancer?.release()
                     loudnessEnhancer = LoudnessEnhancer(created.audioSessionId).apply {
-                        setTargetGain(352)
+                        setTargetGain(460)
                         enabled = true
                     }
                 } catch (_: Exception) {
