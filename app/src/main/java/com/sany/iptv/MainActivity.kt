@@ -41,6 +41,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -78,6 +79,12 @@ class MainActivity : AppCompatActivity() {
     private val muted get() = if (isLight) Color.rgb(90, 101, 118) else Color.rgb(148, 160, 180)
     private val white get() = if (isLight) Color.rgb(20, 27, 38) else Color.WHITE
     private val prefs by lazy { getSharedPreferences("sany_iptv", MODE_PRIVATE) }
+    // API 23–33 (Android 6–13): favor low-data, fast-start defaults for older devices.
+    // API 34+ (Android 14+): allow unrestricted adaptive quality on faster devices.
+    private val defaultLowInternetMode: Boolean
+        get() = Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU
+    private val defaultNetworkBufferMode: String
+        get() = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU) "low" else "balanced"
     private val pickFile = 41
     private var channels = listOf<Channel>()
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
@@ -107,6 +114,12 @@ class MainActivity : AppCompatActivity() {
     private var playbackRetryCount = 0
     private var playerView: PlayerView? = null
     private var currentChannel: Channel? = null
+    private var playbackReturnScrollY = 0
+    // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
+    private var pendingListScrollRestoreY = 0
+    private var playbackReturnSection = "Live TV"
+    private var playbackReturnGroup = "All"
+    private var playbackReturnSearch = ""
     private var resumeChannelOnForeground: Channel? = null
     private var previousChannel: Channel? = null
     private lateinit var root: FrameLayout
@@ -143,20 +156,64 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    // Persistent disk cache makes channel logos appear immediately on later visits.
+    private fun loadCachedChannelLogo(image: ImageView, fallback: View?, logoUrl: String) {
+        image.tag = logoUrl
+        logoExecutor.execute {
+            try {
+                val cacheDir = java.io.File(cacheDir, "channel_logos").apply { mkdirs() }
+                val cachedFile = java.io.File(cacheDir, logoUrl.hashCode().toString() + ".img")
+                if (!cachedFile.exists() || cachedFile.length() == 0L) {
+                    val tempFile = java.io.File(cacheDir, cachedFile.name + ".tmp")
+                    try {
+                        val connection = URL(logoUrl).openConnection().apply {
+                            connectTimeout = 4000
+                            readTimeout = 5000
+                            useCaches = true
+                        }
+                        connection.getInputStream().use { input ->
+                            tempFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        if (tempFile.length() > 0L) {
+                            if (!tempFile.renameTo(cachedFile)) {
+                                tempFile.copyTo(cachedFile, overwrite = true)
+                                tempFile.delete()
+                            }
+                        }
+                    } finally {
+                        if (tempFile.exists()) tempFile.delete()
+                    }
+                }
+                if (cachedFile.exists() && cachedFile.length() > 0L) {
+                    val options = BitmapFactory.Options().apply {
+                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                    }
+                    val bitmap = BitmapFactory.decodeFile(cachedFile.absolutePath, options)
+                    if (bitmap != null) runOnUiThread {
+                        if (!isFinishing && !isDestroyed && image.tag == logoUrl) {
+                            image.setImageBitmap(bitmap)
+                            fallback?.visibility = View.GONE
+                        } else bitmap.recycle()
+                    }
+                }
+            } catch (_: Exception) {
+                // Keep the channel-name fallback if the logo is unavailable.
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
-        val lastEpgUpdate = prefs.getString("epg_last_updated", "0")?.toLongOrNull() ?: 0L
-        // On Android 6, defer the non-essential EPG refresh until the UI has settled.
-        if (System.currentTimeMillis() - lastEpgUpdate >= 24L * 60L * 60L * 1000L) {
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
-                Handler(Looper.getMainLooper()).postDelayed({
-                    if (!isFinishing && !isDestroyed) refreshEpgSources(false)
-                }, 12_000L)
-            } else {
-                refreshEpgSources(false)
-            }
+        // Refresh EPG on every fresh app launch, without blocking the first screen.
+        // The existing daily worker remains as a background safety-net.
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!isFinishing && !isDestroyed) refreshEpgSources(false)
+            }, 3_000L)
+        } else {
+            refreshEpgSources(false)
         }
         // Keep automatic update checks enabled for every installation; there is no user-facing switch.
         prefs.edit().putBoolean("auto_update_check", true).apply()
@@ -189,6 +246,11 @@ class MainActivity : AppCompatActivity() {
                 selectedGroup = liveTvSelectedGroup
                 searchQuery = liveTvSearchQuery
             }
+            playbackReturnSection = savedInstanceState?.getString("playback_return_section") ?: section
+            playbackReturnGroup = savedInstanceState?.getString("playback_return_group") ?: selectedGroup
+            playbackReturnSearch = savedInstanceState?.getString("playback_return_search") ?: searchQuery
+            playbackReturnScrollY = savedInstanceState?.getInt("playback_return_scroll_y", savedInstanceState?.getInt("list_scroll_y", 0) ?: 0) ?: 0
+            pendingListScrollRestoreY = savedInstanceState?.getInt("list_scroll_y", playbackReturnScrollY) ?: playbackReturnScrollY
         } else {
             // A fresh app launch always opens the Live TV home/category directory.
             // Do not carry the last visited category or section across a full app close.
@@ -225,7 +287,7 @@ class MainActivity : AppCompatActivity() {
         checkMaintenanceMode()
         if (!restoringBackground) {
             // Avoid costly first-frame transforms on Android 6 devices.
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
                 home.alpha = 1f
                 home.translationY = 0f
                 home.scaleX = 1f
@@ -767,6 +829,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderHome() {
+        val currentNavigation = currentNavigationSnapshot()
+        val previousNavigation = lastRenderedNavigation
+        if (!restoringNavigation && previousNavigation != null &&
+            (previousNavigation.section != currentNavigation.section ||
+             previousNavigation.selectedGroup != currentNavigation.selectedGroup ||
+             previousNavigation.liveTvSelectedGroup != currentNavigation.liveTvSelectedGroup)) {
+            // Avoid duplicate adjacent entries when several UI refreshes target the same destination.
+            if (navigationHistory.isEmpty() || navigationHistory.peekLast() != previousNavigation) {
+                navigationHistory.addLast(previousNavigation)
+            }
+        }
+        lastRenderedNavigation = currentNavigation
+        restoringNavigation = false
         home.removeAllViews()
         // No reserved blank welcome slot: keep the selected page content directly below the player.
         val top = LinearLayout(this).apply {
@@ -846,7 +921,7 @@ class MainActivity : AppCompatActivity() {
         })
         updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", false)) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
             top.alpha = 1f
             top.translationY = 0f
             top.rotationX = 0f
@@ -994,8 +1069,7 @@ class MainActivity : AppCompatActivity() {
         contentArea.addView(categoriesScroll, LinearLayout.LayoutParams(-1, 0, 1f).apply {
             topMargin = dp(5)
         })
-        renderCategories()
-
+        // Build the category directory once, after list/count views are initialized.
         countLabel = text("", 12, muted).apply { setPadding(dp(2), dp(4), 0, dp(8)) }
         contentArea.addView(countLabel)
         val listScroll = ScrollView(this).apply {
@@ -1008,6 +1082,9 @@ class MainActivity : AppCompatActivity() {
         contentArea.addView(listScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         renderCategories()
         renderChannelRows(listContainer)
+        // Restore after rows have been measured; this also survives fullscreen rotation/recreation.
+        val restoreY = pendingListScrollRestoreY
+        listScroll.post { listScroll.scrollTo(0, restoreY.coerceAtLeast(0)) }
     }
 
     private fun renderSeriesComingSoon() {
@@ -1378,29 +1455,7 @@ class MainActivity : AppCompatActivity() {
                 addView(fallbackLogo, FrameLayout.LayoutParams(-1, -1))
             }
             channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
-                logo.tag = logoUrl
-                logoExecutor.execute {
-                    try {
-                        val connection = URL(logoUrl).openConnection().apply {
-                            connectTimeout = 4000
-                            readTimeout = 4000
-                        }
-                        val bitmap = connection.getInputStream().use { input ->
-                            BitmapFactory.Options().run {
-                                inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-                                BitmapFactory.decodeStream(input, null, this)
-                            }
-                        }
-                        if (bitmap != null) runOnUiThread {
-                            if (!isFinishing && logo.tag == logoUrl) {
-                                logo.setImageBitmap(bitmap)
-                                fallbackLogo.visibility = View.GONE
-                            } else {
-                                bitmap.recycle()
-                            }
-                        }
-                    } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
-                }
+                loadCachedChannelLogo(logo, fallbackLogo, logoUrl)
             }
             row.addView(logoFrame, LinearLayout.LayoutParams(dp(46), dp(46)))
             val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(6), 0) }
@@ -1416,13 +1471,8 @@ class MainActivity : AppCompatActivity() {
             // Always-on blinking green live indicator beside the SANY IPTV watermark.
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV active indicator"
-                val pulse = ValueAnimator.ofFloat(0.25f, 1f).apply {
-                    duration = 850L
-                    repeatCount = ValueAnimator.INFINITE
-                    repeatMode = ValueAnimator.REVERSE
-                    addUpdateListener { alpha = it.animatedValue as Float }
-                }
-                pulse.start()
+                // Static live indicator: avoid one infinite animator per channel row.
+                alpha = 1f
             }
             watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
@@ -1448,13 +1498,8 @@ class MainActivity : AppCompatActivity() {
                     }
                     setShadowLayer(dp(9).toFloat(), 0f, 0f, 0xFF168BFF.toInt())
                     setPadding(dp(7), dp(2), dp(7), dp(2))
-                    val pulse = ValueAnimator.ofFloat(0.72f, 1f).apply {
-                        duration = 750L
-                        repeatCount = ValueAnimator.INFINITE
-                        repeatMode = ValueAnimator.REVERSE
-                        addUpdateListener { alpha = it.animatedValue as Float }
-                    }
-                    pulse.start()
+                    // Keep the now-playing badge static to reduce UI-thread animation work.
+                    alpha = 1f
                 }
                 row.addView(nowPlayingBadge, LinearLayout.LayoutParams(dp(42), dp(38)).apply {
                     leftMargin = dp(6)
@@ -1545,27 +1590,7 @@ class MainActivity : AppCompatActivity() {
                     topMargin = dp(8)
                 })
                 channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
-                    cardLogo.tag = logoUrl
-                    logoExecutor.execute {
-                        try {
-                            val connection = URL(logoUrl).openConnection().apply {
-                                connectTimeout = 5000
-                                readTimeout = 5000
-                            }
-                            val bitmap = connection.getInputStream().use { input ->
-                                BitmapFactory.Options().run {
-                                    inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-                                    BitmapFactory.decodeStream(input, null, this)
-                                }
-                            }
-                            if (bitmap != null) runOnUiThread {
-                                if (!isFinishing && cardLogo.tag == logoUrl) {
-                                    cardLogo.setImageBitmap(bitmap)
-                                    cardLogoFallback.visibility = View.GONE
-                                } else bitmap.recycle()
-                            }
-                        } catch (_: Exception) { /* Keep the channel initial as fallback. */ }
-                    }
+                    loadCachedChannelLogo(cardLogo, cardLogoFallback, logoUrl)
                 }
                 card.addView(text(channel.name, 17, if (isPlayingChannel) 0xFF72B9FF.toInt() else white, true).apply {
                     maxLines = 2
@@ -1769,8 +1794,8 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Low internet mode", "Reduce video bitrate for slower mobile data", "low_data_mode", true)
-        settingsToggleCard(box, "Reduce UI animations", "Use simpler transitions for a quicker, calmer interface", "reduce_ui_motion", false)
+        settingsToggleCard(box, "Low internet mode", "Android 6–13: ON by default for faster loading; Android 14+: OFF for unrestricted quality", "low_data_mode", defaultLowInternetMode)
+        settingsToggleCard(box, "Reduce UI animations", "ON by default for a smoother, faster interface", "reduce_ui_motion", true)
         settingsCard(box, "App theme", "Choose Day (light), Night (dark), or follow your phone") {
             val modes = arrayOf("Day mode", "Night mode", "System default")
             val values = arrayOf("light", "dark", "system")
@@ -1814,7 +1839,7 @@ class MainActivity : AppCompatActivity() {
         settingsCard(box, "Buffer Control", "Choose buffering for slower or faster connections") {
             val labels = arrayOf("Low — faster start", "Balanced — recommended", "High — fewer interruptions")
             val values = arrayOf("low", "balanced", "high")
-            val selected = values.indexOf(prefs.getString("network_buffer_size", "balanced")).coerceAtLeast(0)
+            val selected = values.indexOf(prefs.getString("network_buffer_size", defaultNetworkBufferMode)).coerceAtLeast(0)
             AlertDialog.Builder(this).setTitle("Buffer Control")
                 .setSingleChoiceItems(labels, selected) { dialog, which ->
                     prefs.edit().putString("network_buffer_size", values[which]).apply()
@@ -3011,8 +3036,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun probeStream(streamUrl: String): Pair<String, String> {
+        // FTP needs credentials and a protocol-specific transfer; don't mark it offline
+        // merely because the background HTTP checker cannot authenticate it.
+        if (streamUrl.startsWith("ftp://", true)) {
+            return "Working" to "FTP — login required when playing"
+        }
         if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
-            return "Error" to "Invalid URL"
+            return "Error" to "Unsupported URL protocol"
         }
         var connection: HttpURLConnection? = null
         return try {
@@ -3069,28 +3099,87 @@ class MainActivity : AppCompatActivity() {
         input.requestFocus()
     }
 
-    private fun play(channel: Channel, startPlayback: Boolean = true) {
+    private fun play(channel: Channel, startPlayback: Boolean = true, ftpCredentials: Pair<String, String>? = null) {
         if (section != "Live TV" && section != "Movies") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
         }
         val streamUrl = channel.url.trim()
-        if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
-            toast("Unsupported stream URL — FTP needs server credentials and setup")
+        val isFtpStream = streamUrl.startsWith("ftp://", true)
+        if (!isFtpStream && !streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
+            toast("Unsupported stream type. HTTP, HTTPS and FTP links are supported.")
             return
+        }
+
+        // Accept credentials embedded in an FTP URL (ftp://user:pass@host/path).
+        // If the playlist omits them, ask the user at playback time; never store them.
+        var resolvedFtpCredentials = ftpCredentials
+        if (isFtpStream && resolvedFtpCredentials == null) {
+            val userInfo = try { java.net.URI(streamUrl).rawUserInfo } catch (_: Exception) { null }
+            if (!userInfo.isNullOrBlank()) {
+                val decoded = java.net.URLDecoder.decode(userInfo, "UTF-8")
+                val separator = decoded.indexOf(':')
+                if (separator > 0) {
+                    resolvedFtpCredentials = decoded.substring(0, separator) to decoded.substring(separator + 1)
+                }
+            }
+            if (resolvedFtpCredentials == null) {
+                val usernameInput = EditText(this).apply {
+                    hint = "FTP username"
+                    setSingleLine(true)
+                    setText("anonymous")
+                }
+                val passwordInput = EditText(this).apply {
+                    hint = "FTP password"
+                    inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    setSingleLine(true)
+                }
+                val form = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(20), dp(8), dp(20), 0)
+                    addView(usernameInput)
+                    addView(passwordInput)
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("FTP server login")
+                    .setMessage("এই FTP stream চালাতে সার্ভারের username ও password দিন।")
+                    .setView(form)
+                    .setNegativeButton("CANCEL", null)
+                    .setPositiveButton("CONNECT") { _, _ ->
+                        val username = usernameInput.text.toString().trim()
+                        val password = passwordInput.text.toString()
+                        if (username.isBlank()) {
+                            toast("FTP username দিন")
+                        } else {
+                            play(channel, startPlayback, username to password)
+                        }
+                    }
+                    .show()
+                return
+            }
         }
 
         // Preserve the current viewing mode when switching channels.
         // First playback opens fullscreen; a switch from portrait stays portrait.
         val wasAlreadyPlaying = playerView != null
+        if (!wasAlreadyPlaying) {
+            playbackReturnSection = section
+            playbackReturnGroup = selectedGroup
+            playbackReturnSearch = searchQuery
+            playbackReturnScrollY = (listContainer.parent as? ScrollView)?.scrollY ?: 0
+            if (section == "Live TV") {
+                liveTvSelectedGroup = selectedGroup
+                liveTvSearchQuery = searchQuery
+            }
+        }
         val keepFullscreenMode = if (wasAlreadyPlaying) isPlayerFullscreen else true
         val oldChannel = currentChannel
         if (oldChannel != null && oldChannel.url != channel.url) previousChannel = oldChannel
         closePlayer(keepOrientation = true)
         currentChannel = channel
         // Move the single active-channel highlight immediately when playback selection changes.
-        if (::listContainer.isInitialized && section == "Live TV") {
+        if (::listContainer.isInitialized && (section == "Live TV" || section == "Movies")) {
             val scroll = listContainer.parent as? ScrollView
             val previousScrollY = scroll?.scrollY ?: 0
             renderChannelRows(listContainer)
@@ -3105,12 +3194,19 @@ class MainActivity : AppCompatActivity() {
                 "Accept" to "*/*",
                 "Connection" to "keep-alive"
             ))
-            .setConnectTimeoutMs(8000)
-            .setReadTimeoutMs(20000)
+            .setConnectTimeoutMs(5000)
+            .setReadTimeoutMs(15000)
             .setAllowCrossProtocolRedirects(true)
 
+        val streamDataSourceFactory: DataSource.Factory = if (isFtpStream) {
+            FtpDataSource.Factory(
+                resolvedFtpCredentials?.first ?: "anonymous",
+                resolvedFtpCredentials?.second ?: ""
+            )
+        } else httpFactory
+
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(httpFactory)
+            .setDataSourceFactory(streamDataSourceFactory)
 
         val p = player ?: ExoPlayer.Builder(
             this,
@@ -3130,27 +3226,28 @@ class MainActivity : AppCompatActivity() {
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 2500
-                            "high" -> 6000
-                            else -> 4000
-                        },
-                        when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 5000
-                            "high" -> 12000
-                            else -> 8000
-                        },
-                        when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 750
-                            "high" -> 1000
-                            else -> 1000
-                        },
-                        when (prefs.getString("network_buffer_size", "balanced")) {
-                            "low" -> 1500
+                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                            "low" -> 700
                             "high" -> 2500
-                            else -> 2000
+                            else -> 1200
+                        },
+                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                            "low" -> 6000
+                            "high" -> 18000
+                            else -> 10000
+                        },
+                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                            "low" -> 250
+                            "high" -> 750
+                            else -> 350
+                        },
+                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                            "low" -> 750
+                            "high" -> 1800
+                            else -> 1000
                         }
                     )
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
             )
             .build().also { created ->
@@ -3168,11 +3265,14 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             if (httpStatus != null) {
                                 toast("সার্ভার HTTP $httpStatus দিয়েছে — অন্য stream link চেষ্টা করুন")
+                            } else if (currentChannel?.url?.startsWith("ftp://", true) == true) {
+                                toast("FTP stream চালানো যায়নি। Username/password, server permission ও FTP port পরীক্ষা করুন।")
                             } else {
                                 toast("প্লে হচ্ছে না: ${error.errorCodeName}")
                             }
                             val permanentHttpError = httpStatus == 401 || httpStatus == 403 || httpStatus == 404
-                            if (prefs.getBoolean("auto_retry_playback", true) && !permanentHttpError && playbackRetryCount < 2) {
+                            val isCurrentFtp = currentChannel?.url?.startsWith("ftp://", true) == true
+                            if (!isCurrentFtp && prefs.getBoolean("auto_retry_playback", true) && !permanentHttpError && playbackRetryCount < 2) {
                                 playbackRetryCount++
                                 toast("Auto retry ${playbackRetryCount}/2…")
                                 playbackRetryHandler.postDelayed({
@@ -3360,25 +3460,7 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(5)
         })
         channel.logo?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }?.let { logoUrl ->
-            nowPlayingLogo.tag = logoUrl
-            logoExecutor.execute {
-                try {
-                    val connection = URL(logoUrl).openConnection().apply {
-                        connectTimeout = 3500
-                        readTimeout = 3500
-                    }
-                    val bitmap = connection.getInputStream().use { input ->
-                        BitmapFactory.Options().run {
-                            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-                            BitmapFactory.decodeStream(input, null, this)
-                        }
-                    }
-                    if (bitmap != null) runOnUiThread {
-                        if (!isFinishing && nowPlayingLogo.tag == logoUrl) nowPlayingLogo.setImageBitmap(bitmap)
-                        else bitmap.recycle()
-                    }
-                } catch (_: Exception) { /* Keep compact fallback styling when no logo is available. */ }
-            }
+            loadCachedChannelLogo(nowPlayingLogo, null, logoUrl)
         }
 
         fun openPlayerSettings() {
@@ -3568,10 +3650,9 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        // Every new playback starts the visible channel list at playlist channel 1.
-        (if (::listContainer.isInitialized) listContainer.parent as? ScrollView else null)?.post {
-            (listContainer.parent as? ScrollView)?.scrollTo(0, 0)
-        }
+        // Do not reset the channel/movie list to the top when playback starts.
+        // Keep the user's current category and scroll offset; the list is restored
+        // when the player closes or returns from fullscreen.
 
         // Start channel cards immediately below the inline video; no artificial blank spacer.
         if (::listContainer.isInitialized) {
@@ -3606,7 +3687,7 @@ class MainActivity : AppCompatActivity() {
             "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
             "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
             "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
-            else -> if (prefs.getBoolean("low_data_mode", true)) {
+            else -> if (prefs.getBoolean("low_data_mode", defaultLowInternetMode)) {
                 builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(650_000)
             } else {
                 builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
@@ -3760,7 +3841,24 @@ class MainActivity : AppCompatActivity() {
         playerScreen?.let { root.removeView(it) }
         playerScreen = null
         updateHomeHeaderVisibility()
-        if (!keepOrientation) isPlayerFullscreen = false
+        if (!keepOrientation) {
+            isPlayerFullscreen = false
+            // Restore the exact list context after the player overlay is removed.
+            section = playbackReturnSection
+            selectedGroup = playbackReturnGroup
+            searchQuery = playbackReturnSearch
+            if (section == "Live TV") {
+                liveTvSelectedGroup = selectedGroup
+                liveTvSearchQuery = searchQuery
+                prefs.edit().putString("live_tv_group", selectedGroup)
+                    .putString("live_tv_search", searchQuery).apply()
+            }
+            if (::listContainer.isInitialized) {
+                (listContainer.parent as? ScrollView)?.post {
+                    (listContainer.parent as? ScrollView)?.scrollTo(0, playbackReturnScrollY)
+                }
+            }
+        }
     }
 
     @Deprecated("Deprecated in Android API")
@@ -3923,18 +4021,76 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // A screen snapshot lets Back unwind the actual section/category path one step at a time.
+    private data class NavigationSnapshot(
+        val section: String,
+        val selectedGroup: String,
+        val searchQuery: String,
+        val liveTvSelectedGroup: String,
+        val liveTvSearchQuery: String,
+        val scrollY: Int
+    )
+    private val navigationHistory = java.util.ArrayDeque<NavigationSnapshot>()
+    private var lastRenderedNavigation: NavigationSnapshot? = null
+    private var restoringNavigation = false
     private var lastBackPressedAt = 0L
 
     companion object {
     }
 
-    private fun returnToMainCategory() {
+    private fun currentNavigationSnapshot() = NavigationSnapshot(
+        section = section,
+        selectedGroup = selectedGroup,
+        searchQuery = searchQuery,
+        liveTvSelectedGroup = liveTvSelectedGroup,
+        liveTvSearchQuery = liveTvSearchQuery,
+        scrollY = if (::listContainer.isInitialized)
+            ((listContainer.parent as? ScrollView)?.scrollY ?: playbackReturnScrollY)
+        else playbackReturnScrollY
+    )
+
+    private fun restorePreviousNavigation() {
+        if (navigationHistory.isEmpty()) return
+        val previous = navigationHistory.removeLast()
+        section = previous.section
+        selectedGroup = previous.selectedGroup
+        searchQuery = previous.searchQuery
+        liveTvSelectedGroup = previous.liveTvSelectedGroup
+        liveTvSearchQuery = previous.liveTvSearchQuery
+        playbackReturnSection = previous.section
+        playbackReturnGroup = previous.selectedGroup
+        playbackReturnSearch = previous.searchQuery
+        playbackReturnScrollY = previous.scrollY
+        prefs.edit()
+            .putString("ui_section", section)
+            .putString("ui_group", selectedGroup)
+            .putString("ui_search", searchQuery)
+            .putString("live_tv_group", liveTvSelectedGroup)
+            .putString("live_tv_search", liveTvSearchQuery)
+            .apply()
+        restoringNavigation = true
+        renderHome()
+        if (::listContainer.isInitialized) {
+            (listContainer.parent as? ScrollView)?.post {
+                (listContainer.parent as? ScrollView)?.scrollTo(0, previous.scrollY)
+            }
+        }
+    }
+
+    private fun returnToLiveTvHome() {
+        closePlayer()
         section = "Live TV"
+        // Return to the category directory, not an "All" channel filter.
         selectedGroup = "Select category"
-        liveTvSelectedGroup = "Select category"
         searchQuery = ""
+        liveTvSelectedGroup = "Select category"
         liveTvSearchQuery = ""
-        displayedLimit = 60
+        navigationHistory.clear()
+        lastRenderedNavigation = null
+        playbackReturnSection = "Live TV"
+        playbackReturnGroup = "Select category"
+        playbackReturnSearch = ""
+        playbackReturnScrollY = 0
         prefs.edit()
             .putString("ui_section", "Live TV")
             .putString("ui_group", "Select category")
@@ -3942,44 +4098,52 @@ class MainActivity : AppCompatActivity() {
             .putString("live_tv_group", "Select category")
             .putString("live_tv_search", "")
             .apply()
+        lastBackPressedAt = 0L
         renderHome()
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        // Video navigation has priority over page navigation.
         if (playerView != null && isPlayerFullscreen) {
-            // First Back from fullscreen: minimize the player but preserve the
-            // exact section/category from which the current channel was started.
             setPlayerFullscreen(false)
+            lastBackPressedAt = 0L
             return
         }
+
         if (playerView != null) {
-            // While playback is active, Back navigates to the main category first.
-            // Only a Back press from that directory is allowed to close the player.
-            if (section != "Live TV" || selectedGroup != "Select category") {
-                returnToMainCategory()
-                return
+            // Live TV: close the fit-screen player and reveal All Categories.
+            // Movies: close the player and return directly to the Live TV section.
+            if (section == "Live TV" || section == "Movies") {
+                returnToLiveTvHome()
+            } else {
+                closePlayer()
+                lastBackPressedAt = 0L
             }
-            closePlayer()
             return
         }
-        if (section == "Live TV" && selectedGroup != "Select category") {
-            returnToMainCategory()
+
+        // Settings, Checker, Series and other pages unwind one screen at a time.
+        // Once their history is exhausted, return to the Live TV home before exit.
+        if (navigationHistory.isNotEmpty()) {
+            lastBackPressedAt = 0L
+            restorePreviousNavigation()
             return
         }
-        // Other sections return to the Live TV category directory first.
-        if (section != "Live TV") {
-            returnToMainCategory()
+
+        if (section != "Live TV" || selectedGroup != "Select category" || searchQuery.isNotEmpty()) {
+            returnToLiveTvHome()
             return
         }
-        // Require two Back presses within two seconds to exit the app.
-        val now = System.currentTimeMillis()
-        if (now - lastBackPressedAt <= 2_000L) {
+
+        // Only the Live TV home can be exited, using two consecutive Back presses.
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastBackPressedAt in 1..2000L) {
             lastBackPressedAt = 0L
             finish()
         } else {
             lastBackPressedAt = now
-            Toast.makeText(this, "অ্যাপ থেকে বের হতে আবার Back চাপুন", Toast.LENGTH_SHORT).show()
+            toast("অ্যাপ বন্ধ করতে আবার Back চাপুন")
         }
     }
 
@@ -3989,6 +4153,13 @@ class MainActivity : AppCompatActivity() {
         outState.putString("ui_search", searchQuery)
         outState.putString("live_tv_group", liveTvSelectedGroup)
         outState.putString("live_tv_search", liveTvSearchQuery)
+        val visibleScrollY = if (playerView != null) playbackReturnScrollY
+            else (if (::listContainer.isInitialized) (listContainer.parent as? ScrollView)?.scrollY else null) ?: playbackReturnScrollY
+        outState.putInt("list_scroll_y", visibleScrollY)
+        outState.putString("playback_return_section", playbackReturnSection)
+        outState.putString("playback_return_group", playbackReturnGroup)
+        outState.putString("playback_return_search", playbackReturnSearch)
+        outState.putInt("playback_return_scroll_y", playbackReturnScrollY)
         super.onSaveInstanceState(outState)
     }
 
