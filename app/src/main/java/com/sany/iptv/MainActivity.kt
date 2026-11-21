@@ -2684,6 +2684,47 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) { streamChecks.clear() }
     }
 
+    private fun copyCheckerResults(statusFilter: String? = null, fullReport: Boolean = false) {
+        val selected = if (statusFilter == null || statusFilter == "All") {
+            channels.filter { fullReport || streamChecks.containsKey(it.url) }
+        } else {
+            channels.filter { streamChecks[it.url]?.first == statusFilter }
+        }
+        if (selected.isEmpty()) {
+            toast("কপি করার মতো ফলাফল নেই")
+            return
+        }
+        val working = streamChecks.values.count { it.first == "Working" }
+        val offline = streamChecks.values.count { it.first == "Offline" }
+        val restricted = streamChecks.values.count { it.first == "Restricted" }
+        val errors = streamChecks.values.count { it.first == "Error" }
+        val report = buildString {
+            if (fullReport) {
+                appendLine("SANY IPTV CHECKER REPORT")
+                appendLine("Total channels: ${channels.size}")
+                appendLine("Working: $working | Offline: $offline | Restricted: $restricted | Error: $errors")
+                appendLine("Checked: ${streamChecks.size}")
+                appendLine("--------------------------------")
+            } else {
+                appendLine("SANY IPTV - ${statusFilter ?: "All"} CHANNELS")
+                appendLine("Count: ${selected.size}")
+                appendLine("--------------------------------")
+            }
+            selected.forEachIndexed { index, channel ->
+                val result = streamChecks[channel.url]
+                val status = result?.first ?: "Not checked"
+                appendLine("${index + 1}. ${channel.name}")
+                appendLine("Status: $status")
+                appendLine("Info: ${result?.second ?: channel.group}")
+                appendLine("URL: ${channel.url}")
+                appendLine()
+            }
+        }.trim()
+        val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("SANY IPTV Checker", report))
+        toast(if (fullReport) "সম্পূর্ণ Checker Report কপি হয়েছে" else "${selected.size}টি channel কপি হয়েছে")
+    }
+
     private fun checkerSummaryText(): String {
         val working = streamChecks.values.count { it.first == "Working" }
         val offline = streamChecks.values.count { it.first == "Offline" }
@@ -2809,6 +2850,11 @@ class MainActivity : AppCompatActivity() {
             } else startPlaylistCheck(true)
         }
         box.addView(checkerRunButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
+            bottomMargin = dp(6)
+        })
+        box.addView(actionButton("▤  COPY REPORT") {
+            copyCheckerResults(fullReport = true)
+        }, LinearLayout.LayoutParams(-1, dp(40)).apply {
             bottomMargin = dp(8)
         })
 
@@ -2825,15 +2871,29 @@ class MainActivity : AppCompatActivity() {
                 "Checking" -> if (checkerRunning) channels.size - streamChecks.size else 0
                 else -> streamChecks.values.count { it.first == filter }
             }
-            filters.addView(text(filter + " (" + count + ")", 11, if (checkerFilter == filter) bg else muted, true).apply {
+            val filterGroup = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = glass(24)
+            }
+            filterGroup.addView(text(filter + " (" + count + ")", 11, if (checkerFilter == filter) bg else muted, true).apply {
                 gravity = Gravity.CENTER
-                setPadding(dp(12), 0, dp(12), 0)
-                background = if (checkerFilter == filter) rounded(accent, 24) else glass(24)
+                setPadding(dp(12), 0, dp(10), 0)
+                background = if (checkerFilter == filter) rounded(accent, 24) else null
                 setOnClickListener {
                     checkerFilter = filter
                     renderCheckerSection()
                 }
-            }, LinearLayout.LayoutParams(-2, dp(36)).apply { rightMargin = dp(6) })
+            }, LinearLayout.LayoutParams(-2, dp(36)))
+            if (filter != "Checking") {
+                filterGroup.addView(text("⧉", 16, accent, true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), 0, dp(10), 0)
+                    contentDescription = "Copy $filter channels"
+                    setOnClickListener { copyCheckerResults(statusFilter = filter) }
+                }, LinearLayout.LayoutParams(-2, dp(36)))
+            }
+            filters.addView(filterGroup, LinearLayout.LayoutParams(-2, dp(36)).apply { rightMargin = dp(6) })
         }
         box.addView(filterScroll, LinearLayout.LayoutParams(-1, dp(44)))
 
