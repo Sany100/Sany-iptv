@@ -11,7 +11,7 @@
         <item name="android:windowBackground">#FFFFFF</item>
         <!-- Suppress Android 12+ system app-icon splash during Activity/PiP transitions.
              The app's own startup animation remains responsible for the normal launch logo. -->
-        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_transparent</item>
         <item name="android:windowSplashScreenBackground">#000000</item>
     </style>
 </resources>
