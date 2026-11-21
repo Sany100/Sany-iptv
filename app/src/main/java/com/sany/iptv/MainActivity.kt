@@ -3734,7 +3734,7 @@ class MainActivity : AppCompatActivity() {
             .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
             .setActions(listOf(closeAction))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(prefs.getBoolean("background_playback", true))
+            builder.setAutoEnterEnabled(true)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val rect = android.graphics.Rect()
@@ -3749,11 +3749,8 @@ class MainActivity : AppCompatActivity() {
         super.onUserLeaveHint()
         if (playerView == null || player?.isPlaying != true) return
 
-        if (!prefs.getBoolean("background_playback", true)) {
-            pausedForBackground = true
-            player?.pause()
-            return
-        }
+        // PiP availability is independent of the background-playback preference.
+        // Keep the video eligible for PiP even when background playback is disabled.
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !isInPictureInPictureMode) {
             // Enter PiP explicitly when Android reports a user-initiated departure.
