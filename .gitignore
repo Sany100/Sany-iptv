@@ -3,3 +3,7 @@
 local.properties
 **/build/
 *.iml
+# Android signing material and local credentials
+*.jks
+*.keystore
+keystore.properties
