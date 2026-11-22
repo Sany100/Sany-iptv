@@ -1039,7 +1039,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Movies") {
-            renderNativeMovies(false)
+            renderMoviesDevelopmentSection()
             return
         }
         if (section == "Checker") {
@@ -1104,6 +1104,33 @@ class MainActivity : AppCompatActivity() {
         // Restore after rows have been measured; this also survives fullscreen rotation/recreation.
         val restoreY = pendingListScrollRestoreY
         listScroll.post { listScroll.scrollTo(0, restoreY.coerceAtLeast(0)) }
+    }
+
+    // Movies is temporarily disabled while the feature is being developed.
+    private fun renderMoviesDevelopmentSection() {
+        contentArea.removeAllViews()
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24), dp(32), dp(24), dp(32))
+        }
+        page.addView(
+            text("MOVIES", 22, white, true).apply {
+                gravity = Gravity.CENTER
+            }
+        )
+        page.addView(
+            text("UNDER DEVELOPMENT", 16, accent, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, dp(14), 0, dp(10))
+            }
+        )
+        page.addView(
+            text("এই বিভাগে কাজ চলছে। খুব শিগগিরই চালু হবে।", 14, muted).apply {
+                gravity = Gravity.CENTER
+            }
+        )
+        contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
     }
 
     private fun renderNativeMovies(showSeries: Boolean) {
