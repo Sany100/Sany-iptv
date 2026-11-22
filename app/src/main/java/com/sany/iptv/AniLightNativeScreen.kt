@@ -154,13 +154,118 @@ class AniLightNativeScreen(
     }
 
     private fun showHomeCategory(key: String, data: JSONObject?) {
+        val root = data?.optJSONObject("data") ?: data?.optJSONObject("results") ?: data
+        if (key == "trending" && isHomePage && root != null) {
+            showHomeLanding(root)
+            return
+        }
         val sectionKey = if (key == "movies") "popularMovies" else key
         val array = when (key) {
-            "recent" -> data?.optJSONArray("recentlyAddedEpisodes")
-            "previousSeason" -> data?.optJSONObject("previousSeason")?.optJSONArray("media")
-            else -> data?.optJSONObject(sectionKey)?.optJSONArray("media")
+            "recent" -> root?.optJSONArray("recentlyAddedEpisodes")
+            "previousSeason" -> root?.optJSONObject("previousSeason")?.optJSONArray("media")
+            else -> root?.optJSONObject(sectionKey)?.optJSONArray("media")
         }
-        showCards(key, items(array).filterNot { it.optBoolean("isAdult", false) })
+        val results = items(array).filterNot { it.optBoolean("isAdult", false) }
+        if (results.isEmpty()) {
+            // Some homepage feeds are short or temporarily absent; use the API's paginated
+            // catalogue endpoint as a fallback instead of leaving the category blank.
+            val sort = when (key) {
+                "topRated" -> "SCORE_DESC"
+                "upcoming" -> "START_DATE_DESC"
+                "recent" -> "UPDATED_AT_DESC"
+                else -> "POPULARITY_DESC"
+            }
+            loadFiltered(sort, null)
+        } else {
+            showCards(key, results)
+        }
+    }
+
+    private fun showHomeLanding(data: JSONObject) {
+        body.removeAllViews()
+        val head = row()
+        head.addView(label("ANILIGHT • ANIME", 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+        head.addView(button("OPEN SITE") { openSite() })
+        body.addView(head, bottom(12))
+        val search = row()
+        val input = EditText(context).apply {
+            hint = "Search anime"; setSingleLine(true); textSize = 14f
+            setTextColor(fg); setHintTextColor(muted); inputType = InputType.TYPE_CLASS_TEXT
+            background = rounded(surface, 12); setPadding(dp(12), 0, dp(12), 0)
+        }
+        search.addView(input, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(8) })
+        search.addView(button("SEARCH") { searchAnime(input.text.toString().trim()) })
+        body.addView(search, bottom(10))
+        body.addView(button("FILTER / SORT ANIME") { showFilterDialog() }, bottom(12))
+
+        val sections = listOf(
+            Triple("Recently Added", "recentlyAddedEpisodes", "recent"),
+            Triple("Trending Now", "trending", "trending"),
+            Triple("Most Popular", "popular", "popular"),
+            Triple("This Season", "seasonal", "seasonal"),
+            Triple("Previous Season", "previousSeason", "previousSeason"),
+            Triple("Popular Movies", "popularMovies", "movies"),
+            Triple("Top Rated", "topRated", "topRated"),
+            Triple("Upcoming", "upcoming", "upcoming")
+        )
+        var shown = 0
+        sections.forEach { (title, key, actionKey) ->
+            val section = if (key == "recentlyAddedEpisodes") null else data.optJSONObject(key)
+            val array = if (key == "recentlyAddedEpisodes") data.optJSONArray(key) else section?.optJSONArray("media")
+            val results = items(array).filterNot { it.optBoolean("isAdult", false) }
+            if (results.isNotEmpty()) {
+                shown++
+                addHomeRail(title, results) { category(actionKey) }
+            }
+        }
+        if (shown == 0) {
+            body.addView(label("AniLight homepage feed ফাঁকা এসেছে। Search বা Filter দিয়ে Anime খুঁজুন।", 13, muted, false), bottom(12))
+        }
+        body.addView(label("BROWSE BY GENRE", 13, accent, true), bottom(8))
+        val genres = listOf("Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
+            "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life",
+            "Sports", "Supernatural", "Thriller")
+        val genreRail = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
+        val genreRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        genreRail.addView(genreRow)
+        genres.forEach { genre ->
+            genreRow.addView(button(genre) { loadFiltered("POPULARITY_DESC", genre) },
+                LinearLayout.LayoutParams(-2, dp(40)).apply { rightMargin = dp(6) })
+        }
+        body.addView(genreRail, bottom(12))
+    }
+
+    private fun addHomeRail(title: String, cards: List<JSONObject>, onMore: () -> Unit) {
+        val heading = row()
+        heading.addView(label(title, 16, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+        heading.addView(button("SEE ALL") { onMore() })
+        body.addView(heading, bottom(8))
+        val scroll = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
+        val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        scroll.addView(rail)
+        cards.forEach { item ->
+            val cover = item.optJSONObject("coverImage")
+            val imageUrl = cover?.optString("extraLarge").orEmpty()
+                .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
+            val titles = item.optJSONObject("title")
+            val name = titles?.optString("english").orEmpty()
+                .ifBlank { titles?.optString("romaji").orEmpty().ifBlank { "Anime" } }
+            val card = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                isFocusable = true
+                setOnClickListener { openAnime(item) }
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = rounded(surface, 12)
+            }
+            card.addView(poster, LinearLayout.LayoutParams(dp(126), dp(174)))
+            if (imageUrl.startsWith("http")) loadImage(imageUrl, poster)
+            card.addView(label(name, 11, fg, true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END },
+                LinearLayout.LayoutParams(dp(126), -2).apply { topMargin = dp(5) })
+            rail.addView(card, LinearLayout.LayoutParams(dp(126), -2).apply { rightMargin = dp(9) })
+        }
+        body.addView(scroll, bottom(16))
     }
 
     private fun showFilterDialog() {
