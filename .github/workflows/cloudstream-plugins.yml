@@ -48,6 +48,8 @@ jobs:
           # AGP 8 no longer supplies the legacy apk configuration expected by the CloudStream template.
           sed -i '/    dependencies {/i\\    configurations.maybeCreate("apk")' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           cp -a "$GITHUB_WORKSPACE/source/cloudstream-original/AniLight" "$RUNNER_TEMP/cloudstream-build/AniLight"
+          # AGP 8 requires an explicit Android namespace for library modules.
+          printf '\nandroid { namespace = "com.anilight" }\n' >> "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt"
 
