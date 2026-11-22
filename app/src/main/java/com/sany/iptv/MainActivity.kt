@@ -4555,19 +4555,27 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Live TV Back flow is deliberately isolated from Movies and Anime Series.
+        // First Back from fullscreen is handled above and only changes the player to FIT.
+        // While inline, unwind one navigation-history page at a time without touching playback.
+        if (section == "Live TV" && playerView != null) {
+            if (navigationHistory.isNotEmpty()) {
+                lastBackPressedAt = 0L
+                restorePreviousNavigation()
+            } else if (selectedGroup != "Select category" || searchQuery.isNotEmpty()) {
+                // Once history is exhausted, show the Live TV category directory and keep video alive.
+                returnToLiveTvHome(keepPlayback = true)
+            } else {
+                // At the category directory, this Back closes only the player.
+                // The next two Back presses can then exit the app.
+                closePlayer()
+                lastBackPressedAt = 0L
+            }
+            return
+        }
+
         if (playerView != null) {
-            if (section == "Live TV") {
-                // Back sequence for Live TV:
-                // 1) fullscreen -> fit/inline (handled above)
-                // 2) keep playback running and return to the category directory
-                // 3) close playback while staying on the category directory
-                val hasCategoryContext = selectedGroup != "Select category" || searchQuery.isNotEmpty()
-                if (hasCategoryContext) {
-                    returnToLiveTvHome(keepPlayback = true)
-                } else {
-                    returnToLiveTvHome()
-                }
-            } else if (section == "Movies") {
+            if (section == "Movies") {
                 returnToLiveTvHome()
             } else {
                 closePlayer()
