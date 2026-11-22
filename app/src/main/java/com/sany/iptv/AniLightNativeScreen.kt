@@ -259,6 +259,7 @@ class AniLightNativeScreen(
         }
         // Keep the expanded catalogue inside its own scroll area. Reaching the
         // last anime must not continue scrolling the homepage behind this dropdown.
+        var dropdownTouchStartY = 0f
         val dropdownScroll = ScrollView(context).apply {
             visibility = View.GONE
             isFillViewport = false
@@ -268,12 +269,34 @@ class AniLightNativeScreen(
             addView(dropdownContent, LinearLayout.LayoutParams(-1, -2))
             setOnTouchListener { _, event ->
                 when (event.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN,
-                    android.view.MotionEvent.ACTION_MOVE ->
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        dropdownTouchStartY = event.y
                         catalogueScroll?.requestDisallowInterceptTouchEvent(true)
-                    android.view.MotionEvent.ACTION_UP,
-                    android.view.MotionEvent.ACTION_CANCEL ->
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        catalogueScroll?.requestDisallowInterceptTouchEvent(true)
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        val swipeUpDistance = dropdownTouchStartY - event.y
+                        val atEnd = scrollY + height >= getChildAt(0).height - dp(24)
                         catalogueScroll?.requestDisallowInterceptTouchEvent(false)
+                        if (atEnd && swipeUpDistance >= dp(36)) {
+                            // At the end of this category, one more upward pull
+                            // collapses only this dropdown and returns the category
+                            // heading to view; the homepage remains untouched.
+                            post {
+                                visibility = View.GONE
+                                arrow.text = "⌄"
+                                catalogueScroll?.smoothScrollTo(0, heading.top + contentHost.top)
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    android.view.MotionEvent.ACTION_CANCEL -> {
+                        catalogueScroll?.requestDisallowInterceptTouchEvent(false)
+                    }
                 }
                 false
             }
