@@ -3977,16 +3977,18 @@ class MainActivity : AppCompatActivity() {
             controlsPanel.removeView(animeActions)
             controlsPanel.removeView(progressBar)
             controlsPanel.removeView(infoRow)
-            controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(15)))
-            controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
-            controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
+            // Slimmer Anime control dock: compact timeline and action row.
+            controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(10)))
+            controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(28)))
+            controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(34)))
         }
-        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, if (isAnimeEpisode) dp(120) else dp(88), Gravity.TOP).apply {
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, if (isAnimeEpisode) dp(82) else dp(88), Gravity.TOP).apply {
             topMargin = dp(155)
             leftMargin = dp(8); rightMargin = dp(8)
         })
 
         val controlsHandler = Handler(Looper.getMainLooper())
+        val animeControlsAutoHideDelay = 1800L
         val hideControls = Runnable {
             if (controlsPanel.visibility == View.VISIBLE) {
                 controlsPanel.animate().alpha(0f).setDuration(180).withEndAction {
@@ -4004,7 +4006,9 @@ class MainActivity : AppCompatActivity() {
                 controlsPanel.visibility = View.VISIBLE
                 controlsPanel.animate().alpha(1f).setDuration(140).start()
             } else controlsPanel.alpha = 1f
-            if (autoHide) controlsHandler.postDelayed(hideControls, 2500L)
+            if (autoHide) controlsHandler.postDelayed(
+                hideControls, if (isAnimeEpisode) animeControlsAutoHideDelay else 2500L
+            )
         }
         progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -4047,7 +4051,12 @@ class MainActivity : AppCompatActivity() {
         // While Anime is playing, a video tap briefly reveals the centre Pause
         // control; it then fades from the layout without leaving a duplicate dock button.
         val hideAnimeCenterPause = Runnable {
-            if (isAnimeEpisode && p.isPlaying) playPauseButton.visibility = View.GONE
+            if (isAnimeEpisode && p.isPlaying) {
+                playPauseButton.animate().cancel()
+                playPauseButton.animate().alpha(0f).setDuration(180).withEndAction {
+                    if (p.isPlaying) playPauseButton.visibility = View.GONE
+                }.start()
+            }
         }
         val tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             private val swipeThreshold = dp(64)
@@ -4056,9 +4065,11 @@ class MainActivity : AppCompatActivity() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (isAnimeEpisode && p.isPlaying) {
                     controlsHandler.removeCallbacks(hideAnimeCenterPause)
+                    playPauseButton.animate().cancel()
+                    playPauseButton.alpha = 1f
                     playPauseButton.text = "Ⅱ"
                     playPauseButton.visibility = View.VISIBLE
-                    controlsHandler.postDelayed(hideAnimeCenterPause, 1800L)
+                    controlsHandler.postDelayed(hideAnimeCenterPause, animeControlsAutoHideDelay)
                 }
                 // A single tap always reveals the bottom control dock, including
                 // when it is already visible. Apply the same interaction in FIT and fullscreen.
@@ -4422,7 +4433,8 @@ class MainActivity : AppCompatActivity() {
                 lp.leftMargin = dp(8)
                 lp.rightMargin = dp(8)
                 lp.topMargin = if (enabled) 0 else dp(155)
-                lp.bottomMargin = if (enabled) dp(12) else 0
+                // Keep the slimmer Anime dock close to the bottom edge in fullscreen.
+                lp.bottomMargin = if (enabled) dp(2) else 0
                 controls.layoutParams = lp
             }
         }
