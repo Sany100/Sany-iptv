@@ -1,0 +1,290 @@
+package com.sany.iptv
+
+import android.app.AlertDialog
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.text.InputType
+import android.view.Gravity
+import android.view.View
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import kotlin.concurrent.thread
+
+/** Native AniLight browser backed by the provider's public JSON API. */
+class AniLightNativeScreen(
+    private val context: Context,
+    private val light: Boolean,
+    private val accent: Int,
+    private val onPlay: (String, String, String?) -> Unit
+) {
+    private val api = "https://api.anilight.live/api"
+    private val site = "https://anilight.live"
+    private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
+    private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
+    private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
+    private val surface = if (light) Color.WHITE else 0xFF16191F.toInt()
+    private val ui = android.os.Handler(android.os.Looper.getMainLooper())
+    private lateinit var body: LinearLayout
+    private var slug = ""
+    private var animeId = 0
+    private var animeTitle = ""
+    private var language = "sub"
+    private var anime: JSONObject? = null
+    @Volatile private var session: String? = null
+    @Volatile private var sessionExpiry = 0L
+
+    fun create(): View {
+        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(24)); setBackgroundColor(bg) }
+        val scroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER; addView(body) }
+        home()
+        return scroll
+    }
+
+    private fun home() {
+        body.removeAllViews()
+        val head = row()
+        head.addView(label("ANILIGHT", 22, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+        head.addView(button("OPEN SITE") { openSite() })
+        body.addView(head, bottom(12))
+        val search = row()
+        val input = EditText(context).apply {
+            hint = "Search anime"; setSingleLine(true); textSize = 14f; setTextColor(fg); setHintTextColor(muted)
+            inputType = InputType.TYPE_CLASS_TEXT; background = rounded(surface, 12); setPadding(dp(12), 0, dp(12), 0)
+        }
+        search.addView(input, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
+        search.addView(button("SEARCH") { searchAnime(input.text.toString().trim()) })
+        body.addView(search, bottom(12))
+        listOf("Trending" to "trending", "Popular" to "popular", "Seasonal" to "seasonal", "Movies" to "movies",
+            "Top Rated" to "topRated", "Recently Added" to "recent", "Upcoming" to "upcoming").forEach { (name, key) ->
+            body.addView(button(name) { category(key) }, bottom(6))
+        }
+        category("trending")
+    }
+
+    private fun category(key: String) {
+        loading("Loading $key…")
+        request("$api/homepage") { data ->
+            val array = if (key == "recent") data?.optJSONArray("recentlyAddedEpisodes")
+                else data?.optJSONObject(key)?.optJSONArray("media")
+            showCards(key, items(array).filterNot { it.optBoolean("isAdult", false) })
+        }
+    }
+
+    private fun searchAnime(q: String) {
+        if (q.isBlank()) { category("trending"); return }
+        loading("Searching…")
+        request("$api/search?q=${enc(q)}&hideAdult=true") { data ->
+            val arr = data?.optJSONArray("results") ?: data?.optJSONArray("data")
+            showCards("Search results", items(arr).filterNot { it.optBoolean("isAdult", false) })
+        }
+    }
+
+    private fun showCards(title: String, cards: List<JSONObject>) {
+        body.removeAllViews()
+        val head = row()
+        head.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+        head.addView(button("HOME") { home() })
+        body.addView(head, bottom(12))
+        if (cards.isEmpty()) { body.addView(label("কোনো anime পাওয়া যায়নি। API unavailable হলে পরে আবার চেষ্টা করো।", 14, muted, false)); return }
+        cards.forEach { item ->
+            val card = row().apply { gravity = Gravity.CENTER_VERTICAL; background = rounded(surface, 12); setPadding(dp(7), dp(7), dp(7), dp(7)); isFocusable = true; setOnClickListener { openAnime(item) } }
+            val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
+            card.addView(poster, LinearLayout.LayoutParams(dp(76), dp(104)).apply { rightMargin = dp(10) })
+            val cover = item.optJSONObject("coverImage")
+            val imageUrl = cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() }
+            if (imageUrl.startsWith("http")) loadImage(imageUrl, poster)
+            val titleObj = item.optJSONObject("title")
+            val name = titleObj?.optString("english").orEmpty().ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
+            val details = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            details.addView(label(name, 14, fg, true))
+            details.addView(label(listOf(item.optString("format"), item.optInt("seasonYear").takeIf { it > 0 }?.toString()).filter { it.isNotBlank() }.joinToString(" • "), 11, muted, false))
+            details.addView(label("Score: ${item.optDouble("averageScore", 0.0).let { if (it > 0) it.toString() else "N/A" }}", 11, muted, false))
+            card.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            body.addView(card, bottom(8))
+        }
+    }
+
+    private fun openAnime(item: JSONObject) {
+        slug = item.optString("slug")
+        if (slug.isBlank()) { toast("Anime slug পাওয়া যায়নি"); return }
+        loading("Loading anime details…")
+        request("$api/anime/$slug") { detail ->
+            if (detail == null) { toast("Anime details load হয়নি"); return@request }
+            anime = detail
+            animeId = detail.optInt("id")
+            val titles = detail.optJSONObject("title")
+            animeTitle = titles?.optString("english").orEmpty().ifBlank { titles?.optString("romaji").orEmpty().ifBlank { "Anime" } }
+            request("$api/watch/$slug") { watch -> showDetails(detail, watch) }
+        }
+    }
+
+    private fun showDetails(detail: JSONObject, watch: JSONObject?) {
+        body.removeAllViews()
+        val head = row()
+        head.addView(button("‹ BACK") { home() })
+        head.addView(label("ANIME DETAILS", 13, accent, true).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
+        body.addView(head, bottom(12))
+        val cover = detail.optJSONObject("coverImage")
+        val posterUrl = cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() }
+        val info = row()
+        val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
+        info.addView(poster, LinearLayout.LayoutParams(dp(112), dp(158)).apply { rightMargin = dp(12) })
+        if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
+        val meta = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        meta.addView(label(animeTitle, 18, fg, true))
+        meta.addView(label("${detail.optString("format")} • ${detail.optString("status")} • ${detail.optInt("seasonYear").takeIf { it > 0 } ?: ""}", 11, muted, false))
+        meta.addView(label("Episodes: ${detail.optInt("episodes", watch?.optJSONArray("episodes")?.length() ?: 0)}", 12, muted, false))
+        meta.addView(label("Score: ${detail.optDouble("averageScore", 0.0)}", 12, muted, false))
+        info.addView(meta, LinearLayout.LayoutParams(0, -2, 1f))
+        body.addView(info, bottom(12))
+        val plot = android.text.Html.fromHtml(detail.optString("description"), android.text.Html.FROM_HTML_MODE_COMPACT).toString().trim()
+        if (plot.isNotBlank()) body.addView(label(plot, 13, muted, false), bottom(12))
+        val eps = watch?.optJSONArray("episodes")
+        val sub = (0 until (eps?.length() ?: 0)).any { eps?.optJSONObject(it)?.optBoolean("sub") == true }
+        val dub = (0 until (eps?.length() ?: 0)).any { eps?.optJSONObject(it)?.optBoolean("dub") == true }
+        val langs = row()
+        if (sub) langs.addView(button(if (language == "sub") "✓ SUB" else "SUB") { language = "sub"; showDetails(detail, watch) }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(6) })
+        if (dub) langs.addView(button(if (language == "dub") "✓ DUB" else "DUB") { language = "dub"; showDetails(detail, watch) }, LinearLayout.LayoutParams(0, dp(42), 1f))
+        if (langs.childCount > 0) body.addView(langs, bottom(12))
+        body.addView(label("EPISODES", 16, fg, true), bottom(8))
+        val available = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }.filter { it.optBoolean(language, false) }
+        available.forEach { ep ->
+            val number = ep.optInt("number", 1)
+            val line = row().apply { gravity = Gravity.CENTER_VERTICAL; background = rounded(surface, 10); setPadding(dp(12), dp(12), dp(12), dp(12)); isFocusable = true
+                setOnClickListener { resolveEpisode(number) } }
+            line.addView(label("▶", 17, accent, true), LinearLayout.LayoutParams(dp(32), -2))
+            line.addView(label("$number. ${ep.optString("title").ifBlank { "Episode $number" }}", 13, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+            line.addView(label(language.uppercase(), 10, accent, true))
+            body.addView(line, bottom(6))
+        }
+        if (available.isEmpty()) body.addView(label("এই ভাষায় episode পাওয়া যায়নি।", 13, muted, false))
+    }
+
+    private fun resolveEpisode(episode: Int) {
+        loading("Resolving ${language.uppercase()} Episode $episode…")
+        thread(name = "AniLight-Resolve") {
+            try {
+                val sessionToken = getSession() ?: error("AniLight session unavailable")
+                val base = "$api/sources?id=$animeId&episode=$episode&language=$language"
+                val own = jsonBlocking(base, mapOf("x-source-session" to sessionToken))
+                val backup = jsonBlocking("$base&backup=true", mapOf("x-source-session" to sessionToken))
+                val sources = mutableListOf<Pair<String, String>>()
+                val subtitles = linkedSetOf<String>()
+                fun add(data: JSONObject?, checkHls: Boolean) {
+                    val tracks = data?.optJSONArray("tracks")
+                    for (i in 0 until (tracks?.length() ?: 0)) {
+                        val t = tracks?.optJSONObject(i) ?: continue
+                        if (t.optString("kind").isNotBlank() && t.optString("kind") != "captions") continue
+                        t.optString("url").takeIf { it.isNotBlank() }?.let { subtitles.add("$api/proxy/captions?token=${enc(it)}") }
+                    }
+                    val arr = data?.optJSONArray("sources")
+                    for (i in 0 until (arr?.length() ?: 0)) {
+                        val entry = arr?.optJSONObject(i) ?: continue
+                        val raw = entry.opt("url")
+                        val tokens = when (raw) {
+                            is JSONArray -> (0 until raw.length()).mapNotNull { raw.optString(it).takeIf { s -> s.isNotBlank() } }
+                            is String -> listOf(raw).filter { it.isNotBlank() }
+                            else -> emptyList()
+                        }
+                        for (token in tokens) {
+                            val resolved = resolveToken(token) ?: continue
+                            if (checkHls && !validHls(resolved)) continue
+                            sources.add((entry.optString("quality").ifBlank { if (checkHls) "HLS" else "Auto" }) to resolved)
+                            if (!checkHls) break
+                        }
+                    }
+                }
+                add(own, false); add(backup, true)
+                val unique = sources.distinctBy { it.second }
+                ui.post {
+                    if (unique.isEmpty()) { toast("Stream পাওয়া যায়নি। AniLight API/source unavailable হতে পারে।"); showDetailsAgain(); return@post }
+                    AlertDialog.Builder(context).setTitle("$animeTitle — Episode $episode")
+                        .setItems(unique.map { "${it.first} • ${language.uppercase()}" }.toTypedArray()) { _, which ->
+                            onPlay("$animeTitle • Episode $episode", unique[which].second, subtitles.firstOrNull())
+                        }.setNegativeButton("CANCEL", null).show()
+                    showDetailsAgain()
+                }
+            } catch (e: Exception) { ui.post { toast(e.message ?: "Stream resolve failed"); showDetailsAgain() } }
+        }
+    }
+
+    private fun showDetailsAgain() {
+        val selected = anime ?: return
+        request("$api/watch/$slug") { showDetails(selected, it) }
+    }
+
+    private fun getSession(): String? {
+        if (!session.isNullOrBlank() && System.currentTimeMillis() < sessionExpiry - 60000) return session
+        val result = jsonBlocking("$api/sources/verify", method = "POST", body = JSONObject().put("token", "direct").toString()) ?: return null
+        val token = result.optString("sessionToken").takeIf { it.isNotBlank() } ?: return null
+        session = token
+        sessionExpiry = result.optLong("expiresAt", System.currentTimeMillis() + 86400000)
+        return token
+    }
+
+    private fun resolveToken(token: String): String? {
+        val c = open("$api/lb/e/$token", emptyMap(), false)
+        return try {
+            val code = c.responseCode
+            val location = c.getHeaderField("Location")
+            when { code in 300..399 && !location.isNullOrBlank() && location.startsWith("http") -> location
+                code in 300..399 -> "$api/lb/e/$token"; else -> null }
+        } finally { c.disconnect() }
+    }
+
+    private fun validHls(url: String): Boolean {
+        val c = open(url, emptyMap(), true)
+        return try { c.responseCode in 200..299 && c.inputStream.bufferedReader().use { it.readText().take(4096) }.startsWith("#EXTM3U") }
+        catch (_: Exception) { false } finally { c.disconnect() }
+    }
+
+    private fun request(url: String, done: (JSONObject?) -> Unit) {
+        thread(name = "AniLight-API") { val result = runCatching { jsonBlocking(url) }.getOrNull(); ui.post { done(result) } }
+    }
+
+    private fun jsonBlocking(url: String, headers: Map<String, String> = emptyMap(), method: String = "GET", body: String? = null): JSONObject? {
+        val c = open(url, headers, true)
+        return try {
+            c.requestMethod = method
+            if (body != null) { c.doOutput = true; c.setRequestProperty("Content-Type", "application/json"); c.outputStream.use { it.write(body.toByteArray()) } }
+            if (c.responseCode !in 200..299) return null
+            JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+        } finally { c.disconnect() }
+    }
+
+    private fun open(url: String, headers: Map<String, String>, redirects: Boolean): HttpURLConnection =
+        (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 12000; readTimeout = 20000; instanceFollowRedirects = redirects
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36")
+            setRequestProperty("Accept", "application/json, text/plain, */*")
+            setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+            setRequestProperty("Referer", "$site/")
+            headers.forEach { (k, v) -> setRequestProperty(k, v) }
+        }
+
+    private fun loadImage(url: String, target: ImageView) {
+        thread(name = "AniLight-Poster") { try { val bitmap = URL(url).openStream().use { BitmapFactory.decodeStream(it) }; if (bitmap != null) ui.post { target.setImageBitmap(bitmap) } } catch (_: Exception) { } }
+    }
+    private fun items(a: JSONArray?): List<JSONObject> = (0 until (a?.length() ?: 0)).mapNotNull { a?.optJSONObject(it) }
+    private fun loading(message: String) { body.removeAllViews(); body.addView(label(message, 14, muted, false).apply { gravity = Gravity.CENTER; setPadding(dp(10), dp(70), dp(10), dp(70)) }) }
+    private fun row() = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    private fun bottom(n: Int) = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(n) }
+    private fun button(value: String, action: () -> Unit) = TextView(context).apply { text = value; gravity = Gravity.CENTER; textSize = 11f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); isFocusable = true; setPadding(dp(12), dp(9), dp(12), dp(9)); background = rounded(accent, 10); setOnClickListener { action() } }
+    private fun label(value: String, size: Int, color: Int, bold: Boolean) = TextView(context).apply { text = value; textSize = size.toFloat(); setTextColor(color); if (bold) typeface = Typeface.DEFAULT_BOLD }
+    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
+    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+    private fun openSite() { runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(site))) } }
+    private fun toast(s: String) = android.widget.Toast.makeText(context, s, android.widget.Toast.LENGTH_LONG).show()
+    private fun dp(n: Int) = (n * context.resources.displayMetrics.density).toInt()
+}
