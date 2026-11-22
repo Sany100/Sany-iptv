@@ -57,6 +57,8 @@ class AniLightNativeScreen(
     private var language = "sub"
     private var anime: JSONObject? = null
     private var isHomePage = true
+    // Category dropdown pages must be exited with the visible Back button, never a swipe gesture.
+    private var isShelfCategoryPage = false
     private var filterPage = 1
     private var filterSort = "POPULARITY_DESC"
     private var filterGenre: String? = null
@@ -70,6 +72,7 @@ class AniLightNativeScreen(
         val children: List<View>,
         val scrollY: Int,
         val isHomePage: Boolean,
+        val isShelfCategoryPage: Boolean,
         val showingFilterResults: Boolean,
         val filterHasNext: Boolean,
         val filterPage: Int,
@@ -92,7 +95,7 @@ class AniLightNativeScreen(
         pageHistory.addLast(
             AnimePageSnapshot(
                 children, catalogueScroll?.scrollY ?: 0, isHomePage,
-                showingFilterResults, filterHasNext, filterPage, filterSort,
+                isShelfCategoryPage, showingFilterResults, filterHasNext, filterPage, filterSort,
                 filterGenre, autoPageLoading, slug, animeId, animeTitle,
                 language, anime, savedContentHost
             )
@@ -115,6 +118,7 @@ class AniLightNativeScreen(
         previous.children.forEach { body.addView(it) }
         if (previous.contentHost != null) contentHost = previous.contentHost
         isHomePage = previous.isHomePage
+        isShelfCategoryPage = previous.isShelfCategoryPage
         showingFilterResults = previous.showingFilterResults
         filterHasNext = previous.filterHasNext
         filterPage = previous.filterPage
@@ -167,7 +171,8 @@ class AniLightNativeScreen(
             }
             var pageSwipeStartY = 0f
             setOnTouchListener { view, event ->
-                if (pageHistory.isEmpty() || isHomePage) return@setOnTouchListener false
+                // Keep the category grid open while users scroll/swipe upward; its top Back button is the only exit.
+                if (isShelfCategoryPage || pageHistory.isEmpty() || isHomePage) return@setOnTouchListener false
                 when (event.actionMasked) {
                     android.view.MotionEvent.ACTION_DOWN -> {
                         pageSwipeStartY = event.y
@@ -203,6 +208,7 @@ class AniLightNativeScreen(
 
     private fun home() {
         isHomePage = true
+        isShelfCategoryPage = false
         showingFilterResults = false
         filterHasNext = false
         body.removeAllViews()
@@ -432,6 +438,7 @@ class AniLightNativeScreen(
         if (!isHomePage || cards.isEmpty()) return
         pushCurrentPage()
         isHomePage = false
+        isShelfCategoryPage = true
         showingFilterResults = false
         filterHasNext = false
         body.removeAllViews()
@@ -440,11 +447,11 @@ class AniLightNativeScreen(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(14))
         }
-        val back = label("‹", 34, accent, true).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(8), 0, dp(18), 0)
+        val back = button("←  BACK") {
+            restorePreviousPage()
+        }.apply {
             contentDescription = "Back to Anime categories"
-            setOnClickListener { restorePreviousPage() }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
         }
         pageHeader.addView(back)
         pageHeader.addView(label(title, 21, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
