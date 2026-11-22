@@ -117,6 +117,7 @@ class MainActivity : AppCompatActivity() {
     private var moviesSiteLoaded = false
     private var aniLightWebView: WebView? = null
     private var aniLightSiteLoaded = false
+    private var aniLightNativeScreen: AniLightNativeScreen? = null
     private var currentChannel: Channel? = null
     private var playbackReturnScrollY = 0
     // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
@@ -1141,6 +1142,7 @@ class MainActivity : AppCompatActivity() {
                 play(Channel(title, url, "AniLight"), true, null, subtitle)
             }
         )
+        aniLightNativeScreen = screen
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
     }
 
@@ -4362,6 +4364,17 @@ class MainActivity : AppCompatActivity() {
         if (section == "Movies" && moviesWebView?.canGoBack() == true) {
             moviesWebView?.goBack()
             lastBackPressedAt = 0L
+            return
+        }
+
+        // AniLight owns its own catalogue/detail navigation. Keep Back inside
+        // Anime Series until its home screen is reached; only then switch to Live TV.
+        if (section == "Series") {
+            if (aniLightNativeScreen?.handleBack() == true) {
+                lastBackPressedAt = 0L
+                return
+            }
+            returnToLiveTvHome()
             return
         }
 
