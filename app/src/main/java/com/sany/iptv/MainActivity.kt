@@ -1928,7 +1928,7 @@ class MainActivity : AppCompatActivity() {
                 item.addView(loadingRow, LinearLayout.LayoutParams(-1, -2))
             } else {
                 item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
-                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else name, 12, if (active) accent else muted, active).apply {
+                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name, 12, if (active) accent else muted, active).apply {
                     gravity = Gravity.CENTER
                     setPadding(0, 0, 0, 0)
                 }
