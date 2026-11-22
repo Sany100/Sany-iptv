@@ -401,7 +401,7 @@ class AniLightNativeScreen(
                 isFocusable = true
                 setOnClickListener { openAnime(item) }
             }
-            applyNowPlayingHighlight(this, item)
+            applyNowPlayingHighlight(card, item)
             val posterFrame = FrameLayout(context).apply {
                 background = rounded(surface, 14)
                 clipToOutline = true
@@ -476,7 +476,7 @@ class AniLightNativeScreen(
                 setPadding(dp(4), 0, dp(4), dp(10))
                 setOnClickListener { openAnime(item) }
             }
-            applyNowPlayingHighlight(this, item)
+            applyNowPlayingHighlight(tile, item)
             val frame = FrameLayout(context).apply {
                 background = rounded(surface, 10)
                 clipToOutline = true
@@ -951,7 +951,7 @@ class AniLightNativeScreen(
                 isFocusable = true
                 setOnClickListener { openAnime(item) }
             }
-            applyNowPlayingHighlight(this, item)
+            applyNowPlayingHighlight(card, item)
             val poster = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundColor(surface)
