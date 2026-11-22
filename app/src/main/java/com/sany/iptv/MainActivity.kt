@@ -3825,8 +3825,9 @@ class MainActivity : AppCompatActivity() {
         val tracksAction = animeAction("▥  Tracks", "Change Anime audio language") {
             showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
         }
+        var onAnimeFullscreenToggle: (() -> Unit)? = null
         val fullscreenAction = animeAction("⛶  Fit Screen", "Switch between Fit Screen and Full Screen") {
-            setPlayerFullscreen(!isPlayerFullscreen)
+            onAnimeFullscreenToggle?.invoke() ?: setPlayerFullscreen(!isPlayerFullscreen)
         }
         // Replace Next Episode with the Full Screen shortcut in the Anime action strip.
         // Play/Pause remains available only as the large centre overlay.
@@ -4059,6 +4060,20 @@ class MainActivity : AppCompatActivity() {
                 playPauseButton.animate().alpha(0f).setDuration(180).withEndAction {
                     if (p.isPlaying) playPauseButton.visibility = View.GONE
                 }.start()
+            }
+        }
+        // Full Screen / Fit Screen taps reveal both Anime overlays together.
+        // Their independent hide callbacks use the same 3-second deadline.
+        onAnimeFullscreenToggle = {
+            setPlayerFullscreen(!isPlayerFullscreen)
+            revealControls()
+            if (isAnimeEpisode && p.isPlaying) {
+                controlsHandler.removeCallbacks(hideAnimeCenterPause)
+                playPauseButton.animate().cancel()
+                playPauseButton.alpha = 1f
+                playPauseButton.text = "Ⅱ"
+                playPauseButton.visibility = View.VISIBLE
+                controlsHandler.postDelayed(hideAnimeCenterPause, animeControlsAutoHideDelay)
             }
         }
         val tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
