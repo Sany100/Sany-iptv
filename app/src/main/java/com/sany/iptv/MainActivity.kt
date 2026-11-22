@@ -140,6 +140,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNav: LinearLayout
     private lateinit var listContainer: LinearLayout
     private var playerScreen: FrameLayout? = null
+    private var animeEpisodePanel: View? = null
     private var displayedLimit = 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
@@ -3634,6 +3635,27 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
+        animeEpisodePanel = if (isAnimeEpisode) aniLightNativeScreen?.createPlayerEpisodePanel() else null
+        animeEpisodePanel?.let { episodePanel ->
+            episodePanel.visibility = View.GONE
+            screen.addView(episodePanel, FrameLayout.LayoutParams(-1, -1, Gravity.END))
+        }
+        if (isAnimeEpisode) {
+            val animeTitle = TextView(this).apply {
+                text = channel.name
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                background = android.graphics.drawable.GradientDrawable(
+                    android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(0x99000000.toInt(), Color.TRANSPARENT)
+                )
+            }
+            screen.addView(animeTitle, FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP))
+        }
         // Register PiP parameters only after the real video view has a laid-out
         // screen rectangle. Refresh it whenever the player bounds change so the
         // system animates directly from video instead of briefly showing the app icon.
@@ -3974,15 +3996,8 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                // Seek gestures are intentionally limited to Anime Series VOD.
-                // Live TV and Movies retain their existing touch behavior.
-                if (section == "Series" && p.isCurrentMediaItemSeekable && p.duration > 0L) {
-                    val delta = if (e.x >= view.width / 2f) 10_000L else -10_000L
-                    val target = (p.currentPosition + delta).coerceIn(0L, p.duration)
-                    p.seekTo(target)
-                    revealControls()
-                    return true
-                }
+                // The reference Anime Series player intentionally has no 10-second
+                // skip buttons or double-tap seek gestures.
                 return false
             }
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
@@ -4290,13 +4305,54 @@ class MainActivity : AppCompatActivity() {
             }
         }
         playerView?.let { view ->
-            // Fullscreen intentionally fills the entire display, stretching the source
-            // when its aspect ratio differs. Inline playback keeps the original ratio.
+            // Anime Series fullscreen uses a split layout: video on the left,
+            // Season/Episode browser on the right. Other sections stay unchanged.
             view.resizeMode = if (enabled) AspectRatioFrameLayout.RESIZE_MODE_FILL
                 else AspectRatioFrameLayout.RESIZE_MODE_FIT
             view.layoutParams = FrameLayout.LayoutParams(
-                -1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP
+                if (enabled && section == "Series") 0 else -1,
+                if (enabled) -1 else dp(235),
+                if (enabled) Gravity.START or Gravity.TOP else Gravity.TOP
             )
+        }
+        animeEpisodePanel?.let { panel ->
+            panel.visibility = if (enabled && section == "Series") View.VISIBLE else View.GONE
+            if (enabled && section == "Series") {
+                playerScreen?.post {
+                    val screenWidth = playerScreen?.width ?: 0
+                    if (screenWidth > 0) {
+                        val sideWidth = (screenWidth * 0.36f).toInt()
+                        val videoWidth = screenWidth - sideWidth
+                        playerView?.layoutParams = FrameLayout.LayoutParams(
+                            videoWidth, -1, Gravity.START or Gravity.TOP
+                        )
+                        panel.layoutParams = FrameLayout.LayoutParams(
+                            sideWidth, -1, Gravity.END or Gravity.TOP
+                        )
+                        playerControlsPanel?.let { controls ->
+                            (controls.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                                lp.width = videoWidth
+                                lp.gravity = Gravity.BOTTOM or Gravity.START
+                                lp.leftMargin = dp(8)
+                                lp.rightMargin = dp(8)
+                                lp.bottomMargin = dp(12)
+                                lp.topMargin = 0
+                                controls.layoutParams = lp
+                            }
+                        }
+                    }
+                }
+            } else {
+                playerView?.layoutParams = FrameLayout.LayoutParams(-1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP)
+                playerControlsPanel?.let { controls ->
+                    (controls.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                        lp.width = -1
+                        lp.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
+                        lp.leftMargin = dp(8); lp.rightMargin = dp(8)
+                        controls.layoutParams = lp
+                    }
+                }
+            }
         }
         // In minimized mode, reserve the top 235dp for video and lay out the
         // currently selected menu in the remaining screen area.
@@ -4360,6 +4416,7 @@ class MainActivity : AppCompatActivity() {
         player?.stop()
         playerView?.player = null
         playerView = null
+        animeEpisodePanel = null
         playerScreen?.let { root.removeView(it) }
         playerScreen = null
         updateHomeHeaderVisibility()
