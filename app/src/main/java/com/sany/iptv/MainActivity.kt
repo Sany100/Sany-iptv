@@ -2060,6 +2060,7 @@ class MainActivity : AppCompatActivity() {
             "View / remove saved repositories",
             "Refresh extension catalogue",
             "View downloaded packages",
+            "Check CloudStream host API compatibility",
             "Runtime compatibility information"
         )
         AlertDialog.Builder(this)
@@ -2223,7 +2224,23 @@ class MainActivity : AppCompatActivity() {
                                 .show()
                         }
                     }
-                    4 -> AlertDialog.Builder(this)
+                    4 -> {
+                        val report = SanyExtensionRepositories.inspectHostCompatibility(this)
+                        val message = if (report.compatible) {
+                            "সব ${report.checkedClasses.size}টি core CloudStream API class পাওয়া গেছে.\n\n" +
+                            "এটি শুধু class-presence check; plugin execution বা ABI compatibility এখনো নিশ্চিত করে না।"
+                        } else {
+                            "SANY-তে ${report.missingClasses.size}টি প্রয়োজনীয় CloudStream API class নেই:\n\n" +
+                            report.missingClasses.joinToString("\n") { "• $it" } +
+                            "\n\nএই classগুলো host app-এ যোগ না হওয়া পর্যন্ত .cs3 plugin চালানো যাবে না।"
+                        }
+                        AlertDialog.Builder(this)
+                            .setTitle(if (report.compatible) "Host API check: classes found" else "Host API check: missing classes")
+                            .setMessage(message)
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
+                    5 -> AlertDialog.Builder(this)
                         .setTitle("SANY Extension Runtime")
                         .setMessage(SanyExtensionRepositories.runtimeNotice())
                         .setPositiveButton("OK", null)
