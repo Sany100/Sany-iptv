@@ -4468,9 +4468,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (playerView != null) {
-            // Live TV: close the fit-screen player and reveal All Categories.
-            // Movies: close the player and return directly to the Live TV section.
-            if (section == "Live TV" || section == "Movies") {
+            if (section == "Live TV") {
+                // Back sequence for Live TV:
+                // 1) fullscreen -> fit/inline (handled above)
+                // 2) keep playback running and return to the category directory
+                // 3) close playback while staying on the category directory
+                val hasCategoryContext = selectedGroup != "Select category" || searchQuery.isNotEmpty()
+                if (hasCategoryContext) {
+                    returnToLiveTvHome(keepPlayback = true)
+                } else {
+                    returnToLiveTvHome()
+                }
+            } else if (section == "Movies") {
                 returnToLiveTvHome()
             } else {
                 closePlayer()
