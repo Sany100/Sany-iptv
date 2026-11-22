@@ -59,6 +59,7 @@ class AniLightNativeScreen(
     private var anime: JSONObject? = null
     private var activeWatch: JSONObject? = null
     private var currentEpisodeNumber = 0
+    private var activeAnimePosterUrl = ""
     private var isHomePage = true
     // Category dropdown pages must be exited with the visible Back button, never a swipe gesture.
     private var isShelfCategoryPage = false
@@ -815,17 +816,62 @@ class AniLightNativeScreen(
         body.addView(head, bottom(12))
         val cover = detail.optJSONObject("coverImage")
         val posterUrl = cover?.optString("extraLarge").orEmpty().ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
-        val info = row()
-        val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
-        info.addView(poster, LinearLayout.LayoutParams(dp(112), dp(158)).apply { rightMargin = dp(12) })
-        if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
-        val meta = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        meta.addView(label(animeTitle, 18, fg, true))
-        meta.addView(label("${detail.optString("format")} • ${detail.optString("status")} • ${detail.optInt("seasonYear").takeIf { it > 0 } ?: ""}", 11, muted, false))
-        meta.addView(label("Episodes: ${detail.optInt("episodes", watch?.optJSONArray("episodes")?.length() ?: 0)}", 12, muted, false))
-        meta.addView(label("Score: ${detail.optDouble("averageScore", 0.0)}", 12, muted, false))
-        info.addView(meta, LinearLayout.LayoutParams(0, -2, 1f))
-        body.addView(info, bottom(12))
+        activeAnimePosterUrl = posterUrl
+        val bannerObject = detail.optJSONObject("bannerImage")
+        val bannerUrl = detail.optString("bannerImage").takeIf { it.startsWith("http", true) }
+            ?: bannerObject?.optString("extraLarge")?.takeIf { it.startsWith("http", true) }
+            ?: posterUrl
+        val hero = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(surface)
+        }
+        if (bannerUrl.startsWith("http", true)) loadImage(bannerUrl, hero)
+        body.addView(hero, LinearLayout.LayoutParams(-1, dp(174)).apply { bottomMargin = dp(10) })
+        body.addView(label(animeTitle, 19, fg, true), bottom(5))
+        body.addView(label("${detail.optString("format")} • ${detail.optString("status")} • ${detail.optInt("seasonYear").takeIf { it > 0 } ?: ""} • Episodes: ${detail.optInt("episodes", watch?.optJSONArray("episodes")?.length() ?: 0)} • Score: ${detail.optDouble("averageScore", 0.0)}", 11, muted, false), bottom(10))
+        val genres = detail.optJSONArray("genres")
+        if (genres != null && genres.length() > 0) {
+            val genreScroll = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
+            val genreRow = row()
+            for (i in 0 until genres.length()) {
+                val genre = genres.optString(i).trim()
+                if (genre.isNotBlank()) genreRow.addView(label(genre, 11, fg, true).apply {
+                    background = rounded(surface, 18)
+                    setPadding(dp(10), dp(6), dp(10), dp(6))
+                }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(6) })
+            }
+            genreScroll.addView(genreRow)
+            body.addView(genreScroll, bottom(10))
+        }
+        val characters = detail.optJSONObject("characters")?.optJSONArray("edges")
+        if (characters != null && characters.length() > 0) {
+            body.addView(label("CAST", 14, fg, true), bottom(6))
+            val castScroll = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
+            val castRow = row()
+            for (i in 0 until minOf(characters.length(), 8)) {
+                val node = characters.optJSONObject(i)?.optJSONObject("node") ?: continue
+                val castName = node.optJSONObject("name")?.optString("full").orEmpty()
+                val imageUrl = node.optJSONObject("image")?.optString("large").orEmpty()
+                val castItem = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    setPadding(dp(4), 0, dp(4), 0)
+                }
+                val portrait = ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    background = rounded(surface, 30)
+                }
+                if (imageUrl.startsWith("http", true)) loadImage(imageUrl, portrait)
+                castItem.addView(portrait, LinearLayout.LayoutParams(dp(54), dp(54)))
+                if (castName.isNotBlank()) castItem.addView(label(castName, 10, muted, false).apply {
+                    maxLines = 2
+                    gravity = Gravity.CENTER
+                }, LinearLayout.LayoutParams(dp(72), -2))
+                castRow.addView(castItem)
+            }
+            castScroll.addView(castRow)
+            body.addView(castScroll, bottom(12))
+        }
         val plot = android.text.Html.fromHtml(detail.optString("description"), android.text.Html.FROM_HTML_MODE_COMPACT).toString().trim()
         if (plot.isNotBlank()) body.addView(label(plot, 13, muted, false), bottom(12))
         val eps = watch?.optJSONArray("episodes")
@@ -911,7 +957,7 @@ class AniLightNativeScreen(
             }
             val line = row().apply { gravity = Gravity.CENTER_VERTICAL }
             val thumbUrl = listOf("thumbnail", "thumbnailUrl", "image", "imageUrl", "img")
-                .map { ep.optString(it) }.firstOrNull { it.startsWith("http", true) }
+                .map { ep.optString(it) }.firstOrNull { it.startsWith("http", true) } ?: activeAnimePosterUrl.takeIf { it.startsWith("http", true) }
             val thumb = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundColor(0xFF303030.toInt())
