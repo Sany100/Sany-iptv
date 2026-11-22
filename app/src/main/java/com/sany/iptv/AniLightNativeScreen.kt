@@ -146,7 +146,13 @@ class AniLightNativeScreen(
     }
 
     fun create(): View {
-        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(24)); setBackgroundColor(bg) }
+        body = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, 0, dp(24))
+            clipChildren = false
+            clipToPadding = false
+            setBackgroundColor(bg)
+        }
         val scroll = ScrollView(context).apply {
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_NEVER
@@ -185,7 +191,9 @@ class AniLightNativeScreen(
         // followed by independently horizontally-scrolling category shelves.
         contentHost = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(4), 0, dp(24))
+            setPadding(0, 0, 0, dp(24))
+            clipChildren = false
+            clipToPadding = false
         }
         body.addView(contentHost, bottom(12))
         contentHost.addView(label("Loading AniLight catalogue…", 14, muted, false).apply {
@@ -335,7 +343,9 @@ class AniLightNativeScreen(
         heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
         val dropdownContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(6), 0, dp(6))
+            setPadding(0, 0, 0, 0)
+            clipChildren = false
+            clipToPadding = false
         }
         // Keep the expanded catalogue inside its own scroll area. Reaching the
         // last anime must not continue scrolling the homepage behind this dropdown.
@@ -347,7 +357,10 @@ class AniLightNativeScreen(
             isFillViewport = false
             isNestedScrollingEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
-            background = rounded(surface, 12)
+            background = android.graphics.drawable.ColorDrawable(surface)
+            setPadding(0, 0, 0, 0)
+            clipToPadding = false
+            clipChildren = false
             addView(dropdownContent, LinearLayout.LayoutParams(-1, -2))
             setOnTouchListener { _, event ->
                 val consumeTouch = when (event.actionMasked) {
@@ -434,7 +447,11 @@ class AniLightNativeScreen(
         val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
         val gridCardWidth = screenWidthDp / 3f
         val gridPosterHeight = (gridCardWidth * 1.42f).toInt()
-        var dropdownRow = row().apply { gravity = Gravity.TOP }
+        var dropdownRow = row().apply {
+            gravity = Gravity.TOP
+            clipChildren = false
+            clipToPadding = false
+        }
         cards.forEachIndexed { index, item ->
             val cover = item.optJSONObject("coverImage")
             val posterUrl = cover?.optString("extraLarge").orEmpty()
@@ -465,13 +482,17 @@ class AniLightNativeScreen(
                 setPadding(dp(2), dp(5), dp(2), dp(5))
             }, LinearLayout.LayoutParams(-1, dp(38)))
             dropdownRow.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                leftMargin = dp(1)
-                rightMargin = dp(1)
-                bottomMargin = dp(10)
+                leftMargin = 0
+                rightMargin = 0
+                bottomMargin = dp(8)
             })
             if (index % 3 == 2) {
                 dropdownContent.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
-                dropdownRow = row().apply { gravity = Gravity.TOP }
+                dropdownRow = row().apply {
+                    gravity = Gravity.TOP
+                    clipChildren = false
+                    clipToPadding = false
+                }
             }
         }
         if (cards.size % 3 != 0) {
