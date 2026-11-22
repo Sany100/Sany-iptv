@@ -2,6 +2,7 @@ package com.sany.iptv
 
 import android.app.AlertDialog
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
@@ -22,6 +23,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import kotlin.concurrent.thread
+import java.util.concurrent.ConcurrentHashMap
 
 /** Native AniLight browser backed by the provider's public JSON API. */
 class AniLightNativeScreen(
@@ -35,6 +37,8 @@ class AniLightNativeScreen(
     @Volatile private var domainCheckedAt = 0L
     @Volatile private var homepageCache: JSONObject? = null
     @Volatile private var homepageCheckedAt = 0L
+    // Keep recently loaded anime posters in memory so SUB/DUB switches do not re-download them.
+    private val posterCache = ConcurrentHashMap<String, Bitmap>()
     private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
     private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
@@ -581,7 +585,29 @@ class AniLightNativeScreen(
         }
 
     private fun loadImage(url: String, target: ImageView) {
-        thread(name = "AniLight-Poster") { try { val bitmap = URL(url).openStream().use { BitmapFactory.decodeStream(it) }; if (bitmap != null) ui.post { target.setImageBitmap(bitmap) } } catch (_: Exception) { } }
+        posterCache[url]?.let { cached ->
+            target.setImageBitmap(cached)
+            return
+        }
+        thread(name = "AniLight-Poster") {
+            try {
+                val connection = (URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 6000
+                    readTimeout = 10000
+                    instanceFollowRedirects = true
+                }
+                val bitmap = try {
+                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                } finally {
+                    connection.disconnect()
+                }
+                if (bitmap != null) {
+                    if (posterCache.size >= 80) posterCache.clear()
+                    posterCache[url] = bitmap
+                    ui.post { target.setImageBitmap(bitmap) }
+                }
+            } catch (_: Exception) { }
+        }
     }
     private fun items(a: JSONArray?): List<JSONObject> = (0 until (a?.length() ?: 0)).mapNotNull { a?.optJSONObject(it) }
     private fun loading(message: String) { body.removeAllViews(); body.addView(label(message, 14, muted, false).apply { gravity = Gravity.CENTER; setPadding(dp(10), dp(70), dp(10), dp(70)) }) }
