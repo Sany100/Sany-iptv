@@ -1,0 +1,8 @@
+{
+  "name": "SANY IPTV - AniLight",
+  "description": "AniLight anime provider for CloudStream",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
+  ]
+}
