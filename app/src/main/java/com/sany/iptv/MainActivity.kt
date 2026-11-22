@@ -3548,7 +3548,7 @@ class MainActivity : AppCompatActivity() {
                     selector.setParameters(
                         selector.buildUponParameters()
                             .setPreferredAudioLanguage("hi")
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                            // Keep text tracks enabled so available subtitles can be selected in the player.
                             .setMaxVideoSize(1920, 1080)
                             .setMaxVideoBitrate(Int.MAX_VALUE)
                     )
