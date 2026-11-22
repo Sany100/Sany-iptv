@@ -3558,25 +3558,25 @@ class MainActivity : AppCompatActivity() {
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 700
-                            "high" -> 2500
-                            else -> 1200
+                        if (highSpeedStreaming) 3000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                            "low" -> 1500
+                            "high" -> 3500
+                            else -> 2500
                         },
-                        if (highSpeedStreaming) 12000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 6000
-                            "high" -> 18000
-                            else -> 10000
+                        if (highSpeedStreaming) 24000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                            "low" -> 12000
+                            "high" -> 30000
+                            else -> 20000
                         },
-                        if (highSpeedStreaming) 1000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 250
-                            "high" -> 750
-                            else -> 350
-                        },
-                        if (highSpeedStreaming) 2000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 750
-                            "high" -> 1800
+                            "high" -> 1500
                             else -> 1000
+                        },
+                        if (highSpeedStreaming) 3500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                            "low" -> 2000
+                            "high" -> 5000
+                            else -> 3000
                         }
                     )
                     .setPrioritizeTimeOverSizeThresholds(true)
@@ -4285,12 +4285,18 @@ class MainActivity : AppCompatActivity() {
         // Auto mode caps Anime at 720p to reduce sustained decoder/GPU load.
         // Explicit 480p and 1080p selections remain available to the viewer.
         if (section == "Series") {
+            // Hindi remains the preferred audio language, but subtitle tracks stay selectable.
             builder.setPreferredAudioLanguage("hi")
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             when (quality) {
-                "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
-                "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
-                else -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
+                "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_800_000)
+                "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(4_000_000)
+                "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(8_000_000)
+                else -> {
+                    // Auto lets HLS/DASH adaptive selection choose the best supported
+                    // rendition for the current bandwidth and device decoder.
+                    builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
+                }
             }
             target.setParameters(builder)
             return
