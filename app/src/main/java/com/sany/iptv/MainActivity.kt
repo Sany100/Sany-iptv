@@ -3942,8 +3942,10 @@ class MainActivity : AppCompatActivity() {
                     setPlayerFullscreen(true)
                     return true
                 }
-                // Use the same horizontal channel-swipe gesture in fullscreen and inline player.
-                if (kotlin.math.abs(dx) > swipeThreshold &&
+                // Horizontal channel navigation is a Live TV-only gesture.
+                // Anime Series (VOD) must never show or trigger channel switching.
+                if (section == "Live TV" &&
+                    kotlin.math.abs(dx) > swipeThreshold &&
                     kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f &&
                     kotlin.math.abs(velocityX) > swipeVelocityThreshold) {
                     playAdjacentChannel(if (dx < 0) 1 else -1)
