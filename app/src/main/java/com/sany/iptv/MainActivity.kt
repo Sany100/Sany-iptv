@@ -33,6 +33,7 @@ import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
+import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -46,6 +47,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.TrackSelectionDialogBuilder
 import androidx.media3.ui.AspectRatioFrameLayout
 import java.net.URL
 import java.net.HttpURLConnection
@@ -3483,6 +3485,9 @@ class MainActivity : AppCompatActivity() {
         ).setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(DefaultTrackSelector(this).also { selector ->
                 trackSelector = selector
+                if (section == "Series") {
+                    selector.setParameters(selector.buildUponParameters().setPreferredAudioLanguage("hi"))
+                }
                 applyVideoQuality(selector)
             })
             .setLoadControl(
@@ -3740,7 +3745,8 @@ class MainActivity : AppCompatActivity() {
 
         fun openPlayerSettings() {
             val isAnimePlayback = section == "Series"
-            val options = if (isAnimePlayback) arrayOf("Playback speed", "Video quality", "Subtitle")
+            val options = if (isAnimePlayback)
+                arrayOf("Playback speed", "Audio language", "Subtitle", "Video quality")
                 else arrayOf("Playback speed", "Video quality")
             AlertDialog.Builder(this).setTitle("Player settings").setItems(options) { _, which ->
                 if (which == 0) {
@@ -3752,7 +3758,13 @@ class MainActivity : AppCompatActivity() {
                         p.setPlaybackSpeed(speeds[choice])
                         dialog.dismiss()
                     }.setNegativeButton("CLOSE", null).show()
-                } else if (which == 1) {
+                } else if (isAnimePlayback && which == 1) {
+                    showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
+                } else if (isAnimePlayback && which == 2) {
+                    showAnimeTrackSelection(C.TRACK_TYPE_TEXT, "Subtitles", true)
+                } else if (isAnimePlayback && which == 3) {
+                    showAnimeTrackSelection(C.TRACK_TYPE_VIDEO, "Video quality", false)
+                } else if (!isAnimePlayback && which == 1) {
                     val qualities = arrayOf("auto", "480", "720", "1080")
                     val labels = arrayOf("Auto", "480p", "720p", "1080p")
                     val selected = qualities.indexOf(prefs.getString("video_quality", "auto")).coerceAtLeast(0)
@@ -3761,8 +3773,6 @@ class MainActivity : AppCompatActivity() {
                         applyVideoQuality()
                         dialog.dismiss()
                     }.setNegativeButton("CLOSE", null).show()
-                } else if (which == 2 && isAnimePlayback) {
-                    showAnimeSubtitleOptions()
                 }
             }.show()
         }
@@ -3969,15 +3979,16 @@ class MainActivity : AppCompatActivity() {
                 listOf(
                     MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
                         .setMimeType(MimeTypes.TEXT_VTT)
-                        .setLanguage("en")
-                        .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+                        .setLanguage("und")
+                        .setSelectionFlags(0)
                         .build()
                 )
             )
         }
         // Anime captions are disabled by default; other sections keep their normal track behavior.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, section == "Series")
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, section == "Series")
+            .apply { if (section == "Series") setPreferredAudioLanguage("hi") }
             .build()
         val mediaItem = itemBuilder.build()
         val animeResumePosition = if (section == "Series") prefs.getLong(animeResumePreferenceKey(channel), 0L).coerceAtLeast(0L) else 0L
@@ -3988,6 +3999,20 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
 
+
+    private fun showAnimeTrackSelection(trackType: Int, title: String, allowDisable: Boolean) {
+        if (section != "Series") return
+        val activePlayer = player ?: return
+        if (trackType == C.TRACK_TYPE_TEXT) {
+            activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters
+                .buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
+        }
+        TrackSelectionDialogBuilder(this, title, activePlayer, trackType)
+            .setAllowAdaptiveSelections(false)
+            .setShowDisableOption(allowDisable)
+            .build()
+            .show()
+    }
 
     private fun showAnimeSubtitleOptions() {
         val choices = arrayOf("Off — no subtitles", "Add subtitle file (.srt / .vtt)")
