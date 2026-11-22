@@ -24,6 +24,7 @@ import java.net.URL
 import java.net.URLEncoder
 import kotlin.concurrent.thread
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 
 /** Native AniLight browser backed by the provider's public JSON API. */
 class AniLightNativeScreen(
@@ -37,8 +38,10 @@ class AniLightNativeScreen(
     @Volatile private var domainCheckedAt = 0L
     @Volatile private var homepageCache: JSONObject? = null
     @Volatile private var homepageCheckedAt = 0L
+    private var homeRequestVersion = 0
     // Keep recently loaded anime posters in memory so SUB/DUB switches do not re-download them.
     private val posterCache = ConcurrentHashMap<String, Bitmap>()
+    private val posterExecutor = Executors.newFixedThreadPool(4)
     private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
     private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
@@ -85,10 +88,16 @@ class AniLightNativeScreen(
             }
         }
         catalogueScroll = scroll
-        loading("Connecting to AniLight…")
+        // Render from memory/API immediately. Domain discovery must never block first paint.
+        home()
         thread(name = "AniLight-Domain") {
+            val previousApi = api
             refreshDomainBlocking()
-            ui.post { home() }
+            if (previousApi != api) {
+                ui.post {
+                    if (isHomePage) home()
+                }
+            }
         }
         return scroll
     }
@@ -111,16 +120,32 @@ class AniLightNativeScreen(
             setPadding(dp(10), dp(55), dp(10), dp(55))
         })
 
-        val cached = homepageCache
-        if (cached != null && System.currentTimeMillis() - homepageCheckedAt < 5 * 60_000L) {
+        val requestVersion = ++homeRequestVersion
+        val cached = homepageCache ?: sharedHomepageCache
+        val cachedAt = if (homepageCache != null) homepageCheckedAt else sharedHomepageCheckedAt
+        if (cached != null && System.currentTimeMillis() - cachedAt < 10 * 60_000L) {
             renderFullHome(cached)
+            // Refresh stale catalogue in the background while cached shelves stay visible.
+            if (System.currentTimeMillis() - cachedAt > 60_000L) {
+                request("$api/homepage") { fresh ->
+                    if (requestVersion != homeRequestVersion || !isHomePage || fresh == null) return@request
+                    homepageCache = fresh
+                    homepageCheckedAt = System.currentTimeMillis()
+                    sharedHomepageCache = fresh
+                    sharedHomepageCheckedAt = homepageCheckedAt
+                    // Existing visible content is retained; new data is used on next entry.
+                }
+            }
         } else {
             request("$api/homepage") { data ->
+                if (requestVersion != homeRequestVersion || !isHomePage) return@request
                 if (data != null) {
                     homepageCache = data
                     homepageCheckedAt = System.currentTimeMillis()
+                    sharedHomepageCache = data
+                    sharedHomepageCheckedAt = homepageCheckedAt
                 }
-                renderFullHome(data ?: homepageCache)
+                renderFullHome(data ?: homepageCache ?: sharedHomepageCache)
             }
         }
     }
@@ -673,7 +698,7 @@ class AniLightNativeScreen(
                 val base = "$api/sources?id=$animeId&episode=$episode&language=$language"
                 val own = sourceBlocking(base)
                 val backup = sourceBlocking("$base&backup=true")
-                val sources = mutableListOf<Pair<String, String>>()
+                        val sources = mutableListOf<Pair<String, String>>()
                 val subtitles = linkedSetOf<String>()
                 fun add(data: JSONObject?, checkHls: Boolean) {
                     val tracks = data?.optJSONArray("tracks")
@@ -699,7 +724,10 @@ class AniLightNativeScreen(
                         }
                     }
                 }
-                add(own, false); add(backup, true)
+                // Resolve the primary provider first. Only pay the backup API/CDN
+                // round-trip when the primary source did not yield a playable URL.
+                add(own, false)
+                if (sources.isEmpty()) add(sourceBlocking("$base&backup=true"), true)
                 val unique = sources.distinctBy { it.second }
                 ui.post {
                     if (unique.isEmpty()) { toast("Stream পাওয়া যায়নি। AniLight API/source unavailable হতে পারে।"); showDetailsAgain(); return@post }
@@ -743,6 +771,8 @@ class AniLightNativeScreen(
                 sessionExpiry = 0L
                 homepageCache = null
                 homepageCheckedAt = 0L
+                sharedHomepageCache = null
+                sharedHomepageCheckedAt = 0L
             }
         } catch (_: Exception) {
             // Keep the default domain if the helper cannot be reached.
@@ -838,11 +868,12 @@ class AniLightNativeScreen(
             target.setImageBitmap(cached)
             return
         }
-        thread(name = "AniLight-Poster") {
+        target.tag = url
+        posterExecutor.execute {
             try {
                 val connection = (URL(url).openConnection() as java.net.HttpURLConnection).apply {
-                    connectTimeout = 6000
-                    readTimeout = 10000
+                    connectTimeout = 4000
+                    readTimeout = 7000
                     instanceFollowRedirects = true
                 }
                 val bitmap = try {
@@ -851,9 +882,9 @@ class AniLightNativeScreen(
                     connection.disconnect()
                 }
                 if (bitmap != null) {
-                    if (posterCache.size >= 80) posterCache.clear()
+                    if (posterCache.size >= 100) posterCache.clear()
                     posterCache[url] = bitmap
-                    ui.post { target.setImageBitmap(bitmap) }
+                    ui.post { if (target.tag == url) target.setImageBitmap(bitmap) }
                 }
             } catch (_: Exception) { }
         }
@@ -869,4 +900,9 @@ class AniLightNativeScreen(
     private fun openSite() { runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(site))) } }
     private fun toast(s: String) = android.widget.Toast.makeText(context, s, android.widget.Toast.LENGTH_LONG).show()
     private fun dp(n: Int) = (n * context.resources.displayMetrics.density).toInt()
+
+    companion object {
+        @Volatile private var sharedHomepageCache: JSONObject? = null
+        @Volatile private var sharedHomepageCheckedAt: Long = 0L
+    }
 }
