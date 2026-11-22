@@ -117,6 +117,7 @@ class MainActivity : AppCompatActivity() {
     private var moviesSiteLoaded = false
     private var aniLightWebView: WebView? = null
     private var aniLightSiteLoaded = false
+    private var aniLightNativeScreen: AniLightNativeScreen? = null
     private var currentChannel: Channel? = null
     private var playbackReturnScrollY = 0
     // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
@@ -1162,7 +1163,17 @@ class MainActivity : AppCompatActivity() {
 
     // Anime Universe UI/template removed. Keep the Series page free of placeholder text.
     private fun renderAniLightNative() {
-        contentArea.removeAllViews()
+        lateinit var screen: AniLightNativeScreen
+        screen = AniLightNativeScreen(
+            context = this,
+            light = isLight,
+            accent = accent,
+            onPlay = { title, url, subtitle ->
+                play(Channel(title, url, "AniLight"), true, null, subtitle, screen.playbackHeaders())
+            }
+        )
+        aniLightNativeScreen = screen
+        contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
     }
 
     private fun renderAniLightWebsite() {
@@ -4437,6 +4448,7 @@ class MainActivity : AppCompatActivity() {
         // AniLight owns its own catalogue/detail navigation. Keep Back inside
         // Anime Series until its home screen is reached; only then switch to Live TV.
         if (section == "Series") {
+            if (aniLightNativeScreen?.handleBack() == true) return
             returnToLiveTvHome(keepPlayback = playerView != null && player != null)
             return
         }
