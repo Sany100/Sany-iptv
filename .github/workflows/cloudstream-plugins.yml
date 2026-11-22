@@ -49,8 +49,8 @@ jobs:
           sed -i 's/kotlin-gradle-plugin:1.7.10/kotlin-gradle-plugin:1.9.24/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           # AGP 8: create the legacy CloudStream apk configuration in each plugin module.
           sed -i '/apply(plugin = "com.lagradost.cloudstream3.gradle")/a\\    configurations.maybeCreate("apk")' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
-          # Put the CloudStream API stub artifact on Kotlin compile classpath.
-          sed -i '/configurations.maybeCreate("apk")/a\\    configurations.getByName("implementation").extendsFrom(configurations.getByName("apk"))' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
+          # The CloudStream Gradle plugin resolves the apk dependency itself and adds
+          # its downloaded classes.jar as compileOnly. Do not extend apk into implementation.
           # AniLight does not use NiceHttp; the template dependency is currently unavailable from JitPack.
           sed -i '/implementation("com.github.Blatzar:NiceHttp:0.3.2")/d' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           cp -a "$GITHUB_WORKSPACE/source/cloudstream-original/AniLight" "$RUNNER_TEMP/cloudstream-build/AniLight"
