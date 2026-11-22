@@ -704,6 +704,7 @@ class AniLightNativeScreen(
                 clipToOutline = true
                 isFocusable = true
                 setOnClickListener { openAnime(item) }
+                applyNowPlayingHighlight(this, item)
             }
             val poster = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
