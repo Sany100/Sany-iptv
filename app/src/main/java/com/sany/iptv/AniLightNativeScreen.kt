@@ -492,7 +492,7 @@ class AniLightNativeScreen(
         body.addView(header, bottom(12))
         val input = EditText(context).apply {
             hint = "Anime name লিখে Search করো…"
-            singleLine = true
+            setSingleLine(true)
             textSize = 15f
             setTextColor(fg)
             setHintTextColor(muted)
