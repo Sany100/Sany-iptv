@@ -4205,6 +4205,28 @@ class MainActivity : AppCompatActivity() {
 
     private fun setPlayerFullscreen(enabled: Boolean) {
         isPlayerFullscreen = enabled
+        if (enabled) {
+            // A channel selected from the inline category search can leave the
+            // soft keyboard visible over the landscape player. Dismiss the IME
+            // before rotating, clear EditText focus, then repeat after rotation
+            // because Android may restore the keyboard during Activity relayout.
+            val searchInput = if (::categoryHeaderContainer.isInitialized)
+                categoryHeaderContainer.findViewWithTag<EditText>("category_inline_search")
+            else null
+            searchInput?.clearFocus()
+            if (::root.isInitialized) root.clearFocus()
+            val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as
+                android.view.inputmethod.InputMethodManager
+            val token = (searchInput?.windowToken ?: window.decorView.windowToken)
+            imm.hideSoftInputFromWindow(token, 0)
+            window.decorView.postDelayed({
+                if (!isFinishing && !isDestroyed && isPlayerFullscreen) {
+                    searchInput?.clearFocus()
+                    root.clearFocus()
+                    imm.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+                }
+            }, 350L)
+        }
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerFullscreenButton?.text = if (enabled) "⤢" else "⛶"
         playerControlsPanel?.let { panel ->
