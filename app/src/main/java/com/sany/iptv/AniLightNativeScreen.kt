@@ -455,14 +455,16 @@ class AniLightNativeScreen(
 
         val sectionHead = label(if (title.equals("trending", true)) "TRENDING NOW" else title.uppercase(), 16, fg, true)
         target.addView(sectionHead, bottom(10))
-        val strip = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-        }
-        val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        strip.addView(rail)
+        // SEE MORE opens a vertically scrolling catalogue (two-column poster grid).
+        // The parent ScrollView handles top-to-bottom browsing.
         val visibleCards = if (!append && cards.isNotEmpty()) cards.drop(1) else cards
-        visibleCards.forEach { item ->
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val cardWidth = ((screenWidthDp - 20f) / 2f).toInt()
+        var gridRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+        }
+        visibleCards.forEachIndexed { index, item ->
             val cover = item.optJSONObject("coverImage")
             val posterUrl = cover?.optString("extraLarge").orEmpty()
                 .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
@@ -470,10 +472,12 @@ class AniLightNativeScreen(
             val name = titleObj?.optString("english").orEmpty()
                 .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
             val year = item.optInt("seasonYear").takeIf { it > 0 }?.toString().orEmpty()
-            val score = item.optDouble("averageScore", 0.0).takeIf { it > 0 }?.toString()?.let { "★ $it" }.orEmpty()
+            val score = item.optDouble("averageScore", 0.0).takeIf { it > 0 }
+                ?.let { String.format(java.util.Locale.US, "%.1f", it / 10.0) }
+                ?.let { "★ $it" }.orEmpty()
 
             val card = FrameLayout(context).apply {
-                background = rounded(surface, 15)
+                background = rounded(surface, 14)
                 clipToOutline = true
                 isFocusable = true
                 setOnClickListener { openAnime(item) }
@@ -484,35 +488,47 @@ class AniLightNativeScreen(
             }
             card.addView(poster, FrameLayout.LayoutParams(-1, -1))
             if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
-
-            val bottomShade = View(context).apply {
+            val shade = View(context).apply {
                 background = GradientDrawable(
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(0x00101018, 0xD9101018.toInt())
                 )
             }
-            card.addView(bottomShade, FrameLayout.LayoutParams(-1, dp(62), Gravity.BOTTOM))
-
-            val glassInfo = LinearLayout(context).apply {
+            card.addView(shade, FrameLayout.LayoutParams(-1, dp(66), Gravity.BOTTOM))
+            val info = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(6), dp(5), dp(6), dp(5))
-                background = GradientDrawable().apply {
-                    setColor(0xAA111624.toInt())
-                    cornerRadius = dp(12).toFloat()
-                    setStroke(dp(1), 0x55FFFFFF)
-                }
-                elevation = dp(3).toFloat()
-                addView(label(name, 10, Color.WHITE, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-                addView(label(listOf(year, score).filter { it.isNotBlank() }.joinToString(" • "), 9, 0xFFD8DCE8.toInt(), false).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                setPadding(dp(7), dp(6), dp(7), dp(6))
+                addView(label(name, 11, Color.WHITE, true).apply {
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+                addView(label(listOf(year, score).filter { it.isNotBlank() }.joinToString(" • "), 9, 0xFFD8DCE8.toInt(), false))
             }
-            card.addView(glassInfo, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
-                setMargins(dp(4), 0, dp(4), dp(4))
+            card.addView(info, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+            val cell = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(card, LinearLayout.LayoutParams(-1, dp((cardWidth * 1.42f).toInt())))
+            }
+            gridRow.addView(cell, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                leftMargin = dp(4)
+                rightMargin = dp(4)
+                bottomMargin = dp(14)
             })
-            rail.addView(card, LinearLayout.LayoutParams(dp(158), dp(230)).apply {
-                rightMargin = dp(7)
-            })
+            if (index % 2 == 1) {
+                target.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+                gridRow = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.TOP
+                }
+            }
         }
-        target.addView(strip, bottom(16))
+        if (visibleCards.size % 2 == 1) {
+            gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
+                leftMargin = dp(4)
+                rightMargin = dp(4)
+            })
+            target.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+        }
 
         if (showingFilterResults && filterHasNext) {
             target.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1, keepHomeChrome = isHomePage) }.apply {
