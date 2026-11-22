@@ -92,7 +92,9 @@ class AniLightNativeScreen(
         val animeTitle: String,
         val language: String,
         val anime: JSONObject?,
-        val contentHost: LinearLayout?
+        val contentHost: LinearLayout?,
+        val isAnimeSearchPage: Boolean,
+        val animeSearchResultsHost: LinearLayout?
     )
     private val pageHistory = java.util.ArrayDeque<AnimePageSnapshot>()
 
@@ -105,7 +107,7 @@ class AniLightNativeScreen(
                 children, catalogueScroll?.scrollY ?: 0, isHomePage,
                 isShelfCategoryPage, showingFilterResults, filterHasNext, filterPage, filterSort,
                 filterGenre, autoPageLoading, slug, animeId, animeTitle,
-                language, anime, savedContentHost
+                language, anime, savedContentHost, isAnimeSearchPage, animeSearchResultsHost
             )
         )
         body.removeAllViews()
@@ -138,6 +140,8 @@ class AniLightNativeScreen(
         animeTitle = previous.animeTitle
         language = previous.language
         anime = previous.anime
+        isAnimeSearchPage = previous.isAnimeSearchPage
+        animeSearchResultsHost = previous.animeSearchResultsHost
         catalogueScroll?.post { catalogueScroll?.scrollTo(0, previous.scrollY) }
         return true
     }
