@@ -4637,6 +4637,9 @@ class MainActivity : AppCompatActivity() {
             playerHeader?.visibility = View.GONE
             playerFullscreenButton?.visibility = View.GONE
             playerMinimizeButton?.visibility = View.GONE
+            // Keep the PiP surface clean: Anime title text is an in-app overlay,
+            // not part of the video, so hide it while Android displays the PiP window.
+            animePlayerTitleOverlay?.visibility = View.GONE
         } else if (playerView != null) {
             // Restore the normal embedded-player container after PiP closes.
             playerScreen?.layoutParams = FrameLayout.LayoutParams(
@@ -4654,6 +4657,8 @@ class MainActivity : AppCompatActivity() {
             playerHeader?.visibility = if (isPlayerFullscreen) View.GONE else View.VISIBLE
             playerFullscreenButton?.visibility = if (isPlayerFullscreen) View.GONE else View.VISIBLE
             playerMinimizeButton?.visibility = View.GONE
+            // Restore the Anime title only after returning from PiP to the app player.
+            animePlayerTitleOverlay?.visibility = View.VISIBLE
         }
     }
 
