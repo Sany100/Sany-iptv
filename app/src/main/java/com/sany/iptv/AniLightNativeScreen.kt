@@ -459,11 +459,11 @@ class AniLightNativeScreen(
 
         val sectionHead = label(if (title.equals("trending", true)) "TRENDING NOW" else title.uppercase(), 16, fg, true)
         target.addView(sectionHead, bottom(10))
-        // SEE MORE opens a vertically scrolling catalogue (two-column poster grid).
+        // SEE MORE opens a vertically scrolling catalogue (three-column poster grid).
         // The parent ScrollView handles top-to-bottom browsing.
         val visibleCards = if (!append && cards.isNotEmpty()) cards.drop(1) else cards
         val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
-        val cardWidth = ((screenWidthDp - 20f) / 2f).toInt()
+        val cardWidth = ((screenWidthDp - 24f) / 3f).toInt()
         var gridRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.TOP
@@ -518,7 +518,7 @@ class AniLightNativeScreen(
                 rightMargin = dp(4)
                 bottomMargin = dp(14)
             })
-            if (index % 2 == 1) {
+            if (index % 3 == 2) {
                 target.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
                 gridRow = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -526,12 +526,14 @@ class AniLightNativeScreen(
                 }
             }
         }
-        if (visibleCards.size % 2 == 1) {
+        if (visibleCards.size % 3 != 0) {
+            repeat(3 - (visibleCards.size % 3)) {
             gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
                 leftMargin = dp(4)
                 rightMargin = dp(4)
             })
             target.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+            }
         }
 
         // Pagination is automatic on scroll; no Load More button is shown.
