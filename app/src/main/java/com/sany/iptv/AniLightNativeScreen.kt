@@ -401,6 +401,7 @@ class AniLightNativeScreen(
                 isFocusable = true
                 setOnClickListener { openAnime(item) }
             }
+            applyNowPlayingHighlight(this, item)
             val posterFrame = FrameLayout(context).apply {
                 background = rounded(surface, 14)
                 clipToOutline = true
@@ -475,6 +476,7 @@ class AniLightNativeScreen(
                 setPadding(dp(4), 0, dp(4), dp(10))
                 setOnClickListener { openAnime(item) }
             }
+            applyNowPlayingHighlight(this, item)
             val frame = FrameLayout(context).apply {
                 background = rounded(surface, 10)
                 clipToOutline = true
@@ -867,12 +869,35 @@ class AniLightNativeScreen(
         }
     }
 
+    // Highlight the anime whose episode was most recently selected for playback.
+    private fun applyNowPlayingHighlight(card: View, item: JSONObject) {
+        val currentSlug = context.getSharedPreferences("anilight_watch_later", Context.MODE_PRIVATE)
+            .getString("current_playing_slug", "").orEmpty()
+        val itemSlug = item.optString("slug")
+        if (currentSlug.isBlank() || itemSlug.isBlank() || currentSlug != itemSlug) return
+        card.background = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(3), accent)
+        }
+        if (card is FrameLayout) {
+            val tag = label("▶ PLAYING", 10, Color.WHITE, true).apply {
+                setPadding(dp(8), dp(5), dp(8), dp(5))
+                background = rounded(accent, 18)
+            }
+            card.addView(tag, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+                setMargins(dp(6), dp(6), 0, 0)
+            })
+        }
+    }
+
     // Persist every episode the user actually starts playing, newest first.
     private fun saveWatchLater(animeItem: JSONObject, episode: Int, languageCode: String) {
         val prefs = context.getSharedPreferences("anilight_watch_later", Context.MODE_PRIVATE)
         val saved = runCatching { JSONArray(prefs.getString("items", "[]") ?: "[]") }.getOrElse { JSONArray() }
         val slugKey = animeItem.optString("slug")
         val key = "$slugKey|$episode|$languageCode"
+        prefs.edit().putString("current_playing_slug", slugKey).putString("current_playing_key", key).apply()
         val updated = JSONArray()
         val entry = JSONObject()
             .put("key", key)
@@ -925,6 +950,7 @@ class AniLightNativeScreen(
                 isFocusable = true
                 setOnClickListener { openAnime(item) }
             }
+            applyNowPlayingHighlight(this, item)
             val poster = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundColor(surface)
