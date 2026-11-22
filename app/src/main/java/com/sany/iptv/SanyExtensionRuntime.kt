@@ -164,7 +164,7 @@ object SanyExtensionRepositories {
         require(plugin.internalName.matches(Regex("[A-Za-z0-9_.-]{1,100}"))) {
             "Invalid plugin internalName"
         }
-        require(plugin.fileSize == null || plugin.fileSize in 1..MAX_PLUGIN_BYTES) {
+        require(plugin.fileSize == null || plugin.fileSize in 1L..MAX_PLUGIN_BYTES) {
             "Plugin package size is outside the allowed limit"
         }
 
@@ -283,7 +283,7 @@ object SanyExtensionRepositories {
                 val location = connection.getHeaderField("Location")
                 connection.disconnect()
                 if (index == maxRedirects || location.isNullOrBlank()) error("Invalid repository redirect")
-                current = normalizeHttpsUrl(URL(current, location).toString())
+                current = normalizeHttpsUrl(URL(java.net.URI(current).resolve(location).toString()).toString())
                     ?: error("Redirect must remain on HTTPS")
             } else {
                 if (code !in 200..299) {
