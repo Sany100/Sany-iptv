@@ -340,6 +340,7 @@ class AniLightNativeScreen(
         // last anime must not continue scrolling the homepage behind this dropdown.
         var dropdownTouchStartY = 0f
         var dropdownArrow: TextView? = null
+        var arrowHintShown = false
         val dropdownScroll = ScrollView(context).apply {
             visibility = View.GONE
             isFillViewport = false
@@ -351,33 +352,58 @@ class AniLightNativeScreen(
                 val consumeTouch = when (event.actionMasked) {
                     android.view.MotionEvent.ACTION_DOWN -> {
                         dropdownTouchStartY = event.y
+                        arrowHintShown = false
                         catalogueScroll?.requestDisallowInterceptTouchEvent(true)
                         false
                     }
                     android.view.MotionEvent.ACTION_MOVE -> {
                         catalogueScroll?.requestDisallowInterceptTouchEvent(true)
+                        val swipeUpDistance = dropdownTouchStartY - event.y
+                        val atEnd = scrollY + height >= getChildAt(0).height - dp(24)
+                        if (atEnd && swipeUpDistance >= dp(50) && !arrowHintShown) {
+                            arrowHintShown = true
+                            dropdownArrow?.let { indicator ->
+                                indicator.text = "↑"
+                                indicator.animate().translationY(-dp(9).toFloat()).setDuration(150)
+                                    .withEndAction {
+                                        indicator.animate().translationY(0f).setDuration(150).start()
+                                    }.start()
+                            }
+                        }
                         false
                     }
                     android.view.MotionEvent.ACTION_UP -> {
                         val swipeUpDistance = dropdownTouchStartY - event.y
                         val atEnd = scrollY + height >= getChildAt(0).height - dp(24)
                         catalogueScroll?.requestDisallowInterceptTouchEvent(false)
-                        if (atEnd && swipeUpDistance >= dp(36)) {
-                            // At the end of this category, one more upward pull
-                            // collapses only this dropdown and returns the category
-                            // heading to view; the homepage remains untouched.
-                            post {
-                                visibility = View.GONE
-                                dropdownArrow?.text = "⌄"
-                                catalogueScroll?.smoothScrollTo(0, heading.top + contentHost.top)
+                        if (atEnd && swipeUpDistance >= dp(50)) {
+                            // A 50dp upward pull at the end shows an animated
+                            // upward arrow, then collapses this dropdown to its heading.
+                            val indicator = dropdownArrow
+                            if (indicator != null) {
+                                indicator.text = "↑"
+                                indicator.animate().translationY(-dp(18).toFloat()).setDuration(180)
+                                    .withEndAction {
+                                        visibility = View.GONE
+                                        indicator.text = "⌄"
+                                        indicator.translationY = 0f
+                                        catalogueScroll?.smoothScrollTo(0, heading.top + contentHost.top)
+                                    }.start()
+                            } else {
+                                post {
+                                    visibility = View.GONE
+                                    catalogueScroll?.smoothScrollTo(0, heading.top + contentHost.top)
+                                }
                             }
                             true
                         } else {
+                            if (arrowHintShown) dropdownArrow?.text = "⌃"
                             false
                         }
                     }
                     android.view.MotionEvent.ACTION_CANCEL -> {
                         catalogueScroll?.requestDisallowInterceptTouchEvent(false)
+                        if (arrowHintShown) dropdownArrow?.text = "⌃"
                         false
                     }
                     else -> false
