@@ -2054,6 +2054,124 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showExtensionManager() {
+        val actions = arrayOf(
+            "Add CloudStream repository",
+            "View / remove saved repositories",
+            "Refresh extension catalogue",
+            "Runtime compatibility information"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Extensions & Repositories")
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> {
+                        val field = EditText(this).apply {
+                            hint = "https://example.com/repo.json"
+                            inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI
+                            setSingleLine(true)
+                        }
+                        AlertDialog.Builder(this)
+                            .setTitle("Add extension repository")
+                            .setMessage("CloudStream repository JSON URL দিন (HTTPS only)।")
+                            .setView(field)
+                            .setPositiveButton("ADD") { _, _ ->
+                                val url = field.text.toString().trim()
+                                if (SanyExtensionRepositories.add(this, url)) {
+                                    toast("Repository saved")
+                                } else {
+                                    toast("Valid HTTPS repository URL দিন")
+                                }
+                            }
+                            .setNegativeButton("CANCEL", null)
+                            .show()
+                    }
+                    1 -> {
+                        val urls = SanyExtensionRepositories.all(this)
+                        if (urls.isEmpty()) {
+                            toast("কোনো repository যোগ করা হয়নি")
+                        } else {
+                            AlertDialog.Builder(this)
+                                .setTitle("Saved repositories — remove করতে ট্যাপ করুন")
+                                .setItems(urls.toTypedArray()) { _, index ->
+                                    AlertDialog.Builder(this)
+                                        .setMessage("এই repository সরাবেন?")
+                                        .setPositiveButton("REMOVE") { _, _ ->
+                                            SanyExtensionRepositories.remove(this, urls[index])
+                                            toast("Repository removed")
+                                        }
+                                        .setNegativeButton("CANCEL", null)
+                                        .show()
+                                }
+                                .setNegativeButton("CLOSE", null)
+                                .show()
+                        }
+                    }
+                    2 -> {
+                        if (SanyExtensionRepositories.all(this).isEmpty()) {
+                            toast("আগে একটি HTTPS repository যোগ করুন")
+                        } else {
+                            toast("Extension catalogue loading…")
+                            thread(name = "SANY-Extension-Catalogue") {
+                                val catalog = runCatching {
+                                    SanyExtensionRepositories.fetchCatalog(this)
+                                }.getOrElse { emptyList() }
+                                runOnUiThread {
+                                    if (isFinishing || isDestroyed) return@runOnUiThread
+                                    val plugins = catalog.flatMap { (repository, entries) ->
+                                        entries.map { repository to it }
+                                    }
+                                    if (plugins.isEmpty()) {
+                                        AlertDialog.Builder(this)
+                                            .setTitle("Extension catalogue")
+                                            .setMessage("কোনো plugin metadata পাওয়া যায়নি। Repository URL এবং plugins.json যাচাই করুন।")
+                                            .setPositiveButton("OK", null)
+                                            .show()
+                                    } else {
+                                        val labels = plugins.map { (_, plugin) ->
+                                            "${plugin.name}  •  v${plugin.version.ifBlank { "?" }}"
+                                        }.toTypedArray()
+                                        AlertDialog.Builder(this)
+                                            .setTitle("Available extensions (${plugins.size})")
+                                            .setItems(labels) { _, index ->
+                                                val (repository, plugin) = plugins[index]
+                                                AlertDialog.Builder(this)
+                                                    .setTitle(plugin.name)
+                                                    .setMessage(
+                                                        "Repository: $repository\n" +
+                                                        "Internal name: ${plugin.internalName}\n" +
+                                                        "Version: ${plugin.version}\n" +
+                                                        "Language: ${plugin.language}\n" +
+                                                        "Authors: ${plugin.authors}\n\n" +
+                                                        "${plugin.description}\n\n" +
+                                                        "এটি metadata discovery মাত্র; executable .cs3 plugin install/run করা হচ্ছে না।"
+                                                    )
+                                                    .setPositiveButton("COPY PLUGIN URL") { _, _ ->
+                                                        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Extension URL", plugin.downloadUrl))
+                                                        toast("Plugin URL copied")
+                                                    }
+                                                    .setNegativeButton("CLOSE", null)
+                                                    .show()
+                                            }
+                                            .setNegativeButton("CLOSE", null)
+                                            .show()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    3 -> AlertDialog.Builder(this)
+                        .setTitle("SANY Extension Runtime")
+                        .setMessage(SanyExtensionRepositories.runtimeNotice())
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("CLOSE", null)
+            .show()
+    }
+
     private fun renderSettings() {
         val scroll = ScrollView(this).apply {
             setBackgroundColor(bg)
@@ -2142,7 +2260,7 @@ class MainActivity : AppCompatActivity() {
         }
         settingsToggleCard(box, "Auto Retry on Failure", "Retry a failed stream up to 2 times automatically", "auto_retry_playback", true)
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
+        settingsCard(box, "Extensions & Repositories", "Browse CloudStream-compatible repository catalogues and manage repository URLs") { showExtensionManager() }\n        settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
         settingsToggleCard(box, "Floating window", "Show video in a floating window when you leave the app", "floating_window_enabled", true) { enabled ->
             if (!enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
