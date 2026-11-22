@@ -1134,7 +1134,8 @@ class MainActivity : AppCompatActivity() {
 
         // Native AniLight catalogue, search, episodes, SUB/DUB and API-backed playback.
     private fun renderAniLightNative() {
-        val screen = AniLightNativeScreen(
+        lateinit var screen: AniLightNativeScreen
+        screen = AniLightNativeScreen(
             context = this,
             light = isLight,
             accent = accent,
