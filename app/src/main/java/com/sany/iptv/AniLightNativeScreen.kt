@@ -882,6 +882,63 @@ class AniLightNativeScreen(
         if (available.isEmpty()) body.addView(label("এই ভাষায় episode পাওয়া যায়নি।", 13, muted, false))
     }
 
+    /** Side panel used only by the Anime Series fullscreen player. */
+    fun createPlayerEpisodePanel(): View {
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFF101010.toInt())
+            setPadding(dp(12), dp(12), dp(10), dp(12))
+        }
+        panel.addView(label("Season 1", 17, fg, true), bottom(10))
+        val scroll = ScrollView(context).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(list)
+        val eps = activeWatch?.optJSONArray("episodes")
+        val items = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }
+            .filter { it.optBoolean(language, false) }
+        items.forEach { ep ->
+            val number = ep.optInt("number", 1)
+            val title = ep.optString("title").ifBlank { "Episode $number" }
+            val card = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(0xFF1B1B1B.toInt(), 10)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                isFocusable = true
+                setOnClickListener { resolveEpisode(number) }
+            }
+            val line = row().apply { gravity = Gravity.CENTER_VERTICAL }
+            val thumbUrl = listOf("thumbnail", "thumbnailUrl", "image", "imageUrl", "img")
+                .map { ep.optString(it) }.firstOrNull { it.startsWith("http", true) }
+            val thumb = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(0xFF303030.toInt())
+            }
+            line.addView(thumb, LinearLayout.LayoutParams(dp(104), dp(62)).apply { rightMargin = dp(8) })
+            if (!thumbUrl.isNullOrBlank()) loadImage(thumbUrl, thumb)
+            val titleView = label("$number. $title", 13, fg, true)
+            line.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
+            card.addView(line)
+            val rating = ep.optString("rating").ifBlank { ep.optString("score") }
+            val runtime = ep.optString("duration").ifBlank { ep.optString("length") }
+            val meta = listOf(rating.takeIf { it.isNotBlank() }?.let { "Rated: $it" },
+                runtime.takeIf { it.isNotBlank() }).filterNotNull().joinToString("   ")
+            if (meta.isNotBlank()) card.addView(label(meta, 11, muted, false), bottom(4))
+            val description = android.text.Html.fromHtml(
+                ep.optString("description"), android.text.Html.FROM_HTML_MODE_COMPACT
+            ).toString().trim()
+            if (description.isNotBlank()) card.addView(label(description, 11, muted, false).apply {
+                maxLines = 4
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            list.addView(card, bottom(9))
+        }
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        return panel
+    }
+
     /** Plays the next available episode in the currently selected SUB/DUB language. */
     fun playNextEpisode() {
         val eps = activeWatch?.optJSONArray("episodes") ?: run {
