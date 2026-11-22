@@ -45,6 +45,8 @@ jobs:
           sed -i 's/gradle-7.4-bin.zip/gradle-8.12-bin.zip/' "$RUNNER_TEMP/cloudstream-build/gradle/wrapper/gradle-wrapper.properties"
           sed -i 's/com.android.tools.build:gradle:7.0.4/com.android.tools.build:gradle:8.7.3/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           sed -i 's/kotlin-gradle-plugin:1.7.10/kotlin-gradle-plugin:1.9.24/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
+          # AGP 8 no longer supplies the legacy apk configuration expected by the CloudStream template.
+          sed -i '/    dependencies {/i\\    configurations.maybeCreate("apk")' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           cp -a "$GITHUB_WORKSPACE/source/cloudstream-original/AniLight" "$RUNNER_TEMP/cloudstream-build/AniLight"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt"
