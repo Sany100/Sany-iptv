@@ -29,7 +29,7 @@ object MultimoviesNativeResolver {
         val expected = if (series) "tv" else "movie"
         val jsonText = get("$BASE/api/search?q=$q&limit=12")
         val hits = mutableListOf<MultimoviesHit>()
-        if (!jsonText.isNullOrBlank()) runCatching {
+        if (!jsonText.isNullOrBlank()) try {
             val arr = JSONObject(jsonText).optJSONArray("results")
             if (arr != null) for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
@@ -41,7 +41,7 @@ object MultimoviesNativeResolver {
                     hits += MultimoviesHit(name, link, expected)
                 }
             }
-        }
+        } catch (_: Exception) { }
         if (hits.isEmpty()) {
             val html = get("$BASE/search?q=$q").orEmpty()
             val article = Regex("(?is)<article\\b[^>]*>(.*?)</article>")
@@ -65,15 +65,15 @@ object MultimoviesNativeResolver {
         if (!detailUrl.startsWith(BASE)) return emptyList()
         val html = get(detailUrl) ?: return emptyList()
         val candidates = linkedMapOf<String, String>()
-        val config = Regex("(?is)watchConfig\\s*=\\s*(\\{.*?\\})\\s*;").find(html)?.groupValues?.get(1)
-        if (config != null) runCatching {
+        val config = extractWatchConfig(html)
+        if (config != null) try {
             val servers = JSONObject(config).optJSONArray("initialServers")
             if (servers != null) for (i in 0 until servers.length()) {
                 val o = servers.optJSONObject(i) ?: continue
                 val link = absolute(o.optString("url").replace("\\\\/", "/").trim())
                 if (link.startsWith("http")) candidates[o.optString("name").ifBlank { "Server ${i + 1}" }] = link
             }
-        }
+        } catch (_: Exception) { }
         val chips = Regex("(?is)<button[^>]*class=[\"'][^\"']*server-chip[^\"']*[\"'][^>]*>")
         for (m in chips.findAll(html)) {
             val tag = m.value
@@ -85,6 +85,33 @@ object MultimoviesNativeResolver {
             val direct = directMedia(link)
             MultimoviesSource(name, direct ?: link, direct != null)
         }
+    }
+
+    private fun extractWatchConfig(html: String): String? {
+        val marker = Regex("(?is)watchConfig\\s*=\\s*").find(html) ?: return null
+        val start = html.indexOf('{', marker.range.last + 1)
+        if (start < 0) return null
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        for (i in start until html.length) {
+            val ch = html[i]
+            if (quoted) {
+                if (escaped) escaped = false
+                else if (ch == '\\\\') escaped = true
+                else if (ch == '"') quoted = false
+            } else {
+                when (ch) {
+                    '"' -> quoted = true
+                    '{' -> depth++
+                    '}' -> {
+                        depth--
+                        if (depth == 0) return html.substring(start, i + 1)
+                    }
+                }
+            }
+        }
+        return null
     }
 
     private fun directMedia(link: String): String? {
