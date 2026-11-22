@@ -36,7 +36,7 @@ object MultimoviesNativeResolver {
         url.protocol == "http" || url.protocol == "https"
     }.getOrDefault(false)
 
-    private fun get(url: String): String? {
+    private fun get(url: String, referer: String? = null): String? {
         val c = runCatching { URL(url).openConnection() as HttpURLConnection }.getOrNull() ?: return null
         c.connectTimeout = 8000
         c.readTimeout = 10000
@@ -44,6 +44,7 @@ object MultimoviesNativeResolver {
         c.setRequestProperty("User-Agent", UA)
         c.setRequestProperty("Accept", "text/html,application/json")
         c.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+        if (!referer.isNullOrBlank()) c.setRequestProperty("Referer", referer)
         return try {
             if (c.responseCode in 200..299) c.inputStream.bufferedReader().use { it.readText() } else null
         } catch (_: Exception) {
@@ -77,6 +78,39 @@ object MultimoviesNativeResolver {
                 }
             }
         } catch (_: Exception) { }
+        if (hits.isEmpty()) {
+            // Public Dooplay search: consume only the nonce published in normal
+            // homepage HTML. No challenge solving or access-control bypass.
+            val homepage = get("$BASE/").orEmpty()
+            val nonceBlock = Regex("""dtGonza\\s*=\\s*\\{[^}]*\\}""").find(homepage)?.value
+            val nonce = nonceBlock?.let {
+                Regex("""\"nonce\"\\s*:\\s*\"([A-Za-z0-9]+)\"""").find(it)?.groupValues?.get(1)
+            }
+            if (!nonce.isNullOrBlank()) {
+                val dooplay = get(
+                    "$BASE/wp-json/dooplay/search/?keyword=$q&nonce=$nonce",
+                    "$BASE/"
+                )
+                if (!dooplay.isNullOrBlank()) try {
+                    val root = JSONObject(dooplay)
+                    val keys = root.keys()
+                    while (keys.hasNext()) {
+                        val o = root.optJSONObject(keys.next()) ?: continue
+                        val name = o.optString("title").trim()
+                        val rawLink = o.optString("url").trim()
+                        if (name.isBlank() || rawLink.isBlank()) continue
+                        val link = absolute(rawLink)
+                        val hostMatches = runCatching {
+                            URL(link).host.equals(URL(BASE).host, ignoreCase = true)
+                        }.getOrDefault(false)
+                        if (!hostMatches) continue
+                        val kind = if (link.contains("/series/") || link.contains("/tvshows/")) "tv" else "movie"
+                        if (kind != expected) continue
+                        hits += MultimoviesHit(name, link, expected)
+                    }
+                } catch (_: Exception) { }
+            }
+        }
         if (hits.isEmpty()) {
             val html = get("$BASE/search?q=$q").orEmpty()
             val article = Regex("(?is)<article\\b[^>]*>(.*?)</article>")
