@@ -4198,6 +4198,15 @@ class MainActivity : AppCompatActivity() {
         val target = selector ?: return
         val quality = prefs.getString("video_quality", "auto") ?: "auto"
         val builder = target.buildUponParameters()
+        // Anime Series starts with 1080p as the preferred maximum quality.
+        // Adaptive selection may fall back to the best available lower track
+        // when the stream has no 1080p rendition or bandwidth is insufficient.
+        if (section == "Series" && quality == "auto") {
+            builder.setMaxVideoSize(1920, 1080)
+                .setMaxVideoBitrate(Int.MAX_VALUE)
+            target.setParameters(builder)
+            return
+        }
         when (quality) {
             "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
             "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
