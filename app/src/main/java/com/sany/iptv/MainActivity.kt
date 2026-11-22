@@ -1139,7 +1139,7 @@ class MainActivity : AppCompatActivity() {
             light = isLight,
             accent = accent,
             onPlay = { title, url, subtitle ->
-                play(Channel(title, url, "AniLight"), true, null, subtitle)
+                play(Channel(title, url, "AniLight"), true, null, subtitle, screen.playbackHeaders())
             }
         )
         aniLightNativeScreen = screen
@@ -3331,7 +3331,13 @@ class MainActivity : AppCompatActivity() {
         input.requestFocus()
     }
 
-    private fun play(channel: Channel, startPlayback: Boolean = true, ftpCredentials: Pair<String, String>? = null, subtitleUrl: String? = null) {
+    private fun play(
+        channel: Channel,
+        startPlayback: Boolean = true,
+        ftpCredentials: Pair<String, String>? = null,
+        subtitleUrl: String? = null,
+        requestHeaders: Map<String, String> = emptyMap()
+    ) {
         if (section != "Live TV" && section != "Movies" && section != "Series") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
@@ -3418,14 +3424,20 @@ class MainActivity : AppCompatActivity() {
             scroll?.post { scroll.scrollTo(0, previousScrollY) }
         }
 
+        val mediaHeaders = linkedMapOf(
+            "Accept" to "*/*",
+            "Connection" to "keep-alive"
+        ).apply {
+            putAll(requestHeaders)
+        }
         val httpFactory = DefaultHttpDataSource.Factory()
-            // Common IPTV endpoints reject minimal/custom user agents; send normal
-            // media request headers and allow redirects without adding long waits.
-            .setUserAgent("Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
-            .setDefaultRequestProperties(mapOf(
-                "Accept" to "*/*",
-                "Connection" to "keep-alive"
-            ))
+            // Keep standard IPTV headers, and add provider-specific headers only
+            // for AniLight playback (including HLS segments and subtitle requests).
+            .setUserAgent(
+                requestHeaders["User-Agent"]
+                    ?: "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36"
+            )
+            .setDefaultRequestProperties(mediaHeaders)
             .setConnectTimeoutMs(5000)
             .setReadTimeoutMs(15000)
             .setAllowCrossProtocolRedirects(true)
