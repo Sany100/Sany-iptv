@@ -10,6 +10,8 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -185,27 +187,130 @@ class AniLightNativeScreen(
         } else {
             body.removeAllViews()
             val head = row()
-            head.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+            head.addView(label(title.uppercase(), 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
             head.addView(button("HOME") { home() })
-            body.addView(head, bottom(12))
+            body.addView(head, bottom(14))
         }
-        if (cards.isEmpty() && !append) { body.addView(label("কোনো anime পাওয়া যায়নি। API unavailable হলে পরে আবার চেষ্টা করো।", 14, muted, false)); return }
-        cards.forEach { item ->
-            val card = row().apply { gravity = Gravity.CENTER_VERTICAL; background = rounded(surface, 12); setPadding(dp(7), dp(7), dp(7), dp(7)); isFocusable = true; setOnClickListener { openAnime(item) } }
-            val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
-            card.addView(poster, LinearLayout.LayoutParams(dp(76), dp(104)).apply { rightMargin = dp(10) })
+        if (cards.isEmpty() && !append) {
+            body.addView(label("কোনো anime পাওয়া যায়নি। API unavailable হলে পরে আবার চেষ্টা করো।", 14, muted, false))
+            return
+        }
+
+        // Featured wide banner, inspired by the reference Cloudstream layout.
+        if (!append && cards.isNotEmpty()) {
+            val featured = cards.first()
+            val cover = featured.optJSONObject("coverImage")
+            val imageUrl = cover?.optString("extraLarge").orEmpty()
+                .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
+            val titleObj = featured.optJSONObject("title")
+            val featuredName = titleObj?.optString("english").orEmpty()
+                .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Featured Anime" } }
+            val year = featured.optInt("seasonYear").takeIf { it > 0 }?.toString().orEmpty()
+            val score = featured.optDouble("averageScore", 0.0).takeIf { it > 0 }?.toString()?.let { "★ $it" }.orEmpty()
+
+            val hero = FrameLayout(context).apply {
+                background = rounded(surface, 20)
+                clipToOutline = true
+                isFocusable = true
+                setOnClickListener { openAnime(featured) }
+            }
+            val heroImage = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(surface)
+            }
+            hero.addView(heroImage, FrameLayout.LayoutParams(-1, -1))
+            if (imageUrl.startsWith("http")) loadImage(imageUrl, heroImage)
+
+            val shade = View(context).apply {
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(0x00101018, 0x66101018, 0xF0101018.toInt())
+                )
+            }
+            hero.addView(shade, FrameLayout.LayoutParams(-1, -1))
+
+            val glass = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+                background = GradientDrawable().apply {
+                    setColor(0x99111624.toInt())
+                    cornerRadius = dp(17).toFloat()
+                    setStroke(dp(1), 0x66FFFFFF)
+                }
+                elevation = dp(5).toFloat()
+            }
+            glass.addView(label("FEATURED ANIME", 10, 0xFFD6D9FF.toInt(), true), bottom(4))
+            glass.addView(label(featuredName, 19, Color.WHITE, true), bottom(4))
+            glass.addView(label(listOf(year, score).filter { it.isNotBlank() }.joinToString("   •   "), 11, 0xFFE1E5EF.toInt(), false))
+            val glassParams = FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+                setMargins(dp(10), 0, dp(10), dp(10))
+            }
+            hero.addView(glass, glassParams)
+            body.addView(hero, LinearLayout.LayoutParams(-1, dp(220)).apply { bottomMargin = dp(18) })
+        }
+
+        val sectionHead = label(if (title.equals("trending", true)) "TRENDING NOW" else title.uppercase(), 16, fg, true)
+        body.addView(sectionHead, bottom(10))
+        val strip = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        strip.addView(rail)
+        val visibleCards = if (!append && cards.isNotEmpty()) cards.drop(1) else cards
+        visibleCards.forEach { item ->
             val cover = item.optJSONObject("coverImage")
-            val imageUrl = cover?.optString("extraLarge").orEmpty().ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
-            if (imageUrl.startsWith("http")) loadImage(imageUrl, poster)
+            val posterUrl = cover?.optString("extraLarge").orEmpty()
+                .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
             val titleObj = item.optJSONObject("title")
-            val name = titleObj?.optString("english").orEmpty().ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
-            val details = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            details.addView(label(name, 14, fg, true))
-            details.addView(label(listOf(item.optString("format"), item.optInt("seasonYear").takeIf { it > 0 }?.toString().orEmpty()).filter { it.isNotBlank() }.joinToString(" • "), 11, muted, false))
-            details.addView(label("Score: ${item.optDouble("averageScore", 0.0).let { if (it > 0) it.toString() else "N/A" }}", 11, muted, false))
-            card.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-            body.addView(card, bottom(8))
+            val name = titleObj?.optString("english").orEmpty()
+                .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
+            val year = item.optInt("seasonYear").takeIf { it > 0 }?.toString().orEmpty()
+            val score = item.optDouble("averageScore", 0.0).takeIf { it > 0 }?.toString()?.let { "★ $it" }.orEmpty()
+
+            val card = FrameLayout(context).apply {
+                background = rounded(surface, 15)
+                clipToOutline = true
+                isFocusable = true
+                setOnClickListener { openAnime(item) }
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(surface)
+            }
+            card.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
+
+            val bottomShade = View(context).apply {
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(0x00101018, 0xD9101018.toInt())
+                )
+            }
+            card.addView(bottomShade, FrameLayout.LayoutParams(-1, dp(82), Gravity.BOTTOM))
+
+            val glassInfo = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(9), dp(7), dp(9), dp(8))
+                background = GradientDrawable().apply {
+                    setColor(0xAA111624.toInt())
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(dp(1), 0x55FFFFFF)
+                }
+                elevation = dp(3).toFloat()
+                addView(label(name, 12, Color.WHITE, true))
+                addView(label(listOf(year, score).filter { it.isNotBlank() }.joinToString(" • "), 10, 0xFFD8DCE8.toInt(), false))
+            }
+            card.addView(glassInfo, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+                setMargins(dp(6), 0, dp(6), dp(6))
+            })
+            rail.addView(card, LinearLayout.LayoutParams(dp(126), dp(190)).apply {
+                rightMargin = dp(10)
+            })
         }
+        body.addView(strip, bottom(16))
+
         if (showingFilterResults && filterHasNext) {
             body.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1) }.apply {
                 tag = "anilight_load_more"
