@@ -3975,6 +3975,10 @@ class MainActivity : AppCompatActivity() {
                 )
             )
         }
+        // Anime captions are disabled by default; other sections keep their normal track behavior.
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, section == "Series")
+            .build()
         val mediaItem = itemBuilder.build()
         val animeResumePosition = if (section == "Series") prefs.getLong(animeResumePreferenceKey(channel), 0L).coerceAtLeast(0L) else 0L
         if (animeResumePosition > 0L) p.setMediaItem(mediaItem, animeResumePosition) else p.setMediaItem(mediaItem)
