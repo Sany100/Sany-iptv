@@ -1489,14 +1489,28 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Build the Live TV directory from playlist metadata immediately.
-        // Stream verification continues in the background and only controls which
-        // channels can actually appear in the playable channel list.
+        // Build category metadata in a single pass. The previous implementation
+        // repeatedly scanned the complete playlist once per category, which made
+        // returning to Live TV noticeably slower on large playlists.
         val directoryChannels = if (section == "Live TV") {
             channels.filter { !isMovie(it) && !isSeries(it) }
         } else channels
-        val groups = listOf("All") + directoryChannels.asSequence().map { it.group }
-            .distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
+        val groupCounts = LinkedHashMap<String, Int>()
+        var allCount = 0
+        directoryChannels.forEach { channel ->
+            val eligibleForAll = when (section) {
+                "Movies" -> isMovie(channel)
+                "Series" -> isSeries(channel)
+                else -> !isMovie(channel) && !isSeries(channel)
+            }
+            if (eligibleForAll) allCount++
+            val group = channel.group
+            if (group.isNotBlank() && !groupCounts.containsKey(group)) {
+                groupCounts[group] = 0
+            }
+            if (group.isNotBlank()) groupCounts[group] = (groupCounts[group] ?: 0) + 1
+        }
+        val groups = listOf("All") + groupCounts.keys.take(250).sorted()
         val options = when (section) {
             "Movies" -> listOf("All") + movieCategories + groups.drop(1).filterNot { it in movieCategories }
             "Series" -> listOf("All", "Anime") + groups.drop(1).filterNot { it.equals("Anime", true) }
@@ -1505,10 +1519,10 @@ class MainActivity : AppCompatActivity() {
         val categoryCards = mutableListOf<View>()
         options.forEach { item ->
             val matchingCount = when {
-                item == "All" -> directoryChannels.count { c -> (section == "Movies" && isMovie(c)) || (section == "Series" && isSeries(c)) || (section == "Live TV" && !isMovie(c) && !isSeries(c)) }
+                item == "All" -> allCount
                 section == "Movies" && item in movieCategories -> directoryChannels.count { isMovie(it) && matchesMovieCategory(it, item) }
                 section == "Series" && item == "Anime" -> directoryChannels.count { isAnime(it) }
-                else -> directoryChannels.count { it.group.equals(item, true) }
+                else -> groupCounts.entries.firstOrNull { it.key.equals(item, true) }?.value ?: 0
             }
             if (section == "Live TV" && matchingCount == 0) return@forEach
             val card = LinearLayout(this).apply {
