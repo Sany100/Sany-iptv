@@ -948,7 +948,8 @@ class MainActivity : AppCompatActivity() {
 
         contentArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), 0, dp(18), 0)
+            val horizontalInset = if (section == "Series") dp(2) else dp(18)
+            setPadding(horizontalInset, 0, horizontalInset, 0)
             setBackgroundColor(bg)
         }
         home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
