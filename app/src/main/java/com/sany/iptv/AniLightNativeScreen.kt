@@ -526,7 +526,6 @@ class AniLightNativeScreen(
             else -> "POPULARITY_DESC"
         }
         // Save the current page before resetting its scroll position.
-        autoPageLoading = false
         loadFiltered(sort, selectedGenre, keepHomeChrome = keepHomeChrome)
         catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
     }
@@ -598,10 +597,10 @@ class AniLightNativeScreen(
     }
 
     private fun searchAnime(q: String) {
-        showingFilterResults = false
-        filterHasNext = false
         if (q.isBlank()) { category("trending"); return }
         pushCurrentPage()
+        showingFilterResults = false
+        filterHasNext = false
         isHomePage = false
         loading("Searching…")
         request("$api/search?q=${enc(q)}&hideAdult=true") { data ->
