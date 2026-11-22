@@ -3524,7 +3524,13 @@ class MainActivity : AppCompatActivity() {
             .setTrackSelector(DefaultTrackSelector(this).also { selector ->
                 trackSelector = selector
                 if (section == "Series") {
-                    selector.setParameters(selector.buildUponParameters().setPreferredAudioLanguage("hi"))
+                    selector.setParameters(
+                        selector.buildUponParameters()
+                            .setPreferredAudioLanguage("hi")
+                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                            .setMaxVideoSize(1920, 1080)
+                            .setMaxVideoBitrate(Int.MAX_VALUE)
+                    )
                 }
                 applyVideoQuality(selector)
             })
@@ -3795,15 +3801,8 @@ class MainActivity : AppCompatActivity() {
                 .setMessage("Current source: $host")
                 .setPositiveButton("OK", null).show()
         }
-        val tracksAction = animeAction("▥  Tracks", "Select Anime audio, subtitle or video quality") {
-            val choices = arrayOf("Audio language", "Subtitles", "Video quality")
-            AlertDialog.Builder(this).setTitle("Tracks").setItems(choices) { _, which ->
-                when (which) {
-                    0 -> showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
-                    1 -> showAnimeTrackSelection(C.TRACK_TYPE_TEXT, "Subtitles", true)
-                    2 -> showAnimeTrackSelection(C.TRACK_TYPE_VIDEO, "Video quality", false)
-                }
-            }.show()
+        val tracksAction = animeAction("▥  Tracks", "Change Anime audio language") {
+            showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
         }
         val nextEpisodeAction = animeAction("▶|  Next episode", "Play next Anime episode") {
             aniLightNativeScreen?.playNextEpisode() ?: toast("Next episode unavailable")
@@ -4201,8 +4200,12 @@ class MainActivity : AppCompatActivity() {
         // Anime Series starts with 1080p as the preferred maximum quality.
         // Adaptive selection may fall back to the best available lower track
         // when the stream has no 1080p rendition or bandwidth is insufficient.
-        if (section == "Series" && quality == "auto") {
-            builder.setMaxVideoSize(1920, 1080)
+        if (section == "Series") {
+            // Always start Anime playback with the highest available rendition
+            // up to Full HD; never ask the viewer to choose a resolution.
+            builder.setPreferredAudioLanguage("hi")
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .setMaxVideoSize(1920, 1080)
                 .setMaxVideoBitrate(Int.MAX_VALUE)
             target.setParameters(builder)
             return
