@@ -3406,7 +3406,7 @@ class MainActivity : AppCompatActivity() {
         val view = (layoutInflater.inflate(R.layout.player_view_texture, screen, false) as PlayerView).apply {
             useController = false
             player = p
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            resizeMode = if (keepFullscreenMode) AspectRatioFrameLayout.RESIZE_MODE_FILL else AspectRatioFrameLayout.RESIZE_MODE_FIT
             setBackgroundColor(Color.BLACK)
             setShutterBackgroundColor(Color.BLACK)
             // Retain the last rendered frame during short surface/Activity transitions
@@ -3860,9 +3860,15 @@ class MainActivity : AppCompatActivity() {
                 panel.layoutParams = params
             }
         }
-        playerView?.layoutParams = FrameLayout.LayoutParams(
-            -1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP
-        )
+        playerView?.let { view ->
+            // Fullscreen intentionally fills the entire display, stretching the source
+            // when its aspect ratio differs. Inline playback keeps the original ratio.
+            view.resizeMode = if (enabled) AspectRatioFrameLayout.RESIZE_MODE_FILL
+                else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            view.layoutParams = FrameLayout.LayoutParams(
+                -1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP
+            )
+        }
         // In minimized mode, reserve the top 235dp for video and lay out the
         // currently selected menu in the remaining screen area.
         playerScreen?.layoutParams = FrameLayout.LayoutParams(
@@ -4058,7 +4064,8 @@ class MainActivity : AppCompatActivity() {
             )
             playerView?.let { view ->
                 view.setUseController(false)
-                view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                view.resizeMode = if (isPlayerFullscreen) AspectRatioFrameLayout.RESIZE_MODE_FILL
+                    else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 view.layoutParams = FrameLayout.LayoutParams(
                     -1, if (isPlayerFullscreen) -1 else dp(235),
                     if (isPlayerFullscreen) Gravity.CENTER else Gravity.TOP
