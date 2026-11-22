@@ -75,8 +75,9 @@ class AniLightNativeScreen(
     private fun category(key: String) {
         loading("Loading $key…")
         request("$api/homepage") { data ->
+            val sectionKey = if (key == "movies") "popularMovies" else key
             val array = if (key == "recent") data?.optJSONArray("recentlyAddedEpisodes")
-                else data?.optJSONObject(key)?.optJSONArray("media")
+                else data?.optJSONObject(sectionKey)?.optJSONArray("media")
             showCards(key, items(array).filterNot { it.optBoolean("isAdult", false) })
         }
     }
@@ -102,7 +103,7 @@ class AniLightNativeScreen(
             val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
             card.addView(poster, LinearLayout.LayoutParams(dp(76), dp(104)).apply { rightMargin = dp(10) })
             val cover = item.optJSONObject("coverImage")
-            val imageUrl = cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() }
+            val imageUrl = cover?.optString("extraLarge").orEmpty().ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
             if (imageUrl.startsWith("http")) loadImage(imageUrl, poster)
             val titleObj = item.optJSONObject("title")
             val name = titleObj?.optString("english").orEmpty().ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
@@ -137,7 +138,7 @@ class AniLightNativeScreen(
         head.addView(label("ANIME DETAILS", 13, accent, true).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
         body.addView(head, bottom(12))
         val cover = detail.optJSONObject("coverImage")
-        val posterUrl = cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() }
+        val posterUrl = cover?.optString("extraLarge").orEmpty().ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
         val info = row()
         val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
         info.addView(poster, LinearLayout.LayoutParams(dp(112), dp(158)).apply { rightMargin = dp(12) })
@@ -176,10 +177,9 @@ class AniLightNativeScreen(
         loading("Resolving ${language.uppercase()} Episode $episode…")
         thread(name = "AniLight-Resolve") {
             try {
-                val sessionToken = getSession() ?: error("AniLight session unavailable")
                 val base = "$api/sources?id=$animeId&episode=$episode&language=$language"
-                val own = jsonBlocking(base, mapOf("x-source-session" to sessionToken))
-                val backup = jsonBlocking("$base&backup=true", mapOf("x-source-session" to sessionToken))
+                val own = sourceBlocking(base)
+                val backup = sourceBlocking("$base&backup=true")
                 val sources = mutableListOf<Pair<String, String>>()
                 val subtitles = linkedSetOf<String>()
                 fun add(data: JSONObject?, checkHls: Boolean) {
@@ -225,13 +225,36 @@ class AniLightNativeScreen(
         request("$api/watch/$slug") { showDetails(selected, it) }
     }
 
-    private fun getSession(): String? {
-        if (!session.isNullOrBlank() && System.currentTimeMillis() < sessionExpiry - 60000) return session
+    private fun getSession(force: Boolean = false): String? {
+        if (!force && !session.isNullOrBlank() && System.currentTimeMillis() < sessionExpiry - 60000) return session
         val result = jsonBlocking("$api/sources/verify", method = "POST", body = JSONObject().put("token", "direct").toString()) ?: return null
         val token = result.optString("sessionToken").takeIf { it.isNotBlank() } ?: return null
         session = token
         sessionExpiry = result.optLong("expiresAt", System.currentTimeMillis() + 86400000)
         return token
+    }
+
+    // Retry the provider's documented session handshake once when the public API
+    // reports an expired/invalid session. This does not bypass site protections.
+    private fun sourceBlocking(url: String): JSONObject? {
+        for (attempt in 0..1) {
+            val token = getSession(force = attempt == 1) ?: return null
+            val c = open(url, mapOf("x-source-session" to token), true)
+            try {
+                val code = c.responseCode
+                if (code == 401 || code == 403) {
+                    if (attempt == 0) continue
+                    return null
+                }
+                if (code !in 200..299) return null
+                val payload = c.inputStream.bufferedReader().use { it.readText() }
+                return if (payload.trimStart().startsWith("[")) JSONObject().put("results", JSONArray(payload))
+                    else JSONObject(payload)
+            } finally {
+                c.disconnect()
+            }
+        }
+        return null
     }
 
     private fun resolveToken(token: String): String? {
