@@ -336,8 +336,8 @@ class AniLightNativeScreen(
         }
         val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         scroller.addView(rail)
-        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
-        val cardWidth = (screenWidthDp / 3f).toInt()
+        val shelfScreenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val cardWidth = (shelfScreenWidthDp / 3f).toInt()
         val posterHeight = (cardWidth * 1.45f).toInt()
         cards.forEach { item ->
             val cover = item.optJSONObject("coverImage")
