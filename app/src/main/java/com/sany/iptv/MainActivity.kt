@@ -4400,10 +4400,10 @@ class MainActivity : AppCompatActivity() {
             // Anime fullscreen must use the entire landscape display. Do not keep
             // the season/episode sidebar beside the video; stretch the picture
             // to the full PlayerView bounds as requested.
-            view.resizeMode = if (enabled && section == "Series")
-                AspectRatioFrameLayout.RESIZE_MODE_FILL
-            else if (enabled) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            // Use true stretch-to-bounds in every fullscreen player section.
+            // This fills the entire landscape video area without the extra crop/zoom.
+            view.resizeMode = if (enabled) AspectRatioFrameLayout.RESIZE_MODE_FILL
+                else AspectRatioFrameLayout.RESIZE_MODE_FIT
             view.layoutParams = FrameLayout.LayoutParams(
                 -1,
                 if (enabled) -1 else dp(235),
