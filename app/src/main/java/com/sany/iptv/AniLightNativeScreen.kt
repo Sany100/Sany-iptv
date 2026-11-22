@@ -867,12 +867,14 @@ class AniLightNativeScreen(
         }
         if (visibleCards.size % 3 != 0) {
             repeat(3 - (visibleCards.size % 3)) {
-            gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
-                leftMargin = dp(4)
-                rightMargin = dp(4)
-            })
-            target.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+                gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
+                    leftMargin = dp(4)
+                    rightMargin = dp(4)
+                })
             }
+            // Attach the completed row once; adding the same View repeatedly
+            // throws IllegalStateException and closes the app for 1–2 leftovers.
+            target.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
         }
 
         // Pagination is automatic on scroll; no Load More button is shown.
