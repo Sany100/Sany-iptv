@@ -3749,6 +3749,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
         controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(27)))
+        if (isAnimeEpisode) {
+            transportRow.visibility = View.GONE
+            transportRow.removeView(playPauseButton)
+            playPauseButton.textSize = 34f
+            playPauseButton.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0x66000000)
+                setStroke(dp(1), 0x99FFFFFF.toInt())
+            }
+            screen.addView(playPauseButton, FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER))
+        }
 
         // Anime Series-only actions. Live TV and Movies keep their existing player UI.
         val animeActions = LinearLayout(this).apply {
@@ -3926,6 +3937,15 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(5)
         })
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
+        if (isAnimeEpisode) {
+            // Reference layout order: timeline, action strip, then time / utility controls.
+            controlsPanel.removeView(animeActions)
+            controlsPanel.removeView(progressBar)
+            controlsPanel.removeView(infoRow)
+            controlsPanel.addView(progressBar, LinearLayout.LayoutParams(-1, dp(15)))
+            controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
+            controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
+        }
         screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, if (isAnimeEpisode) dp(120) else dp(88), Gravity.TOP).apply {
             topMargin = dp(155)
             leftMargin = dp(8); rightMargin = dp(8)
