@@ -543,7 +543,7 @@ class AniLightNativeScreen(
     }
 
     private fun showFilterDialog() {
-        isHomePage = false
+        // Do not change the active page until the user actually applies a filter.
         val sorts = arrayOf(
             "Most Popular" to "POPULARITY_DESC",
             "Highest Rated" to "SCORE_DESC",
