@@ -88,11 +88,48 @@ class AniLightNativeScreen(
         search.addView(input, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
         search.addView(button("SEARCH") { searchAnime(input.text.toString().trim()) })
         body.addView(search, bottom(8))
-        body.addView(button("FILTER ANIME") { showFilterDialog() }, bottom(12))
-        listOf("Trending" to "trending", "Popular" to "popular", "Seasonal" to "seasonal", "Movies" to "movies",
-            "Top Rated" to "topRated", "Recently Added" to "recent", "Upcoming" to "upcoming").forEach { (name, key) ->
-            body.addView(button(name) { category(key) }, bottom(6))
+        body.addView(button("FILTER ANIME") { showFilterDialog() }, bottom(10))
+
+        // Match the full AniLight Cloudstream catalogue: homepage feeds plus every supported genre.
+        body.addView(label("ANIME CATEGORIES", 12, muted, true), bottom(6))
+        val categoryRail = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
         }
+        val categoryItems = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        categoryRail.addView(categoryItems)
+        listOf(
+            "Trending" to "trending",
+            "Popular" to "popular",
+            "This Season" to "seasonal",
+            "Previous Season" to "previousSeason",
+            "Popular Movies" to "movies",
+            "Top Rated" to "topRated",
+            "Recently Added" to "recent",
+            "Upcoming" to "upcoming"
+        ).forEach { (name, key) ->
+            categoryItems.addView(button(name) { category(key) }, LinearLayout.LayoutParams(-2, dp(40)).apply {
+                rightMargin = dp(6)
+            })
+        }
+        body.addView(categoryRail, bottom(12))
+
+        body.addView(label("BROWSE BY GENRE", 12, muted, true), bottom(6))
+        val genreRail = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val genreItems = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        genreRail.addView(genreItems)
+        listOf(
+            "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
+            "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi",
+            "Slice of Life", "Sports", "Supernatural", "Thriller"
+        ).forEach { genre ->
+            genreItems.addView(button(genre) { loadFiltered("POPULARITY_DESC", genre) },
+                LinearLayout.LayoutParams(-2, dp(40)).apply { rightMargin = dp(6) })
+        }
+        body.addView(genreRail, bottom(14))
         category("trending", homeLanding = true)
     }
 
@@ -118,8 +155,11 @@ class AniLightNativeScreen(
 
     private fun showHomeCategory(key: String, data: JSONObject?) {
         val sectionKey = if (key == "movies") "popularMovies" else key
-        val array = if (key == "recent") data?.optJSONArray("recentlyAddedEpisodes")
-            else data?.optJSONObject(sectionKey)?.optJSONArray("media")
+        val array = when (key) {
+            "recent" -> data?.optJSONArray("recentlyAddedEpisodes")
+            "previousSeason" -> data?.optJSONObject("previousSeason")?.optJSONArray("media")
+            else -> data?.optJSONObject(sectionKey)?.optJSONArray("media")
+        }
         showCards(key, items(array).filterNot { it.optBoolean("isAdult", false) })
     }
 
