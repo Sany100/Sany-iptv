@@ -900,7 +900,7 @@ class AniLightNativeScreen(
                 GradientDrawable.Orientation.LEFT_RIGHT,
                 intArrayOf(accent, 0xFFE040A0.toInt(), 0xFF24B6D8.toInt())
             ).apply { cornerRadius = dp(18).toFloat() }
-                .also { setShadowLayer(dp(7).toFloat(), 0f, dp(2).toFloat(), accent) }
+            setShadowLayer(dp(7).toFloat(), 0f, dp(2).toFloat(), accent)
         }
         posterFrame.addView(tag, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
             setMargins(dp(6), dp(6), 0, 0)
