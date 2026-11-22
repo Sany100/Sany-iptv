@@ -75,7 +75,7 @@ jobs:
           sed -i 's/implementation("com.github.Blatzar:NiceHttp:0.3.2")/implementation("com.github.Blatzar:NiceHttp:0.4.18")/; /implementation("org.jsoup:jsoup:1.13.1")/a\\        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           cp -a "$GITHUB_WORKSPACE/source/cloudstream-original/AniLight" "$RUNNER_TEMP/cloudstream-build/AniLight"
           # AGP 8 requires an explicit Android namespace for library modules.
-          printf '\nandroid { namespace = "com.anilight" }\n' >> "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
+          printf '\nandroid {\n    namespace = "com.anilight"\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_11\n        targetCompatibility = JavaVersion.VERSION_11\n    }\n}\n' >> "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt"
 
