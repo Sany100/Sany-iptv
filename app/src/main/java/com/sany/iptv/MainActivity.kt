@@ -113,6 +113,8 @@ class MainActivity : AppCompatActivity() {
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
     private var playbackRetryCount = 0
     private var playerView: PlayerView? = null
+    private var moviesWebView: WebView? = null
+    private var moviesSiteLoaded = false
     private var currentChannel: Channel? = null
     private var playbackReturnScrollY = 0
     // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
@@ -1020,12 +1022,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderSection() {
         contentArea.removeAllViews()
+        if (section != "Movies") moviesWebView?.stopLoading()
         if (section == "Settings") {
             renderSettings()
             return
         }
         if (section == "Series") {
             renderSeriesComingSoon()
+            return
+        }
+        if (section == "Movies") {
+            renderMoviesWebsite()
             return
         }
         if (section == "Checker") {
@@ -1089,6 +1096,64 @@ class MainActivity : AppCompatActivity() {
         // Restore after rows have been measured; this also survives fullscreen rotation/recreation.
         val restoreY = pendingListScrollRestoreY
         listScroll.post { listScroll.scrollTo(0, restoreY.coerceAtLeast(0)) }
+    }
+
+    // Movies uses the site's normal public web interface inside a sandboxed WebView.
+    // No scraping, DRM circumvention, or stream-link extraction is performed.
+    private fun renderMoviesWebsite() {
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(6), dp(4), dp(8))
+        }
+        toolbar.addView(text("MULTIMOVIES", 12, accent, true), LinearLayout.LayoutParams(0, dp(40), 1f))
+        toolbar.addView(actionButton("↻ REFRESH") { moviesWebView?.reload() }, LinearLayout.LayoutParams(dp(112), dp(38)))
+        page.addView(toolbar, LinearLayout.LayoutParams(-1, -2))
+
+        val browser = moviesWebView ?: WebView(this).apply {
+            setBackgroundColor(Color.WHITE)
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = true
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.setSupportMultipleWindows(false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                settings.safeBrowsingEnabled = true
+            }
+            CookieManager.getInstance().setAcceptCookie(true)
+            webChromeClient = WebChromeClient()
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                    val target = request.url
+                    return when (target.scheme?.lowercase()) {
+                        "http", "https" -> false
+                        else -> {
+                            try { startActivity(Intent(Intent.ACTION_VIEW, target)) } catch (_: Exception) {
+                                toast("এই লিংকটি খোলা যাচ্ছে না")
+                            }
+                            true
+                        }
+                    }
+                }
+                override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
+                    if (request.isForMainFrame) toast("Movies site load হয়নি — Refresh চাপুন")
+                }
+            }
+        }.also { moviesWebView = it }
+
+        (browser.parent as? ViewGroup)?.removeView(browser)
+        page.addView(browser, LinearLayout.LayoutParams(-1, 0, 1f))
+        contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
+        if (!moviesSiteLoaded) {
+            moviesSiteLoaded = true
+            browser.loadUrl("https://multimovies.makeup/")
+        }
     }
 
     private fun renderSeriesComingSoon() {
@@ -4119,6 +4184,12 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (section == "Movies" && moviesWebView?.canGoBack() == true) {
+            moviesWebView?.goBack()
+            lastBackPressedAt = 0L
+            return
+        }
+
         if (playerView != null) {
             // Live TV: close the fit-screen player and reveal All Categories.
             // Movies: close the player and return directly to the Live TV section.
@@ -4212,6 +4283,8 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
         }
         playerView?.player = null
+        moviesWebView?.apply { stopLoading(); destroy() }
+        moviesWebView = null
         loudnessEnhancer?.release(); loudnessEnhancer = null
         player?.release(); player = null
         logoExecutor.shutdownNow()
