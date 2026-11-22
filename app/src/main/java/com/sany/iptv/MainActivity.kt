@@ -3619,6 +3619,7 @@ class MainActivity : AppCompatActivity() {
             }
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val isAnimeEpisode = section == "Series"
         playerScreen = screen
         isPlayerFullscreen = keepFullscreenMode
         playerHeader = null
@@ -3737,7 +3738,6 @@ class MainActivity : AppCompatActivity() {
         }
         val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
         // Anime episodes do not use channel identity or channel-skip controls.
-        val isAnimeEpisode = section == "Series"
         channelIdentity.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
         previousButton.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
         nextButton.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
