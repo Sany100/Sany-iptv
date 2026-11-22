@@ -260,7 +260,7 @@ class AniLightNativeScreen(
         // Keep the expanded catalogue inside its own scroll area. Reaching the
         // last anime must not continue scrolling the homepage behind this dropdown.
         var dropdownTouchStartY = 0f
-        lateinit var arrow: TextView
+        var dropdownArrow: TextView? = null
         val dropdownScroll = ScrollView(context).apply {
             visibility = View.GONE
             isFillViewport = false
@@ -273,9 +273,11 @@ class AniLightNativeScreen(
                     android.view.MotionEvent.ACTION_DOWN -> {
                         dropdownTouchStartY = event.y
                         catalogueScroll?.requestDisallowInterceptTouchEvent(true)
+                        false
                     }
                     android.view.MotionEvent.ACTION_MOVE -> {
                         catalogueScroll?.requestDisallowInterceptTouchEvent(true)
+                        false
                     }
                     android.view.MotionEvent.ACTION_UP -> {
                         val swipeUpDistance = dropdownTouchStartY - event.y
@@ -287,7 +289,7 @@ class AniLightNativeScreen(
                             // heading to view; the homepage remains untouched.
                             post {
                                 visibility = View.GONE
-                                arrow.text = "⌄"
+                                dropdownArrow?.text = "⌄"
                                 catalogueScroll?.smoothScrollTo(0, heading.top + contentHost.top)
                             }
                             true
@@ -304,7 +306,7 @@ class AniLightNativeScreen(
                 consumeTouch
             }
         }
-        arrow = label("⌄", 25, accent, true).apply {
+        val arrow = label("⌄", 25, accent, true).apply {
             gravity = Gravity.CENTER
             setPadding(dp(14), 0, dp(8), 0)
             isFocusable = true
@@ -316,6 +318,7 @@ class AniLightNativeScreen(
                 if (expand) dropdownScroll.post { dropdownScroll.scrollTo(0, 0) }
             }
         }
+        dropdownArrow = arrow
         heading.addView(arrow)
         contentHost.addView(heading, bottom(8))
 
