@@ -3735,10 +3735,13 @@ class MainActivity : AppCompatActivity() {
         val previousButton = playerAction("|◀", "Previous channel") { playAdjacentChannel(-1) }
         val playPauseButton = playerAction(if (p.isPlaying) "Ⅱ" else "▶", "Play or pause") {
             if (p.isPlaying) {
-                // Persist the current Anime Series episode position immediately on pause.
+                // Save the current position before pausing.
                 saveAnimeResumePosition(p, channel)
                 p.pause()
+                p.playWhenReady = false
             } else {
+                if (p.playbackState == Player.STATE_ENDED) p.seekToDefaultPosition()
+                p.playWhenReady = true
                 p.play()
             }
         }
@@ -4001,6 +4004,10 @@ class MainActivity : AppCompatActivity() {
                 positionLabel.text = formatPlayerTime(position)
                 durationLabel.text = formatPlayerTime(if (duration > 0) duration else 0L)
                 playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
+                if (isAnimeEpisode) {
+                    // Hide the large center Play control while the video is running.
+                    playPauseButton.visibility = if (p.isPlaying) View.GONE else View.VISIBLE
+                }
                 if (section == "Series" && position > 0L && position % 5_000L < 600L) saveAnimeResumePosition(p, channel)
                 controlsHandler.postDelayed(this, 500L)
             }
@@ -4127,6 +4134,7 @@ class MainActivity : AppCompatActivity() {
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
         p.prepare()
         p.playWhenReady = startPlayback
+        if (isAnimeEpisode && startPlayback) animeCenterPlayButton?.visibility = View.GONE
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
 
@@ -4343,7 +4351,7 @@ class MainActivity : AppCompatActivity() {
         playerView?.let { view ->
             // Anime Series fullscreen uses a split layout: video on the left,
             // Season/Episode browser on the right. Other sections stay unchanged.
-            view.resizeMode = if (enabled) AspectRatioFrameLayout.RESIZE_MODE_FILL
+            view.resizeMode = if (enabled) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 else AspectRatioFrameLayout.RESIZE_MODE_FIT
             view.layoutParams = FrameLayout.LayoutParams(
                 if (enabled && section == "Series") 0 else -1,
