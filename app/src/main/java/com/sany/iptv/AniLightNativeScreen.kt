@@ -68,6 +68,10 @@ class AniLightNativeScreen(
     private var filterGenre: String? = null
     private var filterHasNext = false
     private var showingFilterResults = false
+    private var isAnimeSearchPage = false
+    private var animeSearchResultsHost: LinearLayout? = null
+    private var animeSearchRequestVersion = 0
+
     @Volatile private var session: String? = null
     @Volatile private var sessionExpiry = 0L
 
@@ -277,12 +281,23 @@ class AniLightNativeScreen(
 
         // A dedicated paginated entry exposes the complete public Anime catalogue,
         // rather than limiting browsing to the homepage's curated shelves.
+        val catalogueActions = row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(4), dp(12), dp(18))
+        }
         val allAnimeButton = button("✦  BROWSE ALL ANIME  →") {
             openAllAnimeCatalogue()
         }
-        contentHost.addView(allAnimeButton, LinearLayout.LayoutParams(-1, dp(48)).apply {
-            setMargins(dp(12), dp(4), dp(12), dp(18))
+        catalogueActions.addView(allAnimeButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+            rightMargin = dp(8)
         })
+        catalogueActions.addView(button("⌕") {
+            openAnimeSearch()
+        }.apply {
+            textSize = 23f
+            contentDescription = "Search Anime"
+        }, LinearLayout.LayoutParams(dp(52), dp(48)))
+        contentHost.addView(catalogueActions)
 
         val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
             .filterNot { it.optBoolean("isAdult", false) }
@@ -453,8 +468,71 @@ class AniLightNativeScreen(
         if (!isHomePage) return
         pushCurrentPage()
         isShelfCategoryPage = true
+        isAnimeSearchPage = false
         loadFiltered("POPULARITY_DESC", null, preserveCurrentPage = true)
         catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
+    }
+
+    private fun openAnimeSearch() {
+        pushCurrentPage()
+        isHomePage = false
+        isShelfCategoryPage = true
+        isAnimeSearchPage = true
+        animeSearchRequestVersion++
+        body.removeAllViews()
+        val header = row().apply { gravity = Gravity.CENTER_VERTICAL }
+        header.addView(button("← BACK") { restorePreviousPage() })
+        header.addView(label("SEARCH ANIME", 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f).apply {
+            leftMargin = dp(12)
+        })
+        body.addView(header, bottom(12))
+        val input = EditText(context).apply {
+            hint = "Anime name লিখে Search করো…"
+            singleLine = true
+            textSize = 15f
+            setTextColor(fg)
+            setHintTextColor(muted)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+            background = rounded(surface, 12)
+            setPadding(dp(14), dp(11), dp(14), dp(11))
+        }
+        body.addView(input, LinearLayout.LayoutParams(-1, dp(50)).apply {
+            bottomMargin = dp(12)
+        })
+        val resultsHost = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        animeSearchResultsHost = resultsHost
+        body.addView(resultsHost, LinearLayout.LayoutParams(-1, -2))
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
+                searchAnimeLive(text?.toString().orEmpty())
+            }
+            override fun afterTextChanged(editable: android.text.Editable?) = Unit
+        })
+        input.requestFocus()
+        input.post {
+            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+            imm?.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
+        resultsHost.addView(label("এখানে Anime-এর নাম লিখলেই ফলাফল দেখাবে।", 13, muted, false))
+    }
+
+    private fun searchAnimeLive(query: String) {
+        val version = ++animeSearchRequestVersion
+        val host = animeSearchResultsHost ?: return
+        host.removeAllViews()
+        if (query.isBlank()) {
+            host.addView(label("এখানে Anime-এর নাম লিখলেই ফলাফল দেখাবে।", 13, muted, false))
+            return
+        }
+        host.addView(label("Searching…", 13, muted, false))
+        request("$api/search?q=" + enc(query.trim()) + "&hideAdult=true") { data ->
+            if (!isAnimeSearchPage || version != animeSearchRequestVersion) return@request
+            val arr = data?.optJSONArray("results")
+                ?: data?.optJSONObject("data")?.optJSONArray("results")
+                ?: data?.optJSONArray("data")
+            showCards("Search results", items(arr).filterNot { it.optBoolean("isAdult", false) })
+        }
     }
 
     private fun openShelfPage(title: String, cards: List<JSONObject>, key: String) {
@@ -633,19 +711,26 @@ class AniLightNativeScreen(
     }
 
     private fun showCards(title: String, cards: List<JSONObject>, append: Boolean = false) {
-        val target = if (isHomePage) contentHost else body
+        val target = if (isAnimeSearchPage) (animeSearchResultsHost ?: body) else if (isHomePage) contentHost else body
         if (append) {
             if (target.childCount > 0 && target.getChildAt(target.childCount - 1).tag == "anilight_load_more") {
                 target.removeViewAt(target.childCount - 1)
             }
         } else {
             target.removeAllViews()
-            val head = row()
-            head.addView(label(title.uppercase(), 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-            head.addView(button(if (isShelfCategoryPage) "← BACK" else "HOME") {
-                if (isShelfCategoryPage) restorePreviousPage() else goHome()
-            })
-            target.addView(head, bottom(14))
+            if (!isAnimeSearchPage) {
+                val head = row()
+                head.addView(label(title.uppercase(), 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+                if (isShelfCategoryPage && title == "Filtered anime") {
+                    head.addView(button("⌕") {
+                        openAnimeSearch()
+                    }.apply { textSize = 22f; contentDescription = "Search Anime" })
+                }
+                head.addView(button(if (isShelfCategoryPage) "← BACK" else "HOME") {
+                    if (isShelfCategoryPage) restorePreviousPage() else goHome()
+                })
+                target.addView(head, bottom(14))
+            }
         }
         if (cards.isEmpty() && !append) {
             target.addView(label("কোনো anime পাওয়া যায়নি। API unavailable হলে পরে আবার চেষ্টা করো।", 14, muted, false))
