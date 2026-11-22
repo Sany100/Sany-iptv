@@ -3632,7 +3632,13 @@ class MainActivity : AppCompatActivity() {
         }
         val previousButton = playerAction("|◀", "Previous channel") { playAdjacentChannel(-1) }
         val playPauseButton = playerAction(if (p.isPlaying) "Ⅱ" else "▶", "Play or pause") {
-            if (p.isPlaying) p.pause() else p.play()
+            if (p.isPlaying) {
+                // Persist the current Anime Series episode position immediately on pause.
+                saveAnimeResumePosition(p, channel)
+                p.pause()
+            } else {
+                p.play()
+            }
         }
         val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
         // Anime episodes do not use channel identity or channel-skip controls.
@@ -4094,6 +4100,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closePlayer(keepOrientation: Boolean = false) {
+        // Save Anime Series progress before the player is stopped or released.
+        saveAnimeResumePosition(player, currentChannel)
         // When changing channels, do not briefly unlock orientation: Android may
         // rotate the Activity to portrait before the next fullscreen player is ready.
         if (!keepOrientation) {
