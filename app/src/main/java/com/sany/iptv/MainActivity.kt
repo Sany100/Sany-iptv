@@ -115,6 +115,8 @@ class MainActivity : AppCompatActivity() {
     private var playerView: PlayerView? = null
     private var moviesWebView: WebView? = null
     private var moviesSiteLoaded = false
+    private var aniLightWebView: WebView? = null
+    private var aniLightSiteLoaded = false
     private var currentChannel: Channel? = null
     private var playbackReturnScrollY = 0
     // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
@@ -1026,12 +1028,13 @@ class MainActivity : AppCompatActivity() {
     private fun renderSection() {
         contentArea.removeAllViews()
         if (section != "Movies") moviesWebView?.stopLoading()
+        if (section != "Series") aniLightWebView?.stopLoading()
         if (section == "Settings") {
             renderSettings()
             return
         }
         if (section == "Series") {
-            renderDevelopmentSection()
+            renderAniLightWebsite()
             return
         }
         if (section == "Movies") {
@@ -1128,7 +1131,61 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    // Legacy WebView code remains temporarily for safe rollback; native pages no longer call it.
+        // AniLight is opened through its ordinary public website interface.
+    // No scraping, token generation, DRM circumvention, or access-control bypass is performed.
+    private fun renderAniLightWebsite() {
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(6), dp(4), dp(8))
+        }
+        toolbar.addView(text("ANILIGHT", 13, accent, true), LinearLayout.LayoutParams(0, dp(40), 1f))
+        toolbar.addView(actionButton("↻ REFRESH") { aniLightWebView?.reload() }, LinearLayout.LayoutParams(dp(112), dp(38)))
+        page.addView(toolbar, LinearLayout.LayoutParams(-1, -2))
+
+        val browser = aniLightWebView ?: WebView(this).apply {
+            setBackgroundColor(Color.WHITE)
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.loadsImagesAutomatically = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = true
+            settings.javaScriptCanOpenWindowsAutomatically = false
+            settings.setSupportMultipleWindows(false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) settings.safeBrowsingEnabled = true
+            CookieManager.getInstance().setAcceptCookie(true)
+            webChromeClient = WebChromeClient()
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                    val target = request.url
+                    return when (target.scheme?.lowercase()) {
+                        "http", "https" -> false
+                        else -> {
+                            try { startActivity(Intent(Intent.ACTION_VIEW, target)) } catch (_: Exception) { toast("এই লিংকটি খোলা যাচ্ছে না") }
+                            true
+                        }
+                    }
+                }
+                override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
+                    if (request.isForMainFrame) toast("AniLight load হয়নি — Refresh চাপুন")
+                }
+            }
+        }.also { aniLightWebView = it }
+
+        (browser.parent as? ViewGroup)?.removeView(browser)
+        page.addView(browser, LinearLayout.LayoutParams(-1, 0, 1f))
+        contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
+        if (!aniLightSiteLoaded) {
+            aniLightSiteLoaded = true
+            browser.loadUrl("https://anilight.live/")
+        }
+    }
+
+// Legacy WebView code remains temporarily for safe rollback; native pages no longer call it.
     // Movies uses the site's normal public web interface inside a sandboxed WebView.
     // No scraping, DRM circumvention, or stream-link extraction is performed.
     private fun renderMoviesWebsite() {
