@@ -378,11 +378,12 @@ class AniLightNativeScreen(
 
         val heading = row().apply { gravity = Gravity.CENTER_VERTICAL }
         heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        val arrow = label("⌄", 25, accent, true).apply {
+        // Keep the dropdown affordance, and make the action explicit with SEE MORE.
+        val arrow = label("SEE MORE  ⌄", 12, accent, true).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(14), 0, dp(8), 0)
+            setPadding(dp(12), dp(8), dp(8), dp(8))
             isFocusable = true
-            contentDescription = "Open $title category page"
+            contentDescription = "See more $title"
             setOnClickListener { openShelfPage(title, cards, key) }
         }
         heading.addView(arrow)
