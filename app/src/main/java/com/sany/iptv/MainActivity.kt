@@ -3968,28 +3968,13 @@ class MainActivity : AppCompatActivity() {
         infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
             leftMargin = dp(5)
         })
-        if (!isAnimeEpisode) infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
+        // Fit Screen stays in its original bottom control row for Anime as well.
+        infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
             leftMargin = dp(5)
         })
         if (isAnimeEpisode) {
-            // Keep Pause/Resume and Fit Screen together at the centre of the video.
-            val animeCenterActions = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    setColor(0x66000000)
-                    cornerRadius = dp(18).toFloat()
-                    setStroke(dp(1), 0x99FFFFFF.toInt())
-                }
-                setPadding(dp(7), dp(5), dp(7), dp(5))
-                elevation = dp(8).toFloat()
-            }
-            animeCenterActions.addView(playPauseButton, LinearLayout.LayoutParams(dp(58), dp(58)))
-            animeCenterActions.addView(fullscreenButton, LinearLayout.LayoutParams(dp(58), dp(58)).apply {
-                leftMargin = dp(8)
-            })
-            screen.addView(animeCenterActions, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+            // Only Pause/Resume is moved to the centre of the video.
+            screen.addView(playPauseButton, FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER))
         }
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
         if (isAnimeEpisode) {
