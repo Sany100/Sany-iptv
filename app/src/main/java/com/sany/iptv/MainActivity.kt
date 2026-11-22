@@ -3825,21 +3825,11 @@ class MainActivity : AppCompatActivity() {
         val tracksAction = animeAction("▥  Tracks", "Change Anime audio language") {
             showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
         }
-        val animePlayPauseAction = animeAction(if (p.isPlaying) "Ⅱ  Pause" else "▶  Play", "Pause or resume Anime playback") {
-            if (p.isPlaying) {
-                saveAnimeResumePosition(p, channel)
-                p.pause()
-                p.playWhenReady = false
-            } else {
-                if (p.playbackState == Player.STATE_ENDED) p.seekToDefaultPosition()
-                p.playWhenReady = true
-                p.play()
-            }
-        }
         val nextEpisodeAction = animeAction("▶|  Next episode", "Play next Anime episode") {
             aniLightNativeScreen?.playNextEpisode() ?: toast("Next episode unavailable")
         }
-        listOf(animePlayPauseAction, sourceAction, tracksAction, nextEpisodeAction).forEach { action ->
+        // Play/Pause is available only as the large centre overlay for Anime.
+        listOf(sourceAction, tracksAction, nextEpisodeAction).forEach { action ->
             animeActions.addView(action, LinearLayout.LayoutParams(0, dp(32), 1f))
         }
         controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
@@ -4042,7 +4032,6 @@ class MainActivity : AppCompatActivity() {
                     // Hide the large center Play control while running; the compact
                     // Pause/Play action appears only when the control dock is revealed.
                     playPauseButton.visibility = if (p.isPlaying) View.GONE else View.VISIBLE
-                    animePlayPauseAction.text = if (p.isPlaying) "Ⅱ  Pause" else "▶  Play"
                 }
                 if (section == "Series" && position > 0L && position % 5_000L < 600L) saveAnimeResumePosition(p, channel)
                 controlsHandler.postDelayed(this, 500L)
