@@ -4055,10 +4055,9 @@ class MainActivity : AppCompatActivity() {
                     playPauseButton.visibility = View.VISIBLE
                     controlsHandler.postDelayed(hideAnimeCenterPause, 1800L)
                 }
-                if (controlsPanel.visibility == View.VISIBLE) {
-                    controlsHandler.removeCallbacks(hideControls)
-                    hideControls.run()
-                } else revealControls()
+                // A single tap always reveals the bottom control dock, including
+                // when it is already visible. Apply the same interaction in FIT and fullscreen.
+                revealControls()
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
