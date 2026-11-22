@@ -3527,14 +3527,20 @@ class MainActivity : AppCompatActivity() {
 
         val p = player ?: ExoPlayer.Builder(
             this,
-            DefaultRenderersFactory(this).setMediaCodecSelector(
-                MediaCodecSelector { mimeType, secure, tunneling ->
-                    val available = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, secure, tunneling)
-                    val preferHardware = prefs.getBoolean("hardware_decoder", true)
-                    val preferred = available.filter { it.hardwareAccelerated == preferHardware }
-                    if (preferred.isNotEmpty()) preferred else available
-                }
-            )
+            DefaultRenderersFactory(this)
+                // If a device decoder fails during longer Anime playback, allow Media3
+                // to fall back to another compatible decoder instead of terminating playback.
+                .setEnableDecoderFallback(true)
+                .setMediaCodecSelector(
+                    MediaCodecSelector { mimeType, secure, tunneling ->
+                        val available = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, secure, tunneling)
+                        val preferHardware = prefs.getBoolean("hardware_decoder", true)
+                        // Keep every compatible decoder in the list; only change priority.
+                        // Filtering to hardware-only/software-only can leave no recovery path
+                        // when a codec crashes or rejects a particular episode stream.
+                        available.sortedBy { if (it.hardwareAccelerated == preferHardware) 0 else 1 }
+                    }
+                )
         ).setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(DefaultTrackSelector(this).also { selector ->
                 trackSelector = selector
@@ -3579,6 +3585,7 @@ class MainActivity : AppCompatActivity() {
             .build().also { created ->
                 created.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
+                        android.util.Log.e("SANY-PLAYER", "Media3 playback failure: ${error.errorCodeName}", error)
                         var cause: Throwable? = error
                         var httpStatus: Int? = null
                         while (cause != null) {
