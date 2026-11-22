@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -881,15 +882,29 @@ class AniLightNativeScreen(
             cornerRadius = dp(12).toFloat()
             setStroke(dp(3), accent)
         }
-        if (card is FrameLayout) {
-            val tag = label("▶ PLAYING", 10, Color.WHITE, true).apply {
-                setPadding(dp(8), dp(5), dp(8), dp(5))
-                background = rounded(accent, 18)
+        // Put the badge over the actual poster frame, including posters nested in LinearLayout cards.
+        fun findPosterFrame(view: View): FrameLayout? {
+            if (view is FrameLayout) return view
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) {
+                    val found = findPosterFrame(view.getChildAt(index))
+                    if (found != null) return found
+                }
             }
-            card.addView(tag, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
-                setMargins(dp(6), dp(6), 0, 0)
-            })
+            return null
         }
+        val posterFrame = findPosterFrame(card) ?: return
+        val tag = label("▶ PLAYING", 10, Color.WHITE, true).apply {
+            setPadding(dp(9), dp(6), dp(9), dp(6))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(accent, 0xFFE040A0.toInt(), 0xFF24B6D8.toInt())
+            ).apply { cornerRadius = dp(18).toFloat() }
+                .also { setShadowLayer(dp(7).toFloat(), 0f, dp(2).toFloat(), accent) }
+        }
+        posterFrame.addView(tag, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+            setMargins(dp(6), dp(6), 0, 0)
+        })
     }
 
     // Persist every episode the user actually starts playing, newest first.
