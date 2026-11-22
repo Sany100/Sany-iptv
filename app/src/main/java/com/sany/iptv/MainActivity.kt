@@ -4362,61 +4362,35 @@ class MainActivity : AppCompatActivity() {
             }
         }
         playerView?.let { view ->
-            // Anime Series fullscreen uses a split layout: video on the left,
-            // Season/Episode browser on the right. Other sections stay unchanged.
-            view.resizeMode = if (enabled) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                else AspectRatioFrameLayout.RESIZE_MODE_FIT
+            // Anime fullscreen must use the entire landscape display. Do not keep
+            // the season/episode sidebar beside the video; stretch the picture
+            // to the full PlayerView bounds as requested.
+            view.resizeMode = if (enabled && section == "Series")
+                AspectRatioFrameLayout.RESIZE_MODE_FILL
+            else if (enabled) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            else AspectRatioFrameLayout.RESIZE_MODE_FIT
             view.layoutParams = FrameLayout.LayoutParams(
-                if (enabled && section == "Series") 0 else -1,
+                -1,
                 if (enabled) -1 else dp(235),
-                if (enabled) Gravity.START or Gravity.TOP else Gravity.TOP
+                if (enabled) Gravity.CENTER else Gravity.TOP
             )
         }
-        animeEpisodePanel?.let { panel ->
-            panel.visibility = if (enabled && section == "Series") View.VISIBLE else View.GONE
-            if (enabled && section == "Series") {
-                playerScreen?.post {
-                    val screenWidth = playerScreen?.width ?: 0
-                    if (screenWidth > 0) {
-                        val sideWidth = (screenWidth * 0.36f).toInt()
-                        val videoWidth = screenWidth - sideWidth
-                        playerView?.layoutParams = FrameLayout.LayoutParams(
-                            videoWidth, -1, Gravity.START or Gravity.TOP
-                        )
-                        panel.layoutParams = FrameLayout.LayoutParams(
-                            sideWidth, -1, Gravity.END or Gravity.TOP
-                        )
-                        animeCenterPlayButton?.layoutParams = FrameLayout.LayoutParams(
-                            dp(68), dp(68), Gravity.START or Gravity.CENTER_VERTICAL
-                        ).apply { leftMargin = (videoWidth / 2 - dp(34)).coerceAtLeast(0) }
-                        animePlayerTitleOverlay?.layoutParams = FrameLayout.LayoutParams(
-                            videoWidth, dp(58), Gravity.START or Gravity.TOP
-                        )
-                        playerControlsPanel?.let { controls ->
-                            (controls.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
-                                lp.width = videoWidth
-                                lp.gravity = Gravity.BOTTOM or Gravity.START
-                                lp.leftMargin = dp(8)
-                                lp.rightMargin = dp(8)
-                                lp.bottomMargin = dp(12)
-                                lp.topMargin = 0
-                                controls.layoutParams = lp
-                            }
-                        }
-                    }
-                }
-            } else {
-                playerView?.layoutParams = FrameLayout.LayoutParams(-1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP)
-                animeCenterPlayButton?.layoutParams = FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER)
-                animePlayerTitleOverlay?.layoutParams = FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP)
-                playerControlsPanel?.let { controls ->
-                    (controls.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
-                        lp.width = -1
-                        lp.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
-                        lp.leftMargin = dp(8); lp.rightMargin = dp(8)
-                        controls.layoutParams = lp
-                    }
-                }
+        animeEpisodePanel?.visibility = View.GONE
+        animeCenterPlayButton?.layoutParams = FrameLayout.LayoutParams(
+            dp(68), dp(68), Gravity.CENTER
+        )
+        animePlayerTitleOverlay?.layoutParams = FrameLayout.LayoutParams(
+            -1, dp(58), Gravity.TOP
+        )
+        playerControlsPanel?.let { controls ->
+            (controls.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                lp.width = -1
+                lp.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
+                lp.leftMargin = dp(8)
+                lp.rightMargin = dp(8)
+                lp.topMargin = if (enabled) 0 else dp(155)
+                lp.bottomMargin = if (enabled) dp(12) else 0
+                controls.layoutParams = lp
             }
         }
         // In minimized mode, reserve the top 235dp for video and lay out the
