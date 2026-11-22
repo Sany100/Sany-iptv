@@ -98,7 +98,7 @@ class AniLightNativeScreen(
         }
         val categoryItems = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         categoryRail.addView(categoryItems)
-        listOf(
+        val catalogueCategories = listOf(
             "Trending Now" to "trending",
             "Most Popular" to "popular",
             "This Season" to "seasonal",
@@ -107,33 +107,29 @@ class AniLightNativeScreen(
             "Top Rated" to "topRated",
             "Recently Added" to "recent",
             "Upcoming" to "upcoming"
-        ).forEach { (name, key) ->
+        )
+        val genreCategories = listOf(
+            "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
+            "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi",
+            "Slice of Life", "Sports", "Supernatural", "Thriller"
+        ).map { it to "genre:$it" }
+
+        // Show every AniLight genre as a first-class item in the main category rail.
+        (catalogueCategories + genreCategories).forEach { (name, key) ->
             categoryItems.addView(button(name) { category(key) }, LinearLayout.LayoutParams(-2, dp(40)).apply {
                 rightMargin = dp(6)
             })
         }
-        body.addView(categoryRail, bottom(12))
-
-        body.addView(label("BROWSE BY GENRE", 12, muted, true), bottom(6))
-        val genreRail = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-        }
-        val genreItems = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        genreRail.addView(genreItems)
-        listOf(
-            "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
-            "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi",
-            "Slice of Life", "Sports", "Supernatural", "Thriller"
-        ).forEach { genre ->
-            genreItems.addView(button(genre) { loadFiltered("POPULARITY_DESC", genre) },
-                LinearLayout.LayoutParams(-2, dp(40)).apply { rightMargin = dp(6) })
-        }
-        body.addView(genreRail, bottom(14))
+        body.addView(categoryRail, bottom(14))
         category("trending", homeLanding = true)
     }
 
     private fun category(key: String, homeLanding: Boolean = false) {
+        if (key.startsWith("genre:")) {
+            val selectedGenre = key.removePrefix("genre:")
+            loadFiltered("POPULARITY_DESC", selectedGenre)
+            return
+        }
         showingFilterResults = false
         filterHasNext = false
         loading("Loading $key…")
