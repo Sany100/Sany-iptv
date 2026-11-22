@@ -839,6 +839,7 @@ class AniLightNativeScreen(
         body.addView(label("EPISODES", 16, fg, true), bottom(8))
         val available = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }
             .filter { it.optBoolean("sub", false) || it.optBoolean("dub", false) }
+            .sortedBy { it.optInt("number", Int.MAX_VALUE) }
         val episodeRows = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -958,8 +959,13 @@ class AniLightNativeScreen(
             toast("Episode list পাওয়া যায়নি")
             return
         }
+        // Follow the numeric episode order, regardless of API array order or
+        // whether the next episode has the same SUB/DUB mode as the current one.
         val next = (0 until eps.length()).mapNotNull { eps.optJSONObject(it) }
-            .filter { it.optBoolean(language, false) && it.optInt("number", 0) > currentEpisodeNumber }
+            .filter {
+                (it.optBoolean("sub", false) || it.optBoolean("dub", false)) &&
+                    it.optInt("number", 0) > currentEpisodeNumber
+            }
             .minByOrNull { it.optInt("number", Int.MAX_VALUE) }
         if (next == null) {
             toast("এটাই শেষ Episode")
