@@ -3988,7 +3988,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         val controlsHandler = Handler(Looper.getMainLooper())
-        val animeControlsAutoHideDelay = 1800L
+        val animeControlsAutoHideDelay = 3000L
         val hideControls = Runnable {
             if (controlsPanel.visibility == View.VISIBLE) {
                 controlsPanel.animate().alpha(0f).setDuration(180).withEndAction {
