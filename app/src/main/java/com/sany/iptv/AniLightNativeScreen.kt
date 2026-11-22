@@ -78,7 +78,6 @@ class AniLightNativeScreen(
         body.removeAllViews()
         val head = row()
         head.addView(label("ANILIGHT", 22, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(button("OPEN SITE") { openSite() })
         body.addView(head, bottom(12))
         val search = row()
         val input = EditText(context).apply {
