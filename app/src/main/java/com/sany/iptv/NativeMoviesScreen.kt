@@ -177,18 +177,21 @@ class NativeMoviesScreen(
                 val number = ep.optInt("episode_number", i + 1)
                 val epName = ep.optString("name", "Episode " + number)
                 body.addView(button("Episode " + number + " — " + epName) {
-                    findMultimoviesSources(seriesName + " S" + season + "E" + number + " — " + epName)
+                    findMultimoviesSources(seriesName, "S" + season + "E" + number + " — " + epName)
                 }, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(6) })
             }
             body.addView(button("← BACK TO SERIES") { openDetails(id) }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(10) })
         }
     }
 
-    private fun findMultimoviesSources(title: String) {
+    private fun findMultimoviesSources(title: String, episodeLabel: String? = null) {
         body.removeAllViews()
         title("MULTIMOVIES SOURCES")
+        if (episodeLabel != null) message("Selected episode: " + episodeLabel + " • Series page-এর প্রকাশ্য server যাচাই করা হচ্ছে।")
         message("Multimovies-এর প্রকাশ্য সার্ভার তালিকা খোঁজা হচ্ছে…")
         worker.execute {
+            // Search by the series title, not by the long episode title; the provider
+            // catalogue indexes series entries rather than TMDB episode labels.
             val hits = MultimoviesNativeResolver.search(title, seriesMode)
             val found = hits.flatMap { hit ->
                 MultimoviesNativeResolver.sources(hit.url).map { hit.title to it }
@@ -196,6 +199,7 @@ class NativeMoviesScreen(
             main.post {
                 body.removeAllViews()
                 title("MULTIMOVIES SOURCES")
+                if (episodeLabel != null) message("Episode: " + episodeLabel + " — source page-এ episode-specific media না থাকলে playback সঠিক episode নাও হতে পারে; যাচাই করে নিন।")
                 if (found.isEmpty()) {
                     message("কোনো প্রকাশ্য সরাসরি stream পাওয়া যায়নি। সাইটের page/server unavailable, protected, অথবা embed-only হতে পারে।")
                 } else {
