@@ -933,54 +933,79 @@ class AniLightNativeScreen(
     }
 
     private fun resolveEpisode(episode: Int) {
-        loading("Resolving ${language.uppercase()} Episode $episode…")
+        loading("Loading all audio tracks and video sources for Episode $episode…")
         thread(name = "AniLight-Resolve") {
             try {
-                val base = "$api/sources?id=$animeId&episode=$episode&language=$language"
-                val own = sourceBlocking(base)
-                val backup = sourceBlocking("$base&backup=true")
-                        val sources = mutableListOf<Pair<String, String>>()
-                val subtitles = linkedSetOf<String>()
-                fun add(data: JSONObject?, checkHls: Boolean) {
+                data class ResolvedSource(val language: String, val quality: String, val url: String)
+                val sources = mutableListOf<ResolvedSource>()
+                val subtitlesByLanguage = linkedMapOf<String, LinkedHashSet<String>>()
+                fun add(data: JSONObject?, languageCode: String, checkHls: Boolean) {
+                    val subtitles = subtitlesByLanguage.getOrPut(languageCode) { linkedSetOf() }
                     val tracks = data?.optJSONArray("tracks")
                     for (i in 0 until (tracks?.length() ?: 0)) {
-                        val t = tracks?.optJSONObject(i) ?: continue
-                        if (t.optString("kind").isNotBlank() && t.optString("kind") != "captions") continue
-                        t.optString("url").takeIf { it.isNotBlank() }?.let { subtitles.add(captionsUrl(it)) }
+                        val track = tracks?.optJSONObject(i) ?: continue
+                        val kind = track.optString("kind").lowercase()
+                        if (kind.isNotBlank() && kind != "captions" && kind != "subtitle" && kind != "subtitles") continue
+                        track.optString("url").takeIf { it.isNotBlank() }
+                            ?.let { subtitles.add(captionsUrl(it)) }
                     }
                     val arr = data?.optJSONArray("sources")
                     for (i in 0 until (arr?.length() ?: 0)) {
                         val entry = arr?.optJSONObject(i) ?: continue
                         val raw = entry.opt("url")
                         val tokens = when (raw) {
-                            is JSONArray -> (0 until raw.length()).mapNotNull { raw.optString(it).takeIf { s -> s.isNotBlank() } }
+                            is JSONArray -> (0 until raw.length()).mapNotNull { raw.optString(it).takeIf { value -> value.isNotBlank() } }
                             is String -> listOf(raw).filter { it.isNotBlank() }
                             else -> emptyList()
                         }
                         for (token in tokens) {
                             val resolved = resolveToken(token) ?: continue
                             if (checkHls && !validHls(resolved)) continue
-                            sources.add((entry.optString("quality").ifBlank { if (checkHls) "HLS" else "Auto" }) to resolved)
-                            if (!checkHls) break
+                            val quality = entry.optString("quality").ifBlank {
+                                entry.optString("server").ifBlank { if (checkHls) "HLS" else "Auto" }
+                            }
+                            sources.add(ResolvedSource(languageCode, quality, resolved))
                         }
                     }
                 }
-                // Resolve the primary provider first. Only pay the backup API/CDN
-                // round-trip when the primary source did not yield a playable URL.
-                add(own, false)
-                if (sources.isEmpty()) add(sourceBlocking("$base&backup=true"), true)
-                val unique = sources.distinctBy { it.second }
+
+                // Query both server audio modes and merge every source from the
+                // primary and backup responses. ExoPlayer exposes audio renditions
+                // embedded in each HLS master playlist in its audio track selector.
+                for (languageCode in listOf("sub", "dub")) {
+                    val base = "$api/sources?id=$animeId&episode=$episode&language=$languageCode"
+                    val primary = sourceBlocking(base)
+                    val backup = sourceBlocking("$base&backup=true")
+                    add(primary, languageCode, false)
+                    add(backup, languageCode, true)
+                }
+                val unique = sources.distinctBy { it.url }
                 ui.post {
-                    if (unique.isEmpty()) { toast("Stream পাওয়া যায়নি। AniLight API/source unavailable হতে পারে।"); showDetailsAgain(); return@post }
+                    if (unique.isEmpty()) {
+                        toast("কোনো playable source পাওয়া যায়নি। Main server বা backup server-এ এই Episode-এর link নাও থাকতে পারে।")
+                        showDetailsAgain()
+                        return@post
+                    }
+                    val labels = unique.map {
+                        "${it.language.uppercase()} • ${it.quality} • ${if (it.url.contains(".m3u8", true)) "HLS" else "Stream"}"
+                    }.toTypedArray()
                     AlertDialog.Builder(context).setTitle("$animeTitle — Episode $episode")
-                        .setItems(unique.map { "${it.first} • ${language.uppercase()}" }.toTypedArray()) { _, which ->
+                        .setItems(labels) { _, which ->
+                            val selected = unique[which]
+                            language = selected.language
                             currentEpisodeNumber = episode
-                            saveWatchLater(anime ?: JSONObject(), episode, language)
-                            onPlay("$animeTitle • Episode $episode", unique[which].second, subtitles.firstOrNull())
+                            saveWatchLater(anime ?: JSONObject(), episode, selected.language)
+                            onPlay(
+                                "$animeTitle • Episode $episode • ${selected.language.uppercase()}",
+                                selected.url,
+                                subtitlesByLanguage[selected.language]?.firstOrNull()
+                            )
                         }.setNegativeButton("CANCEL", null).show()
                     showDetailsAgain()
                 }
-            } catch (e: Exception) { ui.post { toast(e.message ?: "Stream resolve failed"); showDetailsAgain() } }
+            } catch (e: Exception) {
+                ui.post { toast(e.message ?: "Stream resolve failed"); showDetailsAgain() }
+            }
         }
     }
 
