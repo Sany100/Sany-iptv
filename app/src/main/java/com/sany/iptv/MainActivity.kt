@@ -3944,7 +3944,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 // Horizontal channel navigation is a Live TV-only gesture.
                 // Anime Series (VOD) must never show or trigger channel switching.
+                // Only a genuine Live TV stream may use horizontal channel navigation.
+                // Anime episodes can remain in the player while the surrounding section changes,
+                // so also inspect the active item itself before allowing this gesture.
                 if (section == "Live TV" &&
+                    currentChannel?.let { !isAnime(it) && !isSeries(it) } == true &&
                     kotlin.math.abs(dx) > swipeThreshold &&
                     kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.25f &&
                     kotlin.math.abs(velocityX) > swipeVelocityThreshold) {
