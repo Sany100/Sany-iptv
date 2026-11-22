@@ -834,14 +834,11 @@ class AniLightNativeScreen(
         val plot = android.text.Html.fromHtml(detail.optString("description"), android.text.Html.FROM_HTML_MODE_COMPACT).toString().trim()
         if (plot.isNotBlank()) body.addView(label(plot, 13, muted, false), bottom(12))
         val eps = watch?.optJSONArray("episodes")
-        val sub = (0 until (eps?.length() ?: 0)).any { eps?.optJSONObject(it)?.optBoolean("sub") == true }
-        val dub = (0 until (eps?.length() ?: 0)).any { eps?.optJSONObject(it)?.optBoolean("dub") == true }
-        val langs = row()
-        if (sub) langs.addView(button(if (language == "sub") "✓ SUB" else "SUB") { language = "sub"; showDetails(detail, watch) }, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(6) })
-        if (dub) langs.addView(button(if (language == "dub") "✓ DUB" else "DUB") { language = "dub"; showDetails(detail, watch) }, LinearLayout.LayoutParams(0, dp(42), 1f))
-        if (langs.childCount > 0) body.addView(langs, bottom(12))
+        // Hide the SUB/DUB selector above the episode list. Show each episode
+        // when at least one audio mode is available; playback chooses a source automatically.
         body.addView(label("EPISODES", 16, fg, true), bottom(8))
-        val available = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }.filter { it.optBoolean(language, false) }
+        val available = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }
+            .filter { it.optBoolean("sub", false) || it.optBoolean("dub", false) }
         available.forEach { ep ->
             val number = ep.optInt("number", 1)
             val line = row().apply {
