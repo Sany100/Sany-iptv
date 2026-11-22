@@ -979,27 +979,27 @@ class AniLightNativeScreen(
                     add(backup, languageCode, true)
                 }
                 val unique = sources.distinctBy { it.language + "|" + it.url }
+                val preferred = unique
+                    .sortedWith(compareBy<ResolvedSource> {
+                        if (it.language.equals("dub", true)) 0 else 1
+                    }.thenByDescending {
+                        Regex("(\\d{3,4})").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                    })
+                val selected = preferred.firstOrNull()
                 ui.post {
-                    if (unique.isEmpty()) {
+                    if (selected == null) {
                         toast("কোনো playable source পাওয়া যায়নি। Main server বা backup server-এ এই Episode-এর link নাও থাকতে পারে।")
                         showDetailsAgain()
                         return@post
                     }
-                    val labels = unique.map {
-                        "${it.language.uppercase()} • ${it.quality} • ${if (it.url.contains(".m3u8", true)) "HLS" else "Stream"}"
-                    }.toTypedArray()
-                    AlertDialog.Builder(context).setTitle("$animeTitle — Episode $episode")
-                        .setItems(labels) { _, which ->
-                            val selected = unique[which]
-                            language = selected.language
-                            currentEpisodeNumber = episode
-                            saveWatchLater(anime ?: JSONObject(), episode, selected.language)
-                            onPlay(
-                                "$animeTitle • Episode $episode • ${selected.language.uppercase()}",
-                                selected.url,
-                                subtitlesByLanguage[selected.language]?.firstOrNull()
-                            )
-                        }.setNegativeButton("CANCEL", null).show()
+                    language = selected.language
+                    currentEpisodeNumber = episode
+                    saveWatchLater(anime ?: JSONObject(), episode, selected.language)
+                    onPlay(
+                        "$animeTitle • Episode $episode • ${selected.language.uppercase()}",
+                        selected.url,
+                        subtitlesByLanguage[selected.language]?.firstOrNull()
+                    )
                     showDetailsAgain()
                 }
             } catch (e: Exception) {
