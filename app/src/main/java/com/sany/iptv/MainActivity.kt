@@ -3744,11 +3744,11 @@ class MainActivity : AppCompatActivity() {
         val lockAction = animeAction("🔓  Lock", "Lock or unlock Anime player controls") {
             animeControlsLocked = !animeControlsLocked
             if (animeControlsLocked) {
-                lockActionLabel@ run { }
                 controlsPanel.visibility = View.GONE
                 toast("Player controls locked — tap video to unlock")
             } else {
-                revealControls()
+                controlsPanel.visibility = View.VISIBLE
+                controlsPanel.alpha = 1f
                 toast("Player controls unlocked")
             }
         }
