@@ -351,7 +351,7 @@ class AniLightNativeScreen(
 
     private fun loadHomeShelf(title: String, key: String, genre: String?) {
         val query = if (genre != null) {
-            "$api/filter?page=1&perPage=18&sort=POPULARITY_DESC&genres=" + enc(genre) + "&hideAdult=true"
+            "$api/filter?page=1&perPage=30&sort=POPULARITY_DESC&genres=" + enc(genre) + "&hideAdult=true"
         } else {
             "$api/filter?page=1&perPage=18&sort=SCORE_DESC&hideAdult=true"
         }
