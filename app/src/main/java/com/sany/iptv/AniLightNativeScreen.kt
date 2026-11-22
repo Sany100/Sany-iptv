@@ -63,7 +63,7 @@ class AniLightNativeScreen(
     }
 
     fun create(): View {
-        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(24)); setBackgroundColor(bg) }
+        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(5), dp(8), dp(5), dp(24)); setBackgroundColor(bg) }
         val scroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER; addView(body) }
         loading("Connecting to AniLight…")
         thread(name = "AniLight-Domain") {
@@ -232,7 +232,7 @@ class AniLightNativeScreen(
             val glass = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(12), dp(16), dp(12))
+                setPadding(dp(11), dp(8), dp(11), dp(8))
                 background = GradientDrawable().apply {
                     setColor(0x99111624.toInt())
                     cornerRadius = dp(17).toFloat()
@@ -240,14 +240,14 @@ class AniLightNativeScreen(
                 }
                 elevation = dp(5).toFloat()
             }
-            glass.addView(label("FEATURED ANIME", 10, 0xFFD6D9FF.toInt(), true), bottom(4))
-            glass.addView(label(featuredName, 19, Color.WHITE, true), bottom(4))
-            glass.addView(label(listOf(year, score).filter { it.isNotBlank() }.joinToString("   •   "), 11, 0xFFE1E5EF.toInt(), false))
+            glass.addView(label("FEATURED", 9, 0xFFD6D9FF.toInt(), true), bottom(2))
+            glass.addView(label(featuredName, 15, Color.WHITE, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, bottom(2))
+            glass.addView(label(listOf(year, score).filter { it.isNotBlank() }.joinToString(" • "), 9, 0xFFE1E5EF.toInt(), false).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
             val glassParams = FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
-                setMargins(dp(10), 0, dp(10), dp(10))
+                setMargins(dp(5), 0, dp(5), dp(5))
             }
             hero.addView(glass, glassParams)
-            body.addView(hero, LinearLayout.LayoutParams(-1, dp(220)).apply { bottomMargin = dp(18) })
+            body.addView(hero, LinearLayout.LayoutParams(-1, dp(245)).apply { bottomMargin = dp(14) })
         }
 
         val sectionHead = label(if (title.equals("trending", true)) "TRENDING NOW" else title.uppercase(), 16, fg, true)
@@ -288,25 +288,25 @@ class AniLightNativeScreen(
                     intArrayOf(0x00101018, 0xD9101018.toInt())
                 )
             }
-            card.addView(bottomShade, FrameLayout.LayoutParams(-1, dp(82), Gravity.BOTTOM))
+            card.addView(bottomShade, FrameLayout.LayoutParams(-1, dp(62), Gravity.BOTTOM))
 
             val glassInfo = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(9), dp(7), dp(9), dp(8))
+                setPadding(dp(6), dp(5), dp(6), dp(5))
                 background = GradientDrawable().apply {
                     setColor(0xAA111624.toInt())
                     cornerRadius = dp(12).toFloat()
                     setStroke(dp(1), 0x55FFFFFF)
                 }
                 elevation = dp(3).toFloat()
-                addView(label(name, 12, Color.WHITE, true))
-                addView(label(listOf(year, score).filter { it.isNotBlank() }.joinToString(" • "), 10, 0xFFD8DCE8.toInt(), false))
+                addView(label(name, 10, Color.WHITE, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                addView(label(listOf(year, score).filter { it.isNotBlank() }.joinToString(" • "), 9, 0xFFD8DCE8.toInt(), false).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
             }
             card.addView(glassInfo, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
-                setMargins(dp(6), 0, dp(6), dp(6))
+                setMargins(dp(4), 0, dp(4), dp(4))
             })
-            rail.addView(card, LinearLayout.LayoutParams(dp(126), dp(190)).apply {
-                rightMargin = dp(10)
+            rail.addView(card, LinearLayout.LayoutParams(dp(158), dp(230)).apply {
+                rightMargin = dp(7)
             })
         }
         body.addView(strip, bottom(16))
