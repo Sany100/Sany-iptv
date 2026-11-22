@@ -1144,6 +1144,10 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(4), dp(6), dp(4), dp(8))
         }
         toolbar.addView(text("ANILIGHT", 13, accent, true), LinearLayout.LayoutParams(0, dp(40), 1f))
+        toolbar.addView(actionButton("OPEN") {
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://anilight.live/"))) }
+            catch (_: Exception) { toast("Browser খোলা যাচ্ছে না") }
+        }, LinearLayout.LayoutParams(dp(76), dp(38)).apply { rightMargin = dp(6) })
         toolbar.addView(actionButton("↻ REFRESH") { aniLightWebView?.reload() }, LinearLayout.LayoutParams(dp(112), dp(38)))
         page.addView(toolbar, LinearLayout.LayoutParams(-1, -2))
 
@@ -1151,14 +1155,52 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.WHITE)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.databaseEnabled = true
             settings.loadsImagesAutomatically = true
             settings.allowFileAccess = false
             settings.allowContentAccess = true
-            settings.javaScriptCanOpenWindowsAutomatically = false
-            settings.setSupportMultipleWindows(false)
+            // AniLight opens some episode/player links in new windows.
+            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.setSupportMultipleWindows(true)
+            settings.mediaPlaybackRequiresUserGesture = false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) settings.safeBrowsingEnabled = true
             CookieManager.getInstance().setAcceptCookie(true)
-            webChromeClient = WebChromeClient()
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
+            webChromeClient = object : WebChromeClient() {
+                override fun onCreateWindow(
+                    view: WebView,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: android.os.Message
+                ): Boolean {
+                    val popup = WebView(this@MainActivity).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView,
+                                request: android.webkit.WebResourceRequest
+                            ): Boolean {
+                                val target = request.url
+                                if (target.scheme == "https" || target.scheme == "http") {
+                                    browser.loadUrl(target.toString())
+                                }
+                                view.stopLoading()
+                                view.destroy()
+                                return true
+                            }
+                        }
+                    }
+                    val transport = resultMsg.obj as? WebView.WebViewTransport ?: run {
+                        popup.destroy()
+                        return false
+                    }
+                    transport.webView = popup
+                    resultMsg.sendToTarget()
+                    return true
+                }
+            }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
                     val target = request.url
@@ -1171,7 +1213,14 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
-                    if (request.isForMainFrame) toast("AniLight load হয়নি — Refresh চাপুন")
+                    if (request.isForMainFrame) toast("AniLight load হয়নি (${error.errorCode}) — Refresh চাপুন")
+                }
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: android.webkit.WebResourceRequest,
+                    response: android.webkit.WebResourceResponse
+                ) {
+                    if (request.isForMainFrame) toast("AniLight server error: HTTP ${response.statusCode}")
                 }
             }
         }.also { aniLightWebView = it }
