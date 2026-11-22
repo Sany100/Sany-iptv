@@ -4575,11 +4575,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (playerView != null) {
-            if (section == "Movies") {
-                returnToLiveTvHome()
-            } else {
-                closePlayer()
+            // With playback active, every non-Live-TV section also unwinds its
+            // own page history first. Never stop the video just because the user
+            // presses Back from Settings or another menu.
+            if (navigationHistory.isNotEmpty()) {
                 lastBackPressedAt = 0L
+                restorePreviousNavigation()
+            } else {
+                // The final destination before app exit is always the Live TV
+                // category directory; keep the current stream running there.
+                returnToLiveTvHome(keepPlayback = true)
             }
             return
         }
