@@ -260,6 +260,7 @@ class AniLightNativeScreen(
         // Keep the expanded catalogue inside its own scroll area. Reaching the
         // last anime must not continue scrolling the homepage behind this dropdown.
         var dropdownTouchStartY = 0f
+        lateinit var arrow: TextView
         val dropdownScroll = ScrollView(context).apply {
             visibility = View.GONE
             isFillViewport = false
@@ -268,7 +269,7 @@ class AniLightNativeScreen(
             background = rounded(surface, 12)
             addView(dropdownContent, LinearLayout.LayoutParams(-1, -2))
             setOnTouchListener { _, event ->
-                when (event.actionMasked) {
+                val consumeTouch = when (event.actionMasked) {
                     android.view.MotionEvent.ACTION_DOWN -> {
                         dropdownTouchStartY = event.y
                         catalogueScroll?.requestDisallowInterceptTouchEvent(true)
@@ -296,12 +297,14 @@ class AniLightNativeScreen(
                     }
                     android.view.MotionEvent.ACTION_CANCEL -> {
                         catalogueScroll?.requestDisallowInterceptTouchEvent(false)
+                        false
                     }
+                    else -> false
                 }
-                false
+                consumeTouch
             }
         }
-        val arrow = label("⌄", 25, accent, true).apply {
+        arrow = label("⌄", 25, accent, true).apply {
             gravity = Gravity.CENTER
             setPadding(dp(14), 0, dp(8), 0)
             isFocusable = true
