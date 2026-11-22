@@ -49,6 +49,7 @@ class AniLightNativeScreen(
     private var filterSort = "POPULARITY_DESC"
     private var filterGenre: String? = null
     private var filterHasNext = false
+    private var showingFilterResults = false
     @Volatile private var session: String? = null
     @Volatile private var sessionExpiry = 0L
 
@@ -94,6 +95,8 @@ class AniLightNativeScreen(
     }
 
     private fun category(key: String, homeLanding: Boolean = false) {
+        showingFilterResults = false
+        filterHasNext = false
         loading("Loading $key…")
         val cached = homepageCache
         if (cached != null && System.currentTimeMillis() - homepageCheckedAt < 5 * 60_000L) {
@@ -140,6 +143,7 @@ class AniLightNativeScreen(
 
     private fun loadFiltered(sort: String, genre: String?, page: Int = 1) {
         isHomePage = false
+        showingFilterResults = true
         if (page == 1) {
             filterSort = sort
             filterGenre = genre
@@ -162,6 +166,8 @@ class AniLightNativeScreen(
     }
 
     private fun searchAnime(q: String) {
+        showingFilterResults = false
+        filterHasNext = false
         if (q.isBlank()) { category("trending"); return }
         isHomePage = false
         loading("Searching…")
@@ -200,10 +206,7 @@ class AniLightNativeScreen(
             card.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
             body.addView(card, bottom(8))
         }
-        if (filterHasNext && !append.not()) {
-            // Keep the next-page control attached only to filtered results.
-        }
-        if (filterHasNext) {
+        if (showingFilterResults && filterHasNext) {
             body.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1) }.apply {
                 tag = "anilight_load_more"
             }, bottom(10))
