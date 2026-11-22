@@ -5140,7 +5140,6 @@ class MainActivity : AppCompatActivity() {
         playerView?.player = null
         moviesWebView?.apply { stopLoading(); destroy() }
         moviesWebView = null
-        loudnessEnhancer?.release(); loudnessEnhancer = null
         player?.release(); player = null
         logoExecutor.shutdownNow()
         super.onDestroy()
