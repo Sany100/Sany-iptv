@@ -2075,6 +2075,17 @@ class MainActivity : AppCompatActivity() {
                 }.setNegativeButton("CANCEL", null).show()
         }
         box.addView(text("PLAYBACK SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        settingsToggleCard(
+            box,
+            "High-Speed Streaming",
+            "Prioritize maximum available video quality and a larger playback buffer",
+            "high_speed_streaming",
+            true
+        ) { enabled ->
+            if (enabled) prefs.edit().putString("network_buffer_size", "high").apply()
+            applyVideoQuality()
+            toast(if (enabled) "High-speed streaming enabled — buffer applies next playback" else "Standard streaming restored")
+        }
         settingsCard(box, "Playback speed", "Choose normal or faster/slower video playback") {
             val labels = arrayOf("0.75×", "1.0× (Normal)", "1.25×", "1.5×", "2.0×")
             val values = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
@@ -3473,6 +3484,7 @@ class MainActivity : AppCompatActivity() {
         ).apply {
             putAll(requestHeaders)
         }
+        val highSpeedStreaming = prefs.getBoolean("high_speed_streaming", true)
         val httpFactory = DefaultHttpDataSource.Factory()
             // Keep standard IPTV headers, and add provider-specific headers only
             // for AniLight playback (including HLS segments and subtitle requests).
@@ -3481,8 +3493,8 @@ class MainActivity : AppCompatActivity() {
                     ?: "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36"
             )
             .setDefaultRequestProperties(mediaHeaders)
-            .setConnectTimeoutMs(5000)
-            .setReadTimeoutMs(15000)
+            .setConnectTimeoutMs(if (highSpeedStreaming) 10000 else 5000)
+            .setReadTimeoutMs(if (highSpeedStreaming) 30000 else 15000)
             .setAllowCrossProtocolRedirects(true)
 
         val streamDataSourceFactory: DataSource.Factory = if (isFtpStream) {
@@ -3516,22 +3528,22 @@ class MainActivity : AppCompatActivity() {
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (highSpeedStreaming) 12000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 700
                             "high" -> 2500
                             else -> 1200
                         },
-                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (highSpeedStreaming) 60000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 6000
                             "high" -> 18000
                             else -> 10000
                         },
-                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (highSpeedStreaming) 1000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 250
                             "high" -> 750
                             else -> 350
                         },
-                        when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 750
                             "high" -> 1800
                             else -> 1000
@@ -4099,7 +4111,10 @@ class MainActivity : AppCompatActivity() {
             "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
             "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
             "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
-            else -> if (prefs.getBoolean("low_data_mode", defaultLowInternetMode)) {
+            else -> if (prefs.getBoolean("high_speed_streaming", true)) {
+                // In high-speed mode, allow the source's highest available adaptive track.
+                builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
+            } else if (prefs.getBoolean("low_data_mode", defaultLowInternetMode)) {
                 builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(650_000)
             } else {
                 builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
