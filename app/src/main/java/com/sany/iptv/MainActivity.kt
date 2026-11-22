@@ -3825,7 +3825,7 @@ class MainActivity : AppCompatActivity() {
         val tracksAction = animeAction("▥  Tracks", "Change Anime audio language") {
             showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
         }
-        val fullscreenAction = animeAction("⛶  Full Screen", "Switch between Fit Screen and Full Screen") {
+        val fullscreenAction = animeAction("⛶  Fit Screen", "Switch between Fit Screen and Full Screen") {
             setPlayerFullscreen(!isPlayerFullscreen)
         }
         // Replace Next Episode with the Full Screen shortcut in the Anime action strip.
@@ -3956,9 +3956,12 @@ class MainActivity : AppCompatActivity() {
         infoRow.addView(topSettingsButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
             leftMargin = dp(5)
         })
-        infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
-            leftMargin = dp(5)
-        })
+        // Remove the extra minimize icon beside Settings from the Anime control dock.
+        if (!isAnimeEpisode) {
+            infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
+                leftMargin = dp(5)
+            })
+        }
         // Fit Screen stays in its original bottom control row for Anime as well.
         // Anime gets its Full Screen control in the action strip above;
         // keep the original bottom-row button for non-Anime players only.
