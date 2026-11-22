@@ -61,7 +61,7 @@ class AniLightNativeScreen(
     }
 
     fun create(): View {
-        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(24)); setBackgroundColor(bg) }
+        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(2), dp(8), dp(2), dp(24)); setBackgroundColor(bg) }
         val scroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER; addView(body) }
         loading("Connecting to AniLight…")
         thread(name = "AniLight-Domain") {
@@ -87,14 +87,35 @@ class AniLightNativeScreen(
         search.addView(button("SEARCH") { searchAnime(input.text.toString().trim()) })
         body.addView(search, bottom(8))
         body.addView(button("FILTER ANIME") { showFilterDialog() }, bottom(12))
-        listOf("Trending" to "trending", "Popular" to "popular", "Seasonal" to "seasonal", "Movies" to "movies",
-            "Top Rated" to "topRated", "Recently Added" to "recent", "Upcoming" to "upcoming").forEach { (name, key) ->
+        // Keep every category exposed by the official AniLight CloudStream provider visible here.
+        body.addView(label("ANIME CATEGORIES", 12, muted, true), bottom(6))
+        listOf(
+            "Trending Now" to "trending",
+            "Most Popular" to "popular",
+            "This Season" to "seasonal",
+            "Popular Movies" to "movies",
+            "Top Rated" to "topRated",
+            "Recently Added" to "recent",
+            "Upcoming" to "upcoming"
+        ).forEach { (name, key) ->
             body.addView(button(name) { category(key) }, bottom(6))
+        }
+        body.addView(label("GENRES", 12, muted, true), bottom(6))
+        listOf(
+            "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mecha",
+            "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life",
+            "Sports", "Supernatural", "Thriller"
+        ).forEach { genre ->
+            body.addView(button(genre) { category("genre:$genre") }, bottom(6))
         }
         category("trending", homeLanding = true)
     }
 
     private fun category(key: String, homeLanding: Boolean = false) {
+        if (key.startsWith("genre:")) {
+            loadFiltered("POPULARITY_DESC", key.substringAfter("genre:"))
+            return
+        }
         showingFilterResults = false
         filterHasNext = false
         loading("Loading $key…")
@@ -131,7 +152,8 @@ class AniLightNativeScreen(
             "Newest First" to "START_DATE_DESC"
         )
         val genres = arrayOf("All genres", "Action", "Adventure", "Comedy", "Drama", "Fantasy",
-            "Horror", "Mystery", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural")
+            "Horror", "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi",
+            "Slice of Life", "Sports", "Supernatural", "Thriller")
         AlertDialog.Builder(context).setTitle("Sort anime")
             .setItems(sorts.map { it.first }.toTypedArray()) { _, sortIndex ->
                 AlertDialog.Builder(context).setTitle("Choose genre")
