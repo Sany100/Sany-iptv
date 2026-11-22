@@ -12,17 +12,20 @@ object MultimoviesNativeResolver {
     private const val BASE = "https://multimovies.makeup"
     private const val UA = "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36"
 
-    private fun get(url: String): String? = runCatching {
-        val c = URL(url).openConnection() as HttpURLConnection
+    private fun get(url: String): String? {
+        val c = runCatching { URL(url).openConnection() as HttpURLConnection }.getOrNull() ?: return null
         c.connectTimeout = 8000
         c.readTimeout = 10000
         c.setRequestProperty("User-Agent", UA)
         c.setRequestProperty("Accept", "text/html,application/json")
-        try {
-            if (c.responseCode !in 200..299) return null
-            c.inputStream.bufferedReader().use { it.readText() }
-        } finally { c.disconnect() }
-    }.getOrNull()
+        return try {
+            if (c.responseCode in 200..299) c.inputStream.bufferedReader().use { it.readText() } else null
+        } catch (_: Exception) {
+            null
+        } finally {
+            c.disconnect()
+        }
+    }
 
     fun search(title: String, series: Boolean): List<MultimoviesHit> {
         val q = URLEncoder.encode(title.trim(), "UTF-8")
@@ -70,7 +73,7 @@ object MultimoviesNativeResolver {
             val servers = JSONObject(config).optJSONArray("initialServers")
             if (servers != null) for (i in 0 until servers.length()) {
                 val o = servers.optJSONObject(i) ?: continue
-                val link = absolute(o.optString("url").replace("\\\\/", "/").trim())
+                val link = absolute(o.optString("url").replace("\\/", "/").trim())
                 if (link.startsWith("http")) candidates[o.optString("name").ifBlank { "Server ${i + 1}" }] = link
             }
         } catch (_: Exception) { }
@@ -98,7 +101,7 @@ object MultimoviesNativeResolver {
             val ch = html[i]
             if (quoted) {
                 if (escaped) escaped = false
-                else if (ch == '\\\\') escaped = true
+                else if (ch == '\\') escaped = true
                 else if (ch == '"') quoted = false
             } else {
                 when (ch) {
