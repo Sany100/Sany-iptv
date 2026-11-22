@@ -68,7 +68,7 @@ class AniLightNativeScreen(
     }
 
     fun create(): View {
-        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(1), dp(8), dp(1), dp(24)); setBackgroundColor(bg) }
+        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(24)); setBackgroundColor(bg) }
         val scroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER; addView(body) }
         loading("Connecting to AniLight…")
         thread(name = "AniLight-Domain") {
@@ -88,7 +88,7 @@ class AniLightNativeScreen(
         // followed by independently horizontally-scrolling category shelves.
         contentHost = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(4), dp(10), dp(24))
+            setPadding(0, dp(4), 0, dp(24))
         }
         body.addView(contentHost, bottom(12))
         contentHost.addView(label("Loading AniLight catalogue…", 14, muted, false).apply {
@@ -213,9 +213,9 @@ class AniLightNativeScreen(
         if (!isHomePage || cards.isEmpty()) return
         val heading = row().apply { gravity = Gravity.CENTER_VERTICAL }
         heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        heading.addView(label("➜", 25, fg, false).apply {
+        heading.addView(label("SEE MORE", 11, accent, true).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(10), 0, dp(4), 0)
+            setPadding(dp(12), dp(8), dp(2), dp(8))
             isFocusable = true
             setOnClickListener { category(key) }
         })
@@ -227,6 +227,9 @@ class AniLightNativeScreen(
         }
         val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         scroller.addView(rail)
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val cardWidth = (screenWidthDp / 3f).toInt()
+        val posterHeight = (cardWidth * 1.45f).toInt()
         cards.forEach { item ->
             val cover = item.optJSONObject("coverImage")
             val posterUrl = cover?.optString("extraLarge").orEmpty()
@@ -261,14 +264,14 @@ class AniLightNativeScreen(
                     setMargins(0, dp(6), dp(6), 0)
                 })
             }
-            card.addView(posterFrame, LinearLayout.LayoutParams(dp(142), dp(205)))
+            card.addView(posterFrame, LinearLayout.LayoutParams(dp(cardWidth), dp(posterHeight)))
             card.addView(label(name, 13, fg, false).apply {
                 maxLines = 2
                 gravity = Gravity.CENTER
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(dp(3), dp(6), dp(3), 0)
-            }, LinearLayout.LayoutParams(dp(142), dp(42)))
-            rail.addView(card, LinearLayout.LayoutParams(dp(142), -2).apply { rightMargin = dp(9) })
+            }, LinearLayout.LayoutParams(dp(cardWidth), dp(42)))
+            rail.addView(card, LinearLayout.LayoutParams(dp(cardWidth), -2).apply { rightMargin = dp(4) })
         }
         contentHost.addView(scroller, bottom(22))
     }
