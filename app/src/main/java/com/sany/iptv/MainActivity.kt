@@ -115,6 +115,7 @@ class MainActivity : AppCompatActivity() {
     private var trackSelector: DefaultTrackSelector? = null
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
     private var playbackRetryCount = 0
+    private var animeAutoNextInProgress = false
     private var playerView: PlayerView? = null
     private var moviesWebView: WebView? = null
     private var moviesSiteLoaded = false
@@ -3598,7 +3599,15 @@ class MainActivity : AppCompatActivity() {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) {
                             playbackRetryCount = 0
+                            animeAutoNextInProgress = false
                             refreshPictureInPictureParams()
+                        } else if (state == Player.STATE_ENDED && section == "Series" && !animeAutoNextInProgress) {
+                            // Advance Anime Series automatically to the next numeric episode.
+                            animeAutoNextInProgress = true
+                            runOnUiThread {
+                                aniLightNativeScreen?.playNextEpisode()
+                                    ?: run { animeAutoNextInProgress = false }
+                            }
                         }
                     }
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
