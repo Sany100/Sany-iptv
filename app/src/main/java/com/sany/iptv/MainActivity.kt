@@ -4015,12 +4015,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAnimeSubtitleOptions() {
-        val choices = arrayOf("Off — no subtitles", "Add subtitle file (.srt / .vtt)")
-        AlertDialog.Builder(this).setTitle("Anime subtitles").setItems(choices) { _, which ->
-            if (which == 0) {
-                applyAnimeSubtitle(null)
-            } else {
-                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        val choices = arrayOf("Off", "Choose available subtitle language", "Add subtitle file (.srt / .vtt)")
+        AlertDialog.Builder(this).setTitle("Subtitles").setItems(choices) { _, which ->
+            when (which) {
+                0 -> applyAnimeSubtitle(null)
+                1 -> showAnimeTrackSelection(C.TRACK_TYPE_TEXT, "Subtitle language", true)
+                2 -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
                     type = "*/*"
                     putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-subrip", "text/vtt", "text/plain"))
