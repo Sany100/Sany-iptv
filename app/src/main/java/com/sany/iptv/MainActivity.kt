@@ -906,7 +906,9 @@ class MainActivity : AppCompatActivity() {
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         headerTitleView = text(if (section == "Series") "Development" else section, 19, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
-        if (section == "Live TV") {
+        // Playlist selector is shared by Live TV and Checker only.
+        // Keep it out of Movies, Development, and Settings.
+        if (section == "Live TV" || section == "Checker") {
             val playlistButton = text("Sany iptv Channel  ▾", 10, accent, true).apply {
                 gravity = Gravity.CENTER
                 maxLines = 1
