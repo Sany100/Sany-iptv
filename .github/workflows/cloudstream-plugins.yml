@@ -10,7 +10,7 @@ on:
       - ".github/workflows/cloudstream-plugins.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cloudstream-plugin-${{ github.ref }}
@@ -99,3 +99,30 @@ jobs:
           path: plugin-output/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish CloudStream repository
+        uses: actions/checkout@v4
+        with:
+          ref: builds
+          path: publish
+          persist-credentials: true
+
+      - name: Publish plugin files and index
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLUGIN_FILE="$(find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' -printf '%f\n' | head -n 1)"
+          test -n "$PLUGIN_FILE"
+          cp "$GITHUB_WORKSPACE/plugin-output/$PLUGIN_FILE" "$GITHUB_WORKSPACE/publish/$PLUGIN_FILE"
+          PLUGIN_URL="https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/$PLUGIN_FILE"
+          jq --arg url "$PLUGIN_URL" 'map(.url = $url)' "$GITHUB_WORKSPACE/plugin-output/plugins.json" > "$GITHUB_WORKSPACE/publish/plugins.json"
+          cd "$GITHUB_WORKSPACE/publish"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$PLUGIN_FILE" plugins.json
+          if git diff --cached --quiet; then
+            echo "No repository changes to publish"
+          else
+            git commit -m "Publish AniLight CloudStream plugin"
+            git push origin builds
+          fi
