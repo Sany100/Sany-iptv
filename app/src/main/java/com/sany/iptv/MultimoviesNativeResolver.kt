@@ -11,13 +11,39 @@ data class MultimoviesSource(val name: String, val url: String, val playable: Bo
 object MultimoviesNativeResolver {
     private const val BASE = "https://multimovies.makeup"
     private const val UA = "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36"
+    private const val CACHE_TTL_MS = 5 * 60 * 1000L
+    private val searchCache = mutableMapOf<String, Pair<Long, List<MultimoviesHit>>>()
+    private val sourceCache = mutableMapOf<String, Pair<Long, List<MultimoviesSource>>>()
+
+    private fun <T> cacheRead(cache: MutableMap<String, Pair<Long, T>>, key: String): T? =
+        synchronized(cache) {
+            val entry = cache[key] ?: return@synchronized null
+            if (System.currentTimeMillis() - entry.first > CACHE_TTL_MS) {
+                cache.remove(key)
+                null
+            } else entry.second
+        }
+
+    private fun <T> cacheWrite(cache: MutableMap<String, Pair<Long, T>>, key: String, value: T) {
+        synchronized(cache) {
+            if (cache.size >= 60) cache.clear()
+            cache[key] = System.currentTimeMillis() to value
+        }
+    }
+
+    private fun isHttpUrl(value: String): Boolean = runCatching {
+        val url = URL(value)
+        url.protocol == "http" || url.protocol == "https"
+    }.getOrDefault(false)
 
     private fun get(url: String): String? {
         val c = runCatching { URL(url).openConnection() as HttpURLConnection }.getOrNull() ?: return null
         c.connectTimeout = 8000
         c.readTimeout = 10000
+        c.instanceFollowRedirects = true
         c.setRequestProperty("User-Agent", UA)
         c.setRequestProperty("Accept", "text/html,application/json")
+        c.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
         return try {
             if (c.responseCode in 200..299) c.inputStream.bufferedReader().use { it.readText() } else null
         } catch (_: Exception) {
@@ -28,19 +54,25 @@ object MultimoviesNativeResolver {
     }
 
     fun search(title: String, series: Boolean): List<MultimoviesHit> {
-        val q = URLEncoder.encode(title.trim(), "UTF-8")
+        val cleanTitle = title.trim()
+        if (cleanTitle.isBlank()) return emptyList()
         val expected = if (series) "tv" else "movie"
+        val cacheKey = expected + ":" + cleanTitle.lowercase()
+        cacheRead(searchCache, cacheKey)?.let { return it }
+        val q = URLEncoder.encode(cleanTitle, "UTF-8")
         val jsonText = get("$BASE/api/search?q=$q&limit=12")
         val hits = mutableListOf<MultimoviesHit>()
         if (!jsonText.isNullOrBlank()) try {
             val arr = JSONObject(jsonText).optJSONArray("results")
             if (arr != null) for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
-                val type = o.optString("type").ifBlank { if (o.has("name")) "tv" else "movie" }
+                val rawType = o.optString("type").ifBlank { if (o.has("name")) "tv" else "movie" }.lowercase()
+                val type = if (rawType == "series" || rawType == "show") "tv" else rawType
                 val name = o.optString("title").ifBlank { o.optString("name") }.trim()
-                val link = o.optString("url").trim()
-                if (name.isNotBlank() && link.startsWith("http") &&
-                    (type == expected || (series && type == "series"))) {
+                val rawLink = o.optString("url").ifBlank { o.optString("link") }.ifBlank { o.optString("permalink") }.trim()
+                val link = absolute(rawLink)
+                if (name.isNotBlank() && isHttpUrl(link) &&
+                    (type == expected || (series && type == "tv"))) {
                     hits += MultimoviesHit(name, link, expected)
                 }
             }
@@ -61,11 +93,14 @@ object MultimoviesNativeResolver {
                 if (name.isNotBlank()) hits += MultimoviesHit(name, link, kind)
             }
         }
-        return hits.distinctBy { it.url }.take(8)
+        val result = hits.distinctBy { it.url }.take(8)
+        cacheWrite(searchCache, cacheKey, result)
+        return result
     }
 
     fun sources(detailUrl: String): List<MultimoviesSource> {
-        if (!detailUrl.startsWith(BASE)) return emptyList()
+        if (!isHttpUrl(detailUrl) || !detailUrl.startsWith(BASE)) return emptyList()
+        cacheRead(sourceCache, detailUrl)?.let { return it }
         val html = get(detailUrl) ?: return emptyList()
         val candidates = linkedMapOf<String, String>()
         val config = extractWatchConfig(html)
@@ -74,7 +109,7 @@ object MultimoviesNativeResolver {
             if (servers != null) for (i in 0 until servers.length()) {
                 val o = servers.optJSONObject(i) ?: continue
                 val link = absolute(o.optString("url").replace("\\/", "/").trim())
-                if (link.startsWith("http")) candidates[o.optString("name").ifBlank { "Server ${i + 1}" }] = link
+                if (isHttpUrl(link)) candidates[o.optString("name").ifBlank { "Server " + (i + 1) }] = link
             }
         } catch (_: Exception) { }
         val chips = Regex("(?is)<button[^>]*class=[\"'][^\"']*server-chip[^\"']*[\"'][^>]*>")
@@ -82,12 +117,15 @@ object MultimoviesNativeResolver {
             val tag = m.value
             val raw = Regex("(?is)data-url=[\"']([^\"']+)[\"']").find(tag)?.groupValues?.get(1) ?: continue
             val name = Regex("(?is)data-id=[\"']([^\"']+)[\"']").find(tag)?.groupValues?.get(1) ?: "Server"
-            candidates[name] = absolute(raw.replace("&amp;", "&"))
+            val link = absolute(raw.replace("&amp;", "&"))
+            if (isHttpUrl(link)) candidates[name] = link
         }
-        return candidates.map { (name, link) ->
-            val direct = directMedia(link)
+        val result = candidates.map { (name, link) ->
+            val direct = if (isMedia(link)) link else directMedia(link)
             MultimoviesSource(name, direct ?: link, direct != null)
         }
+        cacheWrite(sourceCache, detailUrl, result)
+        return result
     }
 
     private fun extractWatchConfig(html: String): String? {
