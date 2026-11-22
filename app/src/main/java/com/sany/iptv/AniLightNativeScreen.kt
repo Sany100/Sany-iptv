@@ -354,6 +354,14 @@ class AniLightNativeScreen(
         } finally { c.disconnect() }
     }
 
+    /** Headers required by AniLight's public playback/CDN endpoints. */
+    fun playbackHeaders(): Map<String, String> = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36",
+        "Accept" to "application/vnd.apple.mpegurl, application/x-mpegURL, video/*, */*",
+        "Accept-Language" to "en-US,en;q=0.9",
+        "Referer" to "$site/"
+    )
+
     private fun captionsUrl(token: String): String = "$api/proxy/captions?token=" + enc(token)
 
     private fun getSession(force: Boolean = false): String? {
