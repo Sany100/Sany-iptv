@@ -82,9 +82,9 @@ object MultimoviesNativeResolver {
             // Public Dooplay search: consume only the nonce published in normal
             // homepage HTML. No challenge solving or access-control bypass.
             val homepage = get("$BASE/").orEmpty()
-            val nonceBlock = Regex("""dtGonza\\s*=\\s*\\{[^}]*\\}""").find(homepage)?.value
+            val nonceBlock = Regex("""dtGonza\s*=\s*\{[^}]*\}""").find(homepage)?.value
             val nonce = nonceBlock?.let {
-                Regex("""\"nonce\"\\s*:\\s*\"([A-Za-z0-9]+)\"""").find(it)?.groupValues?.get(1)
+                Regex(""""nonce"\s*:\s*"([A-Za-z0-9]+)"""").find(it)?.groupValues?.get(1)
             }
             if (!nonce.isNullOrBlank()) {
                 val dooplay = get(
@@ -104,7 +104,7 @@ object MultimoviesNativeResolver {
                             URL(link).host.equals(URL(BASE).host, ignoreCase = true)
                         }.getOrDefault(false)
                         if (!hostMatches) continue
-                        val kind = if (link.contains("/series/") || link.contains("/tvshows/")) "tv" else "movie"
+                        val kind = if (link.contains("/series/") || link.contains("/tvshows/") || link.contains("/tv/")) "tv" else "movie"
                         if (kind != expected) continue
                         hits += MultimoviesHit(name, link, expected)
                     }
