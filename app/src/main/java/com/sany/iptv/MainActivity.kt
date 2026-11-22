@@ -353,8 +353,18 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             if (updateRequired && !isFinishing && !isDestroyed) {
                 showMandatoryUpdateDialog()
-                updateReminderHandler.postDelayed(this, 10_000L)
+                updateReminderHandler.postDelayed(this, 3_600_000L)
             }
+        }
+    }
+
+    // Recheck available app releases every hour while the app process is active.
+    private val appUpdateReminderHandler = Handler(Looper.getMainLooper())
+    private val appUpdateReminderRunnable = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed) return
+            if (hasWindowFocus() && playerScreen == null) checkForAppUpdate(false)
+            appUpdateReminderHandler.postDelayed(this, 3_600_000L)
         }
     }
 
@@ -391,7 +401,7 @@ class MainActivity : AppCompatActivity() {
                         prefs.edit().putBoolean("mandatory_update_required", true).apply()
                         showMandatoryUpdateDialog(version, apkUrl)
                         updateReminderHandler.removeCallbacks(updateReminderRunnable)
-                        updateReminderHandler.postDelayed(updateReminderRunnable, 10_000L)
+                        updateReminderHandler.postDelayed(updateReminderRunnable, 3_600_000L)
                     } else {
                         prefs.edit().putBoolean("mandatory_update_required", false).apply()
                         updateReminderHandler.removeCallbacks(updateReminderRunnable)
@@ -833,8 +843,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun scheduleAutoUpdateCheck() {
         if (!prefs.getBoolean("auto_update_check", false)) return
+        appUpdateReminderHandler.removeCallbacks(appUpdateReminderRunnable)
         Handler(Looper.getMainLooper()).postDelayed({
             if (!isFinishing && !isDestroyed && playerScreen == null) checkForAppUpdate(false)
+            appUpdateReminderHandler.postDelayed(appUpdateReminderRunnable, 3_600_000L)
         }, 700L)
     }
 
@@ -2427,9 +2439,11 @@ class MainActivity : AppCompatActivity() {
         })
         val dialog = AlertDialog.Builder(this)
             .setView(card)
+            .setNegativeButton("REMIND ME LATER") { reminderDialog, _ -> reminderDialog.dismiss() }
             .create()
-        dialog.setCancelable(false)
-        dialog.setCanceledOnTouchOutside(false)
+        // Let the user postpone the update; the hourly reminder will show it again.
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
         val actionRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
