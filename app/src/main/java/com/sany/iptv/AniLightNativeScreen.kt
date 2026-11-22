@@ -228,13 +228,44 @@ class AniLightNativeScreen(
         if (!isHomePage || cards.isEmpty()) return
         val heading = row().apply { gravity = Gravity.CENTER_VERTICAL }
         heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        heading.addView(label("SEE MORE", 11, accent, true).apply {
+        val dropdown = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            background = rounded(surface, 12)
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+        }
+        val arrow = label("⌄", 25, accent, true).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(8), dp(2), dp(8))
+            setPadding(dp(14), 0, dp(8), 0)
             isFocusable = true
-            setOnClickListener { category(key) }
-        })
-        contentHost.addView(heading, bottom(10))
+            contentDescription = "Show $title dropdown"
+            setOnClickListener {
+                val expand = dropdown.visibility != View.VISIBLE
+                dropdown.visibility = if (expand) View.VISIBLE else View.GONE
+                text = if (expand) "⌃" else "⌄"
+            }
+        }
+        heading.addView(arrow)
+        contentHost.addView(heading, bottom(8))
+
+        // Arrow expands a dropdown in-place; it does not navigate away from the home page.
+        cards.take(12).forEach { item ->
+            val titleObj = item.optJSONObject("title")
+            val itemName = titleObj?.optString("english").orEmpty()
+                .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
+            val itemRow = row().apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), dp(9), dp(8), dp(9))
+                isFocusable = true
+                setOnClickListener { openAnime(item) }
+            }
+            itemRow.addView(label(itemName, 13, fg, false), LinearLayout.LayoutParams(0, -2, 1f))
+            itemRow.addView(label("›", 20, muted, true))
+            dropdown.addView(itemRow)
+            dropdown.addView(View(context).apply { setBackgroundColor(0x223FFFFFF) },
+                LinearLayout.LayoutParams(-1, dp(1)))
+        }
+        contentHost.addView(dropdown, bottom(10))
 
         val scroller = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
