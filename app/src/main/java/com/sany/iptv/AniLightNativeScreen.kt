@@ -164,6 +164,8 @@ class AniLightNativeScreen(
         val featured = trending.firstOrNull()
         if (featured != null) addFeaturedHero(featured)
 
+        renderWatchLaterShelf()
+
         val shelves = listOf(
             Triple("Trending Now", "trending", items(data.optJSONObject("trending")?.optJSONArray("media"))),
             Triple("Most Popular", "popular", items(data.optJSONObject("popular")?.optJSONArray("media"))),
@@ -788,12 +790,118 @@ class AniLightNativeScreen(
                     if (unique.isEmpty()) { toast("Stream পাওয়া যায়নি। AniLight API/source unavailable হতে পারে।"); showDetailsAgain(); return@post }
                     AlertDialog.Builder(context).setTitle("$animeTitle — Episode $episode")
                         .setItems(unique.map { "${it.first} • ${language.uppercase()}" }.toTypedArray()) { _, which ->
+                            saveWatchLater(anime ?: JSONObject(), episode, language)
                             onPlay("$animeTitle • Episode $episode", unique[which].second, subtitles.firstOrNull())
                         }.setNegativeButton("CANCEL", null).show()
                     showDetailsAgain()
                 }
             } catch (e: Exception) { ui.post { toast(e.message ?: "Stream resolve failed"); showDetailsAgain() } }
         }
+    }
+
+    // Persist every episode the user actually starts playing, newest first.
+    private fun saveWatchLater(animeItem: JSONObject, episode: Int, languageCode: String) {
+        val prefs = context.getSharedPreferences("anilight_watch_later", Context.MODE_PRIVATE)
+        val saved = runCatching { JSONArray(prefs.getString("items", "[]") ?: "[]") }.getOrElse { JSONArray() }
+        val slugKey = animeItem.optString("slug")
+        val key = "$slugKey|$episode|$languageCode"
+        val updated = JSONArray()
+        val entry = JSONObject()
+            .put("key", key)
+            .put("anime", animeItem)
+            .put("episode", episode)
+            .put("language", languageCode)
+            .put("playedAt", System.currentTimeMillis())
+        updated.put(entry)
+        for (i in 0 until saved.length()) {
+            val old = saved.optJSONObject(i) ?: continue
+            if (old.optString("key") != key) updated.put(old)
+        }
+        val capped = JSONArray()
+        for (i in 0 until minOf(updated.length(), 200)) capped.put(updated.get(i))
+        prefs.edit().putString("items", capped.toString()).apply()
+    }
+
+    // Fixed three-column grid, positioned directly above Trending Now.
+    // No dropdown/expand control; entries persist across app restarts.
+    private fun renderWatchLaterShelf() {
+        val prefs = context.getSharedPreferences("anilight_watch_later", Context.MODE_PRIVATE)
+        val saved = runCatching { JSONArray(prefs.getString("items", "[]") ?: "[]") }.getOrElse { JSONArray() }
+        if (saved.length() == 0) return
+
+        val section = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(2))
+        }
+        section.addView(label("Watch Later", 19, fg, true), bottom(10))
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val cardWidth = ((screenWidthDp - 40f) / 3f).toInt()
+        var gridRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+        }
+        for (index in 0 until saved.length()) {
+            val entry = saved.optJSONObject(index) ?: continue
+            val item = entry.optJSONObject("anime") ?: continue
+            val cover = item.optJSONObject("coverImage")
+            val posterUrl = cover?.optString("extraLarge").orEmpty()
+                .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
+            val titleObj = item.optJSONObject("title")
+            val name = titleObj?.optString("english").orEmpty()
+                .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
+            val episode = entry.optInt("episode", 1)
+            val lang = entry.optString("language", "sub").uppercase()
+            val card = FrameLayout(context).apply {
+                background = rounded(surface, 12)
+                clipToOutline = true
+                isFocusable = true
+                setOnClickListener { openAnime(item) }
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(surface)
+            }
+            card.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
+            card.addView(View(context).apply {
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    intArrayOf(0x00101018, 0xE8101018.toInt())
+                )
+            }, FrameLayout.LayoutParams(-1, dp(58), Gravity.BOTTOM))
+            val caption = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(5), dp(5), dp(5), dp(5))
+                addView(label(name, 10, Color.WHITE, true).apply {
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+                addView(label("Episode $episode • $lang", 9, 0xFFE1E5EF.toInt(), false))
+            }
+            card.addView(caption, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+            gridRow.addView(card, LinearLayout.LayoutParams(0, dp((cardWidth * 1.48f).toInt()), 1f).apply {
+                leftMargin = dp(4)
+                rightMargin = dp(4)
+                bottomMargin = dp(10)
+            })
+            if (gridRow.childCount == 3) {
+                section.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+                gridRow = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.TOP
+                }
+            }
+        }
+        if (gridRow.childCount > 0) {
+            while (gridRow.childCount < 3) {
+                gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
+                    leftMargin = dp(4)
+                    rightMargin = dp(4)
+                })
+            }
+            section.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+        }
+        contentHost.addView(section, bottom(18))
     }
 
     private fun showDetailsAgain() {
