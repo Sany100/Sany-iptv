@@ -108,7 +108,7 @@ class AniLightNativeScreen(
             val name = titleObj?.optString("english").orEmpty().ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
             val details = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
             details.addView(label(name, 14, fg, true))
-            details.addView(label(listOf(item.optString("format"), item.optInt("seasonYear").takeIf { it > 0 }?.toString()).filter { it.isNotBlank() }.joinToString(" • "), 11, muted, false))
+            details.addView(label(listOf(item.optString("format"), item.optInt("seasonYear").takeIf { it > 0 }?.toString().orEmpty()).filter { it.isNotBlank() }.joinToString(" • "), 11, muted, false))
             details.addView(label("Score: ${item.optDouble("averageScore", 0.0).let { if (it > 0) it.toString() else "N/A" }}", 11, muted, false))
             card.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
             body.addView(card, bottom(8))
