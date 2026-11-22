@@ -45,6 +45,7 @@ class AniLightNativeScreen(
     private val surface = if (light) Color.WHITE else 0xFF16191F.toInt()
     private val ui = android.os.Handler(android.os.Looper.getMainLooper())
     private lateinit var body: LinearLayout
+    private lateinit var contentHost: LinearLayout
     private var slug = ""
     private var animeId = 0
     private var animeTitle = ""
@@ -125,21 +126,28 @@ class AniLightNativeScreen(
             })
         }
         body.addView(categoryRail, bottom(14))
+        contentHost = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(contentHost, bottom(12))
         category("trending", homeLanding = true)
     }
 
     private fun category(key: String, homeLanding: Boolean = false) {
+        isHomePage = true
         if (key.startsWith("genre:")) {
             val selectedGenre = key.removePrefix("genre:")
-            loadFiltered("POPULARITY_DESC", selectedGenre)
+            loadFiltered("POPULARITY_DESC", selectedGenre, keepHomeChrome = true)
             return
         }
         showingFilterResults = false
         filterHasNext = false
-        loading("Loading $key…")
+        contentHost.removeAllViews()
+        contentHost.addView(label("Loading $key…", 14, muted, false).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(35), dp(10), dp(35))
+        })
         val cached = homepageCache
         if (cached != null && System.currentTimeMillis() - homepageCheckedAt < 5 * 60_000L) {
-            isHomePage = homeLanding
+            isHomePage = true
             showHomeCategory(key, cached)
             return
         }
@@ -148,7 +156,7 @@ class AniLightNativeScreen(
                 homepageCache = data
                 homepageCheckedAt = System.currentTimeMillis()
             }
-            isHomePage = homeLanding
+            isHomePage = true
             showHomeCategory(key, data ?: homepageCache)
         }
     }
@@ -184,15 +192,23 @@ class AniLightNativeScreen(
             }.setNegativeButton("CANCEL", null).show()
     }
 
-    private fun loadFiltered(sort: String, genre: String?, page: Int = 1) {
-        isHomePage = false
+    private fun loadFiltered(sort: String, genre: String?, page: Int = 1, keepHomeChrome: Boolean = false) {
+        isHomePage = keepHomeChrome
         showingFilterResults = true
         if (page == 1) {
             filterSort = sort
             filterGenre = genre
             filterPage = 1
             filterHasNext = false
-            loading("Applying anime filters…")
+            if (keepHomeChrome) {
+                contentHost.removeAllViews()
+                contentHost.addView(label("Loading " + (genre ?: "anime") + "…", 14, muted, false).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(10), dp(35), dp(10), dp(35))
+                })
+            } else {
+                loading("Applying anime filters…")
+            }
         } else {
             filterPage = page
         }
@@ -221,19 +237,20 @@ class AniLightNativeScreen(
     }
 
     private fun showCards(title: String, cards: List<JSONObject>, append: Boolean = false) {
+        val target = if (isHomePage) contentHost else body
         if (append) {
-            if (body.childCount > 0 && body.getChildAt(body.childCount - 1).tag == "anilight_load_more") {
-                body.removeViewAt(body.childCount - 1)
+            if (target.childCount > 0 && target.getChildAt(target.childCount - 1).tag == "anilight_load_more") {
+                target.removeViewAt(target.childCount - 1)
             }
         } else {
-            body.removeAllViews()
+            target.removeAllViews()
             val head = row()
             head.addView(label(title.uppercase(), 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
             head.addView(button("HOME") { home() })
-            body.addView(head, bottom(14))
+            target.addView(head, bottom(14))
         }
         if (cards.isEmpty() && !append) {
-            body.addView(label("কোনো anime পাওয়া যায়নি। API unavailable হলে পরে আবার চেষ্টা করো।", 14, muted, false))
+            target.addView(label("কোনো anime পাওয়া যায়নি। API unavailable হলে পরে আবার চেষ্টা করো।", 14, muted, false))
             return
         }
 
@@ -288,11 +305,11 @@ class AniLightNativeScreen(
                 setMargins(dp(5), 0, dp(5), dp(5))
             }
             hero.addView(glass, glassParams)
-            body.addView(hero, LinearLayout.LayoutParams(-1, dp(245)).apply { bottomMargin = dp(14) })
+            target.addView(hero, LinearLayout.LayoutParams(-1, dp(245)).apply { bottomMargin = dp(14) })
         }
 
         val sectionHead = label(if (title.equals("trending", true)) "TRENDING NOW" else title.uppercase(), 16, fg, true)
-        body.addView(sectionHead, bottom(10))
+        target.addView(sectionHead, bottom(10))
         val strip = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
@@ -350,10 +367,10 @@ class AniLightNativeScreen(
                 rightMargin = dp(7)
             })
         }
-        body.addView(strip, bottom(16))
+        target.addView(strip, bottom(16))
 
         if (showingFilterResults && filterHasNext) {
-            body.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1) }.apply {
+            target.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1) }.apply {
                 tag = "anilight_load_more"
             }, bottom(10))
         }
