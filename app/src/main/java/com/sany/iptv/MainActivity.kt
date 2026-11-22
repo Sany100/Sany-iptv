@@ -3828,6 +3828,18 @@ class MainActivity : AppCompatActivity() {
                 } else revealControls()
                 return true
             }
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                // Seek gestures are intentionally limited to Anime Series VOD.
+                // Live TV and Movies retain their existing touch behavior.
+                if (section == "Series" && p.isCurrentMediaItemSeekable && p.duration > 0L) {
+                    val delta = if (e.x >= view.width / 2f) 10_000L else -10_000L
+                    val target = (p.currentPosition + delta).coerceIn(0L, p.duration)
+                    p.seekTo(target)
+                    revealControls()
+                    return true
+                }
+                return false
+            }
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
                 val start = e1 ?: return false
                 val dx = e2.x - start.x
@@ -4327,8 +4339,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun returnToLiveTvHome() {
-        closePlayer()
+    private fun returnToLiveTvHome(keepPlayback: Boolean = false) {
+        if (keepPlayback && playerView != null && player != null) {
+            // Keep Anime Series playback alive while navigating back to Live TV.
+            // The next Back press on Live TV is the explicit action that closes it.
+            setPlayerFullscreen(false)
+        } else {
+            closePlayer()
+        }
         section = "Live TV"
         // Return to the category directory, not an "All" channel filter.
         selectedGroup = "Select category"
@@ -4374,7 +4392,7 @@ class MainActivity : AppCompatActivity() {
                 lastBackPressedAt = 0L
                 return
             }
-            returnToLiveTvHome()
+            returnToLiveTvHome(keepPlayback = playerView != null && player != null)
             return
         }
 
