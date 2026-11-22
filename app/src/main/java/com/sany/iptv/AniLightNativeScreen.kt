@@ -839,12 +839,45 @@ class AniLightNativeScreen(
         val available = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }.filter { it.optBoolean(language, false) }
         available.forEach { ep ->
             val number = ep.optInt("number", 1)
-            val line = row().apply { gravity = Gravity.CENTER_VERTICAL; background = rounded(surface, 10); setPadding(dp(12), dp(12), dp(12), dp(12)); isFocusable = true
-                setOnClickListener { resolveEpisode(number) } }
-            line.addView(label("▶", 17, accent, true), LinearLayout.LayoutParams(dp(32), -2))
-            line.addView(label("$number. ${ep.optString("title").ifBlank { "Episode $number" }}", 13, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-            line.addView(label(language.uppercase(), 10, accent, true))
-            body.addView(line, bottom(6))
+            val episodeTitle = ep.optString("title").ifBlank { "Episode $number" }
+            val thumbnailUrl = listOf("thumbnail", "thumbnailUrl", "image", "imageUrl", "img")
+                .map { ep.optString(it) }.firstOrNull { it.startsWith("http", true) }
+                ?: posterUrl
+            val card = row().apply {
+                gravity = Gravity.CENTER_VERTICAL
+                background = rounded(surface, 10)
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                isFocusable = true
+                setOnClickListener { resolveEpisode(number) }
+            }
+            val thumb = FrameLayout(context).apply {
+                background = rounded(bg, 7)
+                clipToOutline = true
+            }
+            val image = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+            thumb.addView(image, FrameLayout.LayoutParams(-1, -1))
+            if (thumbnailUrl.startsWith("http", true)) loadImage(thumbnailUrl, image)
+            thumb.addView(label("▶", 16, Color.WHITE, true).apply {
+                gravity = Gravity.CENTER
+                background = rounded(0x99000000.toInt(), 24)
+                setPadding(dp(8), dp(5), dp(8), dp(5))
+            })
+            card.addView(thumb, LinearLayout.LayoutParams(dp(104), dp(66)).apply { rightMargin = dp(10) })
+            val details = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            details.addView(label("$number. $episodeTitle", 13, fg, true))
+            val runtime = ep.optString("duration").ifBlank { ep.optString("length") }
+            val date = ep.optString("airDate").ifBlank { ep.optString("date") }
+            val metaLine = listOf(runtime, date, language.uppercase()).filter { it.isNotBlank() }.joinToString(" • ")
+            if (metaLine.isNotBlank()) details.addView(label(metaLine, 10, muted, false))
+            val summary = android.text.Html.fromHtml(
+                ep.optString("description"), android.text.Html.FROM_HTML_MODE_COMPACT
+            ).toString().trim()
+            if (summary.isNotBlank()) details.addView(label(summary, 11, muted, false).apply {
+                maxLines = 3
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            card.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            body.addView(card, bottom(7))
         }
         if (available.isEmpty()) body.addView(label("এই ভাষায় episode পাওয়া যায়নি।", 13, muted, false))
     }
