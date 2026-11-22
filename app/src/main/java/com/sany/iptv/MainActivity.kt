@@ -907,7 +907,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, dp(7))
         })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        headerTitleView = text(section, 19, white, true)
+        headerTitleView = text(if (section == "Series") "Anime Series" else section, 19, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         // Playlist selector is shared by Live TV and Checker only.
         // Keep it out of Movies, Development, and Settings.
@@ -1959,7 +1959,7 @@ class MainActivity : AppCompatActivity() {
                     // Reuse the existing shell and header; rebuild only the page content
                     // and the five small navigation items. This avoids a full-screen layout
                     // pass on every menu tap.
-                    headerTitleView?.text = section
+                    headerTitleView?.text = if (section == "Series") "Anime Series" else section
                     playlistSelectorContainer?.visibility =
                         if (section == "Live TV" || section == "Checker") View.VISIBLE else View.GONE
                     renderSection()
