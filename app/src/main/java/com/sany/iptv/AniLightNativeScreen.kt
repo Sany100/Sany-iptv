@@ -46,6 +46,8 @@ class AniLightNativeScreen(
     private val ui = android.os.Handler(android.os.Looper.getMainLooper())
     private lateinit var body: LinearLayout
     private lateinit var contentHost: LinearLayout
+    private var catalogueScroll: ScrollView? = null
+    private var autoPageLoading = false
     private var slug = ""
     private var animeId = 0
     private var animeTitle = ""
@@ -69,7 +71,20 @@ class AniLightNativeScreen(
 
     fun create(): View {
         body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(24)); setBackgroundColor(bg) }
-        val scroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER; addView(body) }
+        val scroll = ScrollView(context).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(body)
+            setOnScrollChangeListener { view: View, _: Int, scrollY: Int, _: Int, _: Int ->
+                val sv = view as ScrollView
+                val nearBottom = scrollY + sv.height >= body.height - dp(520)
+                if (nearBottom && showingFilterResults && filterHasNext && !autoPageLoading) {
+                    autoPageLoading = true
+                    loadFiltered(filterSort, filterGenre, filterPage + 1, keepHomeChrome = isHomePage)
+                }
+            }
+        }
+        catalogueScroll = scroll
         loading("Connecting to AniLight…")
         thread(name = "AniLight-Domain") {
             refreshDomainBlocking()
@@ -278,32 +293,19 @@ class AniLightNativeScreen(
 
     private fun category(key: String, homeLanding: Boolean = false) {
         isHomePage = true
-        if (key.startsWith("genre:")) {
-            val selectedGenre = key.removePrefix("genre:")
-            loadFiltered("POPULARITY_DESC", selectedGenre, keepHomeChrome = true)
-            return
+        val selectedGenre = key.takeIf { it.startsWith("genre:") }?.removePrefix("genre:")
+        val sort = when (key) {
+            "topRated" -> "SCORE_DESC"
+            "recent" -> "UPDATED_AT_DESC"
+            "upcoming" -> "START_DATE_DESC"
+            "seasonal", "previousSeason" -> "POPULARITY_DESC"
+            else -> "POPULARITY_DESC"
         }
-        showingFilterResults = false
-        filterHasNext = false
-        contentHost.removeAllViews()
-        contentHost.addView(label("Loading $key…", 14, muted, false).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(10), dp(35), dp(10), dp(35))
-        })
-        val cached = homepageCache
-        if (cached != null && System.currentTimeMillis() - homepageCheckedAt < 5 * 60_000L) {
-            isHomePage = true
-            showHomeCategory(key, cached)
-            return
-        }
-        request("$api/homepage") { data ->
-            if (data != null) {
-                homepageCache = data
-                homepageCheckedAt = System.currentTimeMillis()
-            }
-            isHomePage = true
-            showHomeCategory(key, data ?: homepageCache)
-        }
+        // Every SEE MORE destination uses the same paginated catalogue so scrolling
+        // automatically fetches the next page without a manual Load More control.
+        catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
+        autoPageLoading = false
+        loadFiltered(sort, selectedGenre, keepHomeChrome = true)
     }
 
     private fun showHomeCategory(key: String, data: JSONObject?) {
@@ -341,6 +343,7 @@ class AniLightNativeScreen(
         isHomePage = keepHomeChrome
         showingFilterResults = true
         if (page == 1) {
+            autoPageLoading = false
             filterSort = sort
             filterGenre = genre
             filterPage = 1
@@ -365,6 +368,7 @@ class AniLightNativeScreen(
             filterHasNext = payload?.optJSONObject("pageInfo")?.optBoolean("hasNextPage", false) ?: false
             val results = items(media).filterNot { it.optBoolean("isAdult", false) }
             if (page > 1 && results.isEmpty()) filterHasNext = false
+            autoPageLoading = false
             showCards("Filtered anime", results, append = page > 1)
         }
     }
@@ -530,11 +534,7 @@ class AniLightNativeScreen(
             target.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
         }
 
-        if (showingFilterResults && filterHasNext) {
-            target.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1, keepHomeChrome = isHomePage) }.apply {
-                tag = "anilight_load_more"
-            }, bottom(10))
-        }
+        // Pagination is automatic on scroll; no Load More button is shown.
     }
 
     private fun openAnime(item: JSONObject) {
