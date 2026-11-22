@@ -374,7 +374,7 @@ class AniLightNativeScreen(
             setPadding(dp(14), 0, dp(8), 0)
             isFocusable = true
             contentDescription = "Open $title category page"
-            setOnClickListener { openShelfPage(title, cards) }
+            setOnClickListener { openShelfPage(title, cards, key) }
         }
         heading.addView(arrow)
         contentHost.addView(heading, bottom(8))
@@ -436,8 +436,14 @@ class AniLightNativeScreen(
     }
 
     /** Open a category as a dedicated, vertically-scrollable page. */
-    private fun openShelfPage(title: String, cards: List<JSONObject>) {
+    private fun openShelfPage(title: String, cards: List<JSONObject>, key: String) {
         if (!isHomePage || cards.isEmpty()) return
+        if (key.startsWith("genre:")) {
+            pushCurrentPage()
+            isShelfCategoryPage = true
+            loadFiltered("POPULARITY_DESC", key.removePrefix("genre:"), preserveCurrentPage = true)
+            return
+        }
         pushCurrentPage()
         isHomePage = false
         isShelfCategoryPage = true
@@ -557,8 +563,8 @@ class AniLightNativeScreen(
             }.setNegativeButton("CANCEL", null).show()
     }
 
-    private fun loadFiltered(sort: String, genre: String?, page: Int = 1, keepHomeChrome: Boolean = false) {
-        if (page == 1) pushCurrentPage()
+    private fun loadFiltered(sort: String, genre: String?, page: Int = 1, keepHomeChrome: Boolean = false, preserveCurrentPage: Boolean = false) {
+        if (page == 1 && !preserveCurrentPage) pushCurrentPage()
         isHomePage = keepHomeChrome
         showingFilterResults = true
         if (page == 1) {
@@ -615,7 +621,9 @@ class AniLightNativeScreen(
             target.removeAllViews()
             val head = row()
             head.addView(label(title.uppercase(), 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-            head.addView(button("HOME") { goHome() })
+            head.addView(button(if (isShelfCategoryPage) "← BACK" else "HOME") {
+                if (isShelfCategoryPage) restorePreviousPage() else goHome()
+            })
             target.addView(head, bottom(14))
         }
         if (cards.isEmpty() && !append) {
