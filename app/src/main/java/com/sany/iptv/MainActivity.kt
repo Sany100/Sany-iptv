@@ -2059,6 +2059,7 @@ class MainActivity : AppCompatActivity() {
             "Add CloudStream repository",
             "View / remove saved repositories",
             "Refresh extension catalogue",
+            "View downloaded packages",
             "Runtime compatibility information"
         )
         AlertDialog.Builder(this)
@@ -2076,8 +2077,7 @@ class MainActivity : AppCompatActivity() {
                             .setMessage("CloudStream repository JSON URL দিন (HTTPS only)।")
                             .setView(field)
                             .setPositiveButton("ADD") { _, _ ->
-                                val url = field.text.toString().trim()
-                                if (SanyExtensionRepositories.add(this, url)) {
+                                if (SanyExtensionRepositories.add(this, field.text.toString().trim())) {
                                     toast("Repository saved")
                                 } else {
                                     toast("Valid HTTPS repository URL দিন")
@@ -2129,27 +2129,64 @@ class MainActivity : AppCompatActivity() {
                                             .show()
                                     } else {
                                         val labels = plugins.map { (_, plugin) ->
-                                            "${plugin.name}  •  v${plugin.version.ifBlank { "?" }}"
+                                            val state = when (plugin.status) {
+                                                0 -> "Offline"
+                                                2 -> "Slow"
+                                                3 -> "Beta"
+                                                else -> "Available"
+                                            }
+                                            "${plugin.name}  •  v${plugin.version}  •  $state"
                                         }.toTypedArray()
                                         AlertDialog.Builder(this)
                                             .setTitle("Available extensions (${plugins.size})")
                                             .setItems(labels) { _, index ->
                                                 val (repository, plugin) = plugins[index]
+                                                val tvTypes = plugin.tvTypes.joinToString(", ").ifBlank { "Not specified" }
+                                                val size = plugin.fileSize?.let { "${it / 1024} KB" } ?: "Unknown"
                                                 AlertDialog.Builder(this)
                                                     .setTitle(plugin.name)
                                                     .setMessage(
                                                         "Repository: $repository\n" +
                                                         "Internal name: ${plugin.internalName}\n" +
                                                         "Version: ${plugin.version}\n" +
+                                                        "CloudStream API: ${plugin.apiVersion}\n" +
+                                                        "Status: ${plugin.status}\n" +
                                                         "Language: ${plugin.language}\n" +
+                                                        "Types: $tvTypes\n" +
+                                                        "Size: $size\n" +
                                                         "Authors: ${plugin.authors}\n\n" +
                                                         "${plugin.description}\n\n" +
-                                                        "এটি metadata discovery মাত্র; executable .cs3 plugin install/run করা হচ্ছে না।"
+                                                        "Download করলে SHA-256, ZIP, manifest.json ও classes.dex যাচাই হবে। এই ধাপে plugin execute হবে না।"
                                                     )
-                                                    .setPositiveButton("COPY PLUGIN URL") { _, _ ->
-                                                        val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Extension URL", plugin.downloadUrl))
-                                                        toast("Plugin URL copied")
+                                                    .setPositiveButton("DOWNLOAD & VERIFY") { _, _ ->
+                                                        toast("Downloading and verifying…")
+                                                        thread(name = "SANY-Plugin-Download") {
+                                                            val result = runCatching {
+                                                                SanyExtensionRepositories.downloadAndValidate(this, plugin)
+                                                            }
+                                                            runOnUiThread {
+                                                                if (isFinishing || isDestroyed) return@runOnUiThread
+                                                                result.onSuccess { installed ->
+                                                                    AlertDialog.Builder(this)
+                                                                        .setTitle("Package verified")
+                                                                        .setMessage(
+                                                                            "Name: ${installed.manifest.name}\n" +
+                                                                            "Plugin class: ${installed.manifest.pluginClassName}\n" +
+                                                                            "Version: ${installed.manifest.version}\n" +
+                                                                            "SHA-256: ${installed.sha256}\n\n" +
+                                                                            "Package app-private storage-এ রাখা হয়েছে। Runtime API bridge সম্পূর্ণ না হওয়া পর্যন্ত এটি চালু করা হবে না।"
+                                                                        )
+                                                                        .setPositiveButton("OK", null)
+                                                                        .show()
+                                                                }.onFailure { error ->
+                                                                    AlertDialog.Builder(this)
+                                                                        .setTitle("Plugin verification failed")
+                                                                        .setMessage(error.message ?: "Unknown error")
+                                                                        .setPositiveButton("OK", null)
+                                                                        .show()
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                     .setNegativeButton("CLOSE", null)
                                                     .show()
@@ -2161,7 +2198,32 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     }
-                    3 -> AlertDialog.Builder(this)
+                    3 -> {
+                        val files = SanyExtensionRepositories.installedPackages(this)
+                        if (files.isEmpty()) {
+                            toast("কোনো verified package নেই")
+                        } else {
+                            val names = files.map { it.name }.toTypedArray()
+                            AlertDialog.Builder(this)
+                                .setTitle("Downloaded packages")
+                                .setItems(names) { _, index ->
+                                    AlertDialog.Builder(this)
+                                        .setMessage("এই package সরাবেন?\n${names[index]}")
+                                        .setPositiveButton("REMOVE") { _, _ ->
+                                            if (SanyExtensionRepositories.removeInstalledPackage(this, names[index])) {
+                                                toast("Package removed")
+                                            } else {
+                                                toast("Package remove করা যায়নি")
+                                            }
+                                        }
+                                        .setNegativeButton("CANCEL", null)
+                                        .show()
+                                }
+                                .setNegativeButton("CLOSE", null)
+                                .show()
+                        }
+                    }
+                    4 -> AlertDialog.Builder(this)
                         .setTitle("SANY Extension Runtime")
                         .setMessage(SanyExtensionRepositories.runtimeNotice())
                         .setPositiveButton("OK", null)
