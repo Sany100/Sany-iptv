@@ -3728,6 +3728,54 @@ class MainActivity : AppCompatActivity() {
         }
         controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(27)))
 
+        // Anime Series-only actions. Live TV and Movies keep their existing player UI.
+        val animeActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            visibility = if (isAnimeEpisode) View.VISIBLE else View.GONE
+        }
+        var animeControlsLocked = false
+        fun animeAction(text: String, description: String, action: () -> Unit) =
+            playerAction(text, description, action).apply {
+                textSize = 12f
+                minHeight = dp(30)
+                setPadding(dp(4), 0, dp(4), 0)
+            }
+        val lockAction = animeAction("🔓  Lock", "Lock or unlock Anime player controls") {
+            animeControlsLocked = !animeControlsLocked
+            if (animeControlsLocked) {
+                lockActionLabel@ run { }
+                controlsPanel.visibility = View.GONE
+                toast("Player controls locked — tap video to unlock")
+            } else {
+                revealControls()
+                toast("Player controls unlocked")
+            }
+        }
+        val sourceAction = animeAction("☷  Source", "Show current Anime stream source") {
+            val host = try { java.net.URI(channel.url).host ?: "Unknown host" } catch (_: Exception) { "Unknown host" }
+            AlertDialog.Builder(this).setTitle("Anime stream source")
+                .setMessage("Current source: $host")
+                .setPositiveButton("OK", null).show()
+        }
+        val tracksAction = animeAction("▥  Tracks", "Select Anime audio, subtitle or video quality") {
+            val choices = arrayOf("Audio language", "Subtitles", "Video quality")
+            AlertDialog.Builder(this).setTitle("Tracks").setItems(choices) { _, which ->
+                when (which) {
+                    0 -> showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
+                    1 -> showAnimeTrackSelection(C.TRACK_TYPE_TEXT, "Subtitles", true)
+                    2 -> showAnimeTrackSelection(C.TRACK_TYPE_VIDEO, "Video quality", false)
+                }
+            }.show()
+        }
+        val nextEpisodeAction = animeAction("▶|  Next episode", "Play next Anime episode") {
+            aniLightNativeScreen?.playNextEpisode() ?: toast("Next episode unavailable")
+        }
+        listOf(lockAction, sourceAction, tracksAction, nextEpisodeAction).forEach { action ->
+            animeActions.addView(action, LinearLayout.LayoutParams(0, dp(32), 1f))
+        }
+        controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
+
         val progressBar = SeekBar(this).apply {
             max = 1000
             progressTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
@@ -3856,7 +3904,7 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(5)
         })
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
-        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, dp(88), Gravity.TOP).apply {
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, if (isAnimeEpisode) dp(120) else dp(88), Gravity.TOP).apply {
             topMargin = dp(155)
             leftMargin = dp(8); rightMargin = dp(8)
         })
@@ -3870,6 +3918,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
         fun revealControls(autoHide: Boolean = true) {
+            if (animeControlsLocked) {
+                animeControlsLocked = false
+                toast("Player controls unlocked")
+            }
             controlsHandler.removeCallbacks(hideControls)
             if (controlsPanel.visibility != View.VISIBLE) {
                 controlsPanel.visibility = View.VISIBLE
