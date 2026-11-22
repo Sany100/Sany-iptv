@@ -26,6 +26,8 @@ import java.net.URLEncoder
 import kotlin.concurrent.thread
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.io.File
+import android.util.LruCache
 
 /** Native AniLight browser backed by the provider's public JSON API. */
 class AniLightNativeScreen(
@@ -40,9 +42,16 @@ class AniLightNativeScreen(
     @Volatile private var homepageCache: JSONObject? = null
     @Volatile private var homepageCheckedAt = 0L
     private var homeRequestVersion = 0
-    // Keep recently loaded anime posters in memory so SUB/DUB switches do not re-download them.
-    private val posterCache = ConcurrentHashMap<String, Bitmap>()
-    private val posterExecutor = Executors.newFixedThreadPool(4)
+    // Bounded poster pipeline: memory LRU + disk cache + in-flight de-duplication.
+    // This avoids decoding full-size artwork repeatedly and prevents a burst of requests
+    // when a long catalogue page is rendered on a mobile device.
+    private val posterMemoryCache = object : LruCache<String, Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 8L).coerceAtMost(32L * 1024L * 1024L).toInt()
+    ) {
+        override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
+    }
+    private val posterRequests = ConcurrentHashMap.newKeySet<String>()
+    private val posterExecutor = Executors.newFixedThreadPool(3)
     private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
     private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
@@ -1101,15 +1110,29 @@ class AniLightNativeScreen(
                     }
                 }
 
-                // Query both server audio modes and merge every source from the
-                // primary and backup responses. ExoPlayer exposes audio renditions
-                // embedded in each HLS master playlist in its audio track selector.
-                for (languageCode in listOf("sub", "dub")) {
+                // Complete the documented session handshake once, then request SUB/DUB
+                // primary + backup metadata concurrently instead of serial network waits.
+                getSession() ?: throw IllegalStateException("Playback session unavailable")
+                val requests = listOf("sub", "dub").flatMap { languageCode ->
                     val base = "$api/sources?id=$animeId&episode=$episode&language=$languageCode"
-                    val primary = sourceBlocking(base)
-                    val backup = sourceBlocking("$base&backup=true")
-                    add(primary, languageCode, false)
-                    add(backup, languageCode, true)
+                    listOf(
+                        Triple(languageCode, false, base),
+                        Triple(languageCode, true, "$base&backup=true")
+                    )
+                }
+                val sourcePool = Executors.newFixedThreadPool(4)
+                try {
+                    val futures = requests.map { request ->
+                        sourcePool.submit<Triple<String, Boolean, JSONObject?>> {
+                            Triple(request.first, request.second, sourceBlocking(request.third))
+                        }
+                    }
+                    futures.forEach { future ->
+                        val (languageCode, isBackup, data) = future.get()
+                        add(data, languageCode, isBackup)
+                    }
+                } finally {
+                    sourcePool.shutdownNow()
                 }
                 val unique = sources.distinctBy { it.language + "|" + it.url }
                 val preferred = unique
@@ -1417,29 +1440,62 @@ class AniLightNativeScreen(
         }
 
     private fun loadImage(url: String, target: ImageView) {
-        posterCache[url]?.let { cached ->
+        posterMemoryCache.get(url)?.let { cached ->
+            target.tag = url
             target.setImageBitmap(cached)
             return
         }
         target.tag = url
+        if (!posterRequests.add(url)) return
         posterExecutor.execute {
+            var bitmap: Bitmap? = null
             try {
-                val connection = (URL(url).openConnection() as java.net.HttpURLConnection).apply {
-                    connectTimeout = 4000
-                    readTimeout = 7000
-                    instanceFollowRedirects = true
+                val directory = File(context.cacheDir, "anilight_posters").apply { mkdirs() }
+                val file = File(directory, url.hashCode().toString() + ".img")
+                if (!file.exists() || file.length() == 0L) {
+                    val temp = File(directory, file.name + ".tmp")
+                    try {
+                        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                            connectTimeout = 5000
+                            readTimeout = 9000
+                            instanceFollowRedirects = true
+                            setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36")
+                            setRequestProperty("Referer", "$site/")
+                        }
+                        try {
+                            connection.inputStream.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                        } finally { connection.disconnect() }
+                        if (temp.length() > 0L && !temp.renameTo(file)) {
+                            temp.copyTo(file, overwrite = true)
+                            temp.delete()
+                        }
+                    } finally { if (temp.exists()) temp.delete() }
                 }
-                val bitmap = try {
-                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
-                } finally {
-                    connection.disconnect()
+                if (file.exists() && file.length() > 0L) {
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(file.absolutePath, bounds)
+                    val maxDimension = 720
+                    var sample = 1
+                    while (bounds.outWidth / (sample * 2) >= maxDimension &&
+                        bounds.outHeight / (sample * 2) >= maxDimension) sample *= 2
+                    val options = BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
                 }
-                if (bitmap != null) {
-                    if (posterCache.size >= 100) posterCache.clear()
-                    posterCache[url] = bitmap
-                    ui.post { if (target.tag == url) target.setImageBitmap(bitmap) }
+                bitmap?.let { decoded ->
+                    posterMemoryCache.put(url, decoded)
+                    ui.post { if (target.tag == url) target.setImageBitmap(decoded) }
                 }
-            } catch (_: Exception) { }
+                // Keep the disk cache bounded; evict oldest poster files first.
+                val files = directory.listFiles()?.filter { it.isFile && it.extension == "img" }.orEmpty()
+                if (files.size > 240) files.sortedBy { it.lastModified() }.take(files.size - 200).forEach { it.delete() }
+            } catch (_: Exception) {
+                bitmap?.recycle()
+            } finally {
+                posterRequests.remove(url)
+            }
         }
     }
     private fun items(a: JSONArray?): List<JSONObject> = (0 until (a?.length() ?: 0)).mapNotNull { a?.optJSONObject(it) }
