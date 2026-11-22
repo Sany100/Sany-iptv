@@ -1160,9 +1160,9 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    // Anime Universe catalogue/template removed; keep the section as a development placeholder.
+    // Anime Universe UI/template removed. Keep the Series page free of placeholder text.
     private fun renderAniLightNative() {
-        renderDevelopmentSection()
+        contentArea.removeAllViews()
     }
 
     private fun renderAniLightWebsite() {
