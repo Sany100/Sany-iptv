@@ -155,7 +155,11 @@ class NativeMoviesScreen(
                     }, LinearLayout.LayoutParams(-1, dp(46)).apply { bottomMargin = dp(6) })
                 }
             } else {
-                body.addView(button("PLAY MOVIE") { askStream(name) }, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) })
+                body.addView(button("FIND MULTIMOVIES SOURCES") { findMultimoviesSources(name) }, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) })
+                body.addView(button("PLAY WITH DIRECT URL") { askStream(name) }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(6) })
+            }
+            if (seriesMode) {
+                body.addView(button("FIND MULTIMOVIES SOURCES") { findMultimoviesSources(name) }, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) })
             }
             body.addView(button("← BACK") { loadHome() }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(12) })
         }
@@ -173,10 +177,41 @@ class NativeMoviesScreen(
                 val number = ep.optInt("episode_number", i + 1)
                 val epName = ep.optString("name", "Episode " + number)
                 body.addView(button("Episode " + number + " — " + epName) {
-                    askStream(seriesName + " S" + season + "E" + number + " — " + epName)
+                    findMultimoviesSources(seriesName + " S" + season + "E" + number + " — " + epName)
                 }, LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(6) })
             }
             body.addView(button("← BACK TO SERIES") { openDetails(id) }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(10) })
+        }
+    }
+
+    private fun findMultimoviesSources(title: String) {
+        body.removeAllViews()
+        title("MULTIMOVIES SOURCES")
+        message("Multimovies-এর প্রকাশ্য সার্ভার তালিকা খোঁজা হচ্ছে…")
+        worker.execute {
+            val hits = MultimoviesNativeResolver.search(title, seriesMode)
+            val found = hits.flatMap { hit ->
+                MultimoviesNativeResolver.sources(hit.url).map { hit.title to it }
+            }
+            main.post {
+                body.removeAllViews()
+                title("MULTIMOVIES SOURCES")
+                if (found.isEmpty()) {
+                    message("কোনো প্রকাশ্য সরাসরি stream পাওয়া যায়নি। সাইটের page/server unavailable, protected, অথবা embed-only হতে পারে।")
+                } else {
+                    found.forEach { (matchTitle, source) ->
+                        val label = matchTitle + " — " + source.name
+                        if (source.playable) {
+                            body.addView(button("PLAY  •  " + label) { onPlay(label, source.url) },
+                                LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(7) })
+                        } else {
+                            message(label + " — Embed server; সরাসরি HLS/MP4 পাওয়া যায়নি।")
+                        }
+                    }
+                }
+                body.addView(button("← BACK") { loadHome() },
+                    LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(12) })
+            }
         }
     }
 
