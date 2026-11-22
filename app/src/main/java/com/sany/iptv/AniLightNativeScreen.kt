@@ -28,8 +28,11 @@ class AniLightNativeScreen(
     private val accent: Int,
     private val onPlay: (String, String, String?) -> Unit
 ) {
-    private val api = "https://api.anilight.live/api"
-    private val site = "https://anilight.live"
+    @Volatile private var api = "https://api.anilight.live/api"
+    @Volatile private var site = "https://anilight.live"
+    @Volatile private var domainCheckedAt = 0L
+    @Volatile private var homepageCache: JSONObject? = null
+    @Volatile private var homepageCheckedAt = 0L
     private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
     private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
@@ -47,7 +50,11 @@ class AniLightNativeScreen(
     fun create(): View {
         body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(24)); setBackgroundColor(bg) }
         val scroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER; addView(body) }
-        home()
+        loading("Connecting to AniLight…")
+        thread(name = "AniLight-Domain") {
+            refreshDomainBlocking()
+            ui.post { home() }
+        }
         return scroll
     }
 
@@ -64,7 +71,8 @@ class AniLightNativeScreen(
         }
         search.addView(input, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
         search.addView(button("SEARCH") { searchAnime(input.text.toString().trim()) })
-        body.addView(search, bottom(12))
+        body.addView(search, bottom(8))
+        body.addView(button("FILTER ANIME") { showFilterDialog() }, bottom(12))
         listOf("Trending" to "trending", "Popular" to "popular", "Seasonal" to "seasonal", "Movies" to "movies",
             "Top Rated" to "topRated", "Recently Added" to "recent", "Upcoming" to "upcoming").forEach { (name, key) ->
             body.addView(button(name) { category(key) }, bottom(6))
@@ -74,11 +82,53 @@ class AniLightNativeScreen(
 
     private fun category(key: String) {
         loading("Loading $key…")
+        val cached = homepageCache
+        if (cached != null && System.currentTimeMillis() - homepageCheckedAt < 5 * 60_000L) {
+            showHomeCategory(key, cached)
+            return
+        }
         request("$api/homepage") { data ->
-            val sectionKey = if (key == "movies") "popularMovies" else key
-            val array = if (key == "recent") data?.optJSONArray("recentlyAddedEpisodes")
-                else data?.optJSONObject(sectionKey)?.optJSONArray("media")
-            showCards(key, items(array).filterNot { it.optBoolean("isAdult", false) })
+            if (data != null) {
+                homepageCache = data
+                homepageCheckedAt = System.currentTimeMillis()
+            }
+            showHomeCategory(key, data ?: homepageCache)
+        }
+    }
+
+    private fun showHomeCategory(key: String, data: JSONObject?) {
+        val sectionKey = if (key == "movies") "popularMovies" else key
+        val array = if (key == "recent") data?.optJSONArray("recentlyAddedEpisodes")
+            else data?.optJSONObject(sectionKey)?.optJSONArray("media")
+        showCards(key, items(array).filterNot { it.optBoolean("isAdult", false) })
+    }
+
+    private fun showFilterDialog() {
+        val sorts = arrayOf(
+            "Most Popular" to "POPULARITY_DESC",
+            "Highest Rated" to "SCORE_DESC",
+            "Trending" to "TRENDING_DESC",
+            "Recently Updated" to "UPDATED_AT_DESC",
+            "Newest First" to "START_DATE_DESC"
+        )
+        val genres = arrayOf("All genres", "Action", "Adventure", "Comedy", "Drama", "Fantasy",
+            "Horror", "Mystery", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural")
+        AlertDialog.Builder(context).setTitle("Sort anime")
+            .setItems(sorts.map { it.first }.toTypedArray()) { _, sortIndex ->
+                AlertDialog.Builder(context).setTitle("Choose genre")
+                    .setItems(genres) { _, genreIndex ->
+                        loadFiltered(sorts[sortIndex].second, genres[genreIndex].takeUnless { it == "All genres" })
+                    }.setNegativeButton("CANCEL", null).show()
+            }.setNegativeButton("CANCEL", null).show()
+    }
+
+    private fun loadFiltered(sort: String, genre: String?) {
+        loading("Applying anime filters…")
+        val query = "$api/filter?page=1&perPage=30&sort=" + enc(sort) +
+            (if (genre.isNullOrBlank()) "" else "&genres=" + enc(genre)) + "&hideAdult=true"
+        request(query) { data ->
+            val media = data?.optJSONArray("media") ?: data?.optJSONObject("data")?.optJSONArray("media")
+            showCards("Filtered anime", items(media).filterNot { it.optBoolean("isAdult", false) })
         }
     }
 
@@ -187,7 +237,7 @@ class AniLightNativeScreen(
                     for (i in 0 until (tracks?.length() ?: 0)) {
                         val t = tracks?.optJSONObject(i) ?: continue
                         if (t.optString("kind").isNotBlank() && t.optString("kind") != "captions") continue
-                        t.optString("url").takeIf { it.isNotBlank() }?.let { subtitles.add("$api/proxy/captions?token=${enc(it)}") }
+                        t.optString("url").takeIf { it.isNotBlank() }?.let { subtitles.add(captionsUrl(it)) }
                     }
                     val arr = data?.optJSONArray("sources")
                     for (i in 0 until (arr?.length() ?: 0)) {
@@ -224,6 +274,39 @@ class AniLightNativeScreen(
         val selected = anime ?: return
         request("$api/watch/$slug") { showDetails(selected, it) }
     }
+
+    private fun refreshDomainBlocking() {
+        val now = System.currentTimeMillis()
+        if (now - domainCheckedAt < 5 * 60_000L) return
+        domainCheckedAt = now
+        val c = open("https://cloudstreampluginhelper-default-rtdb.firebaseio.com/.json", emptyMap(), true).apply {
+            connectTimeout = 5000
+            readTimeout = 5000
+        }
+        try {
+            if (c.responseCode !in 200..299) return
+            val root = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+            val candidate = listOf("anilight", "anilight_url", "anilight_domain")
+                .firstNotNullOfOrNull { key -> root.optString(key).takeIf { it.isNotBlank() } }
+                ?.removeSuffix("/") ?: return
+            val parsed = android.net.Uri.parse(candidate)
+            val host = parsed.host ?: return
+            if (parsed.scheme != "https" || host.isBlank()) return
+            val newApi = "https://api.$host/api"
+            if (candidate != site || newApi != api) {
+                site = candidate
+                api = newApi
+                session = null
+                sessionExpiry = 0L
+                homepageCache = null
+                homepageCheckedAt = 0L
+            }
+        } catch (_: Exception) {
+            // Keep the default domain if the helper cannot be reached.
+        } finally { c.disconnect() }
+    }
+
+    private fun captionsUrl(token: String): String = "$api/proxy/captions?token=" + enc(token)
 
     private fun getSession(force: Boolean = false): String? {
         if (!force && !session.isNullOrBlank() && System.currentTimeMillis() < sessionExpiry - 60000) return session
