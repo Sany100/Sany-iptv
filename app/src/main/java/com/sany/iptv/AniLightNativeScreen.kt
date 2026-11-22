@@ -199,9 +199,11 @@ class AniLightNativeScreen(
         val genres = item.optJSONArray("genres")
         val genreText = (0 until (genres?.length() ?: 0)).mapNotNull { genres?.optString(it) }
             .take(7).joinToString(" • ")
+        // Full-bleed featured artwork: use the complete available Anime
+        // screen width with no side gutters or rounded black corners.
         val hero = FrameLayout(context).apply {
-            background = rounded(surface, 18)
-            clipToOutline = true
+            setBackgroundColor(surface)
+            clipToOutline = false
             isFocusable = true
             setOnClickListener { openAnime(item) }
         }
@@ -231,7 +233,10 @@ class AniLightNativeScreen(
         actions.addView(button("ⓘ  Info") { openAnime(item) }, LinearLayout.LayoutParams(0, dp(44), 1f))
         details.addView(actions)
         hero.addView(details, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-        contentHost.addView(hero, LinearLayout.LayoutParams(-1, dp(310)).apply { bottomMargin = dp(24) })
+        contentHost.addView(hero, LinearLayout.LayoutParams(
+            context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density .toInt(),
+            dp(380)
+        ).apply { bottomMargin = dp(24) })
     }
 
     private fun loadHomeShelf(title: String, key: String, genre: String?) {
