@@ -63,7 +63,7 @@ class AniLightNativeScreen(
     }
 
     fun create(): View {
-        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(5), dp(8), dp(5), dp(24)); setBackgroundColor(bg) }
+        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(1), dp(8), dp(1), dp(24)); setBackgroundColor(bg) }
         val scroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER; addView(body) }
         loading("Connecting to AniLight…")
         thread(name = "AniLight-Domain") {
@@ -99,8 +99,8 @@ class AniLightNativeScreen(
         val categoryItems = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         categoryRail.addView(categoryItems)
         listOf(
-            "Trending" to "trending",
-            "Popular" to "popular",
+            "Trending Now" to "trending",
+            "Most Popular" to "popular",
             "This Season" to "seasonal",
             "Previous Season" to "previousSeason",
             "Popular Movies" to "movies",
@@ -173,7 +173,8 @@ class AniLightNativeScreen(
             "Newest First" to "START_DATE_DESC"
         )
         val genres = arrayOf("All genres", "Action", "Adventure", "Comedy", "Drama", "Fantasy",
-            "Horror", "Mystery", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural")
+            "Horror", "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi",
+            "Slice of Life", "Sports", "Supernatural", "Thriller")
         AlertDialog.Builder(context).setTitle("Sort anime")
             .setItems(sorts.map { it.first }.toTypedArray()) { _, sortIndex ->
                 AlertDialog.Builder(context).setTitle("Choose genre")
