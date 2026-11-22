@@ -3801,7 +3801,6 @@ class MainActivity : AppCompatActivity() {
                 setStroke(dp(1), 0x99FFFFFF.toInt())
             }
             animeCenterPlayButton = playPauseButton
-            screen.addView(playPauseButton, FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER))
         }
 
         // Anime Series-only actions. Live TV and Movies keep their existing player UI.
@@ -3817,18 +3816,7 @@ class MainActivity : AppCompatActivity() {
                 minHeight = dp(30)
                 setPadding(dp(4), 0, dp(4), 0)
             }
-        val lockAction = animeAction("🔓  Lock", "Lock or unlock Anime player controls") {
-            animeControlsLocked = !animeControlsLocked
-            if (animeControlsLocked) {
-                controlsPanel.visibility = View.GONE
-                toast("Player controls locked — tap video to unlock")
-            } else {
-                controlsPanel.visibility = View.VISIBLE
-                controlsPanel.alpha = 1f
-                toast("Player controls unlocked")
-            }
-        }
-        val sourceAction = animeAction("☷  Source", "Show current Anime stream source") {
+                val sourceAction = animeAction("☷  Source", "Show current Anime stream source") {
             val host = try { java.net.URI(channel.url).host ?: "Unknown host" } catch (_: Exception) { "Unknown host" }
             AlertDialog.Builder(this).setTitle("Anime stream source")
                 .setMessage("Current source: $host")
@@ -3851,7 +3839,7 @@ class MainActivity : AppCompatActivity() {
         val nextEpisodeAction = animeAction("▶|  Next episode", "Play next Anime episode") {
             aniLightNativeScreen?.playNextEpisode() ?: toast("Next episode unavailable")
         }
-        listOf(animePlayPauseAction, lockAction, sourceAction, tracksAction, nextEpisodeAction).forEach { action ->
+        listOf(animePlayPauseAction, sourceAction, tracksAction, nextEpisodeAction).forEach { action ->
             animeActions.addView(action, LinearLayout.LayoutParams(0, dp(32), 1f))
         }
         controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
@@ -3980,9 +3968,29 @@ class MainActivity : AppCompatActivity() {
         infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
             leftMargin = dp(5)
         })
-        infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
+        if (!isAnimeEpisode) infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
             leftMargin = dp(5)
         })
+        if (isAnimeEpisode) {
+            // Keep Pause/Resume and Fit Screen together at the centre of the video.
+            val animeCenterActions = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    setColor(0x66000000)
+                    cornerRadius = dp(18).toFloat()
+                    setStroke(dp(1), 0x99FFFFFF.toInt())
+                }
+                setPadding(dp(7), dp(5), dp(7), dp(5))
+                elevation = dp(8).toFloat()
+            }
+            animeCenterActions.addView(playPauseButton, LinearLayout.LayoutParams(dp(58), dp(58)))
+            animeCenterActions.addView(fullscreenButton, LinearLayout.LayoutParams(dp(58), dp(58)).apply {
+                leftMargin = dp(8)
+            })
+            screen.addView(animeCenterActions, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        }
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
         if (isAnimeEpisode) {
             // Reference layout order: timeline, action strip, then time / utility controls.
@@ -4414,9 +4422,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
         animeEpisodePanel?.visibility = View.GONE
-        animeCenterPlayButton?.layoutParams = FrameLayout.LayoutParams(
-            dp(68), dp(68), Gravity.CENTER
-        )
+        // Anime centre actions are positioned as one group and remain centred in both modes.
         animePlayerTitleOverlay?.layoutParams = FrameLayout.LayoutParams(
             -1, dp(58), Gravity.TOP
         )
