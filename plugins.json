@@ -1,0 +1,24 @@
+[
+  {
+    "iconUrl": "https://anilight.live/favicon-96x96.png",
+    "fileHash": "sha256-af6e3b56fb15f6458faf859ce1b364575338ec909ac166e7970fb0f35ed2cd4b",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/Sany100/Sany-iptv",
+    "fileSize": 80424,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "KSHITIJ8473"
+    ],
+    "tvTypes": [
+      "Anime",
+      "AnimeMovie",
+      "OVA"
+    ],
+    "version": 2,
+    "internalName": "AniLight",
+    "description": "Anime with Sub & Dub",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AniLight.cs3",
+    "name": "AniLight"
+  }
+]
