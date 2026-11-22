@@ -1184,7 +1184,7 @@ class MainActivity : AppCompatActivity() {
                             ): Boolean {
                                 val target = request.url
                                 if (target.scheme == "https" || target.scheme == "http") {
-                                    browser.loadUrl(target.toString())
+                                    this@MainActivity.aniLightWebView?.loadUrl(target.toString())
                                 }
                                 view.stopLoading()
                                 view.destroy()
