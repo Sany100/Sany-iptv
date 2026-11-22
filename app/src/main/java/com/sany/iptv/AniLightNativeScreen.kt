@@ -44,8 +44,16 @@ class AniLightNativeScreen(
     private var animeTitle = ""
     private var language = "sub"
     private var anime: JSONObject? = null
+    private var isHomePage = true
     @Volatile private var session: String? = null
     @Volatile private var sessionExpiry = 0L
+
+    /** Returns true when Back was consumed inside the AniLight screen. */
+    fun handleBack(): Boolean {
+        if (isHomePage) return false
+        home()
+        return true
+    }
 
     fun create(): View {
         body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(24)); setBackgroundColor(bg) }
@@ -59,6 +67,7 @@ class AniLightNativeScreen(
     }
 
     private fun home() {
+        isHomePage = true
         body.removeAllViews()
         val head = row()
         head.addView(label("ANILIGHT", 22, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
@@ -77,13 +86,14 @@ class AniLightNativeScreen(
             "Top Rated" to "topRated", "Recently Added" to "recent", "Upcoming" to "upcoming").forEach { (name, key) ->
             body.addView(button(name) { category(key) }, bottom(6))
         }
-        category("trending")
+        category("trending", homeLanding = true)
     }
 
-    private fun category(key: String) {
+    private fun category(key: String, homeLanding: Boolean = false) {
         loading("Loading $key…")
         val cached = homepageCache
         if (cached != null && System.currentTimeMillis() - homepageCheckedAt < 5 * 60_000L) {
+            isHomePage = homeLanding
             showHomeCategory(key, cached)
             return
         }
@@ -92,6 +102,7 @@ class AniLightNativeScreen(
                 homepageCache = data
                 homepageCheckedAt = System.currentTimeMillis()
             }
+            isHomePage = homeLanding
             showHomeCategory(key, data ?: homepageCache)
         }
     }
@@ -104,6 +115,7 @@ class AniLightNativeScreen(
     }
 
     private fun showFilterDialog() {
+        isHomePage = false
         val sorts = arrayOf(
             "Most Popular" to "POPULARITY_DESC",
             "Highest Rated" to "SCORE_DESC",
@@ -123,6 +135,7 @@ class AniLightNativeScreen(
     }
 
     private fun loadFiltered(sort: String, genre: String?) {
+        isHomePage = false
         loading("Applying anime filters…")
         val query = "$api/filter?page=1&perPage=30&sort=" + enc(sort) +
             (if (genre.isNullOrBlank()) "" else "&genres=" + enc(genre)) + "&hideAdult=true"
@@ -134,6 +147,7 @@ class AniLightNativeScreen(
 
     private fun searchAnime(q: String) {
         if (q.isBlank()) { category("trending"); return }
+        isHomePage = false
         loading("Searching…")
         request("$api/search?q=${enc(q)}&hideAdult=true") { data ->
             val arr = data?.optJSONArray("results") ?: data?.optJSONArray("data")
@@ -167,6 +181,7 @@ class AniLightNativeScreen(
     }
 
     private fun openAnime(item: JSONObject) {
+        isHomePage = false
         slug = item.optString("slug")
         language = "sub"
         if (slug.isBlank()) { toast("Anime slug পাওয়া যায়নি"); return }
