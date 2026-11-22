@@ -139,6 +139,27 @@ class NativeMoviesScreen(
             else frame.addView(label("SANY\nMOVIES", 17, muted, true).apply {
                 gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
             }, FrameLayout.LayoutParams(-1, -1))
+
+            // Subtle classic glass finish: translucent diagonal sheen and a fine frosted edge.
+            // Kept light enough to preserve the original poster artwork and colours.
+            val glassSheen = View(context).apply {
+                isClickable = false
+                isFocusable = false
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(
+                        0x38FFFFFF,
+                        0x12FFFFFF,
+                        0x03FFFFFF,
+                        0x1CFFFFFF
+                    )
+                ).apply {
+                    cornerRadius = dp(16).toFloat()
+                    setStroke(dp(1), 0x55FFFFFF)
+                    gradientType = GradientDrawable.LINEAR_GRADIENT
+                }
+            }
+            frame.addView(glassSheen, FrameLayout.LayoutParams(-1, -1))
             val play = TextView(context).apply {
                 text = "▶"; textSize = 25f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
                 background = GradientDrawable().apply {
