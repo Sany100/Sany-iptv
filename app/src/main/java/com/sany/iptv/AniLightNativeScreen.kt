@@ -80,55 +80,197 @@ class AniLightNativeScreen(
 
     private fun home() {
         isHomePage = true
+        showingFilterResults = false
+        filterHasNext = false
         body.removeAllViews()
-        val head = row()
-        head.addView(label("ANILIGHT", 22, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(button("OPEN SITE") { openSite() })
-        body.addView(head, bottom(12))
-        val search = row()
-        val input = EditText(context).apply {
-            hint = "Search anime"; setSingleLine(true); textSize = 14f; setTextColor(fg); setHintTextColor(muted)
-            inputType = InputType.TYPE_CLASS_TEXT; background = rounded(surface, 12); setPadding(dp(12), 0, dp(12), 0)
-        }
-        search.addView(input, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
-        search.addView(button("SEARCH") { searchAnime(input.text.toString().trim()) })
-        body.addView(search, bottom(8))
-        body.addView(button("FILTER ANIME") { showFilterDialog() }, bottom(10))
 
-        // Match the full AniLight Cloudstream catalogue: homepage feeds plus every supported genre.
-        body.addView(label("ANIME CATEGORIES", 12, muted, true), bottom(6))
-        val categoryRail = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
+        // CloudStream-style catalogue: one vertical page with a featured hero
+        // followed by independently horizontally-scrolling category shelves.
+        contentHost = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(4), dp(10), dp(24))
         }
-        val categoryItems = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        categoryRail.addView(categoryItems)
-        val catalogueCategories = listOf(
-            "Trending Now" to "trending",
-            "Most Popular" to "popular",
-            "This Season" to "seasonal",
-            "Previous Season" to "previousSeason",
-            "Popular Movies" to "movies",
-            "Top Rated" to "topRated",
-            "Recently Added" to "recent",
-            "Upcoming" to "upcoming"
+        body.addView(contentHost, bottom(12))
+        contentHost.addView(label("Loading AniLight catalogue…", 14, muted, false).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(55), dp(10), dp(55))
+        })
+
+        val cached = homepageCache
+        if (cached != null && System.currentTimeMillis() - homepageCheckedAt < 5 * 60_000L) {
+            renderFullHome(cached)
+        } else {
+            request("$api/homepage") { data ->
+                if (data != null) {
+                    homepageCache = data
+                    homepageCheckedAt = System.currentTimeMillis()
+                }
+                renderFullHome(data ?: homepageCache)
+            }
+        }
+    }
+
+    private fun renderFullHome(data: JSONObject?) {
+        if (!isHomePage) return
+        contentHost.removeAllViews()
+        if (data == null) {
+            contentHost.addView(label("AniLight catalogue load হয়নি। আবার চেষ্টা করো।", 14, muted, false), bottom(12))
+            contentHost.addView(button("RETRY") { home() })
+            return
+        }
+
+        val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
+            .filterNot { it.optBoolean("isAdult", false) }
+        val featured = trending.firstOrNull()
+        if (featured != null) addFeaturedHero(featured)
+
+        val shelves = listOf(
+            Triple("Trending Now", "trending", items(data.optJSONObject("trending")?.optJSONArray("media"))),
+            Triple("Most Popular", "popular", items(data.optJSONObject("popular")?.optJSONArray("media"))),
+            Triple("This Season", "seasonal", items(data.optJSONObject("seasonal")?.optJSONArray("media"))),
+            Triple("Previous Season", "previousSeason", items(data.optJSONObject("previousSeason")?.optJSONArray("media"))),
+            Triple("Popular Movies", "movies", items(data.optJSONObject("popularMovies")?.optJSONArray("media"))),
+            Triple("Top Rated", "topRated", emptyList<JSONObject>()),
+            Triple("Recently Added", "recent", items(data.optJSONArray("recentlyAddedEpisodes"))),
+            Triple("Upcoming", "upcoming", items(data.optJSONObject("upcoming")?.optJSONArray("media")))
         )
-        val genreCategories = listOf(
+        shelves.forEach { (title, key, entries) ->
+            if (key == "topRated") {
+                loadHomeShelf(title, key, null)
+            } else if (entries.isNotEmpty()) {
+                addAnimeShelf(title, key, entries.filterNot { it.optBoolean("isAdult", false) })
+            }
+        }
+
+        val genres = listOf(
             "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
             "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi",
             "Slice of Life", "Sports", "Supernatural", "Thriller"
-        ).map { it to "genre:$it" }
+        )
+        genres.forEach { genre -> loadHomeShelf(genre, "genre:$genre", genre) }
+    }
 
-        // Show every AniLight genre as a first-class item in the main category rail.
-        (catalogueCategories + genreCategories).forEach { (name, key) ->
-            categoryItems.addView(button(name) { category(key) }, LinearLayout.LayoutParams(-2, dp(40)).apply {
-                rightMargin = dp(6)
-            })
+    private fun addFeaturedHero(item: JSONObject) {
+        val titleObj = item.optJSONObject("title")
+        val name = titleObj?.optString("english").orEmpty()
+            .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Featured Anime" } }
+        val banner = item.optString("bannerImage").takeIf { it.startsWith("http") }
+            ?: item.optJSONObject("coverImage")?.optString("extraLarge").orEmpty()
+        val genres = item.optJSONArray("genres")
+        val genreText = (0 until (genres?.length() ?: 0)).mapNotNull { genres?.optString(it) }
+            .take(7).joinToString(" • ")
+        val hero = FrameLayout(context).apply {
+            background = rounded(surface, 18)
+            clipToOutline = true
+            isFocusable = true
+            setOnClickListener { openAnime(item) }
         }
-        body.addView(categoryRail, bottom(14))
-        contentHost = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        body.addView(contentHost, bottom(12))
-        category("trending", homeLanding = true)
+        val image = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(surface)
+        }
+        hero.addView(image, FrameLayout.LayoutParams(-1, -1))
+        if (banner.startsWith("http")) loadImage(banner, image)
+        hero.addView(View(context).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0x00101018, 0x66101018, 0xF0000000.toInt())
+            )
+        }, FrameLayout.LayoutParams(-1, -1))
+        val details = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            setPadding(dp(14), dp(14), dp(14), dp(12))
+        }
+        details.addView(label(name, 23, Color.WHITE, true).apply { gravity = Gravity.CENTER; maxLines = 1 }, bottom(5))
+        if (genreText.isNotBlank()) details.addView(label(genreText, 12, Color.WHITE, false).apply {
+            gravity = Gravity.CENTER; maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+        }, bottom(12))
+        val actions = row().apply { gravity = Gravity.CENTER }
+        actions.addView(button("▶  Play") { openAnime(item) }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(8) })
+        actions.addView(button("ⓘ  Info") { openAnime(item) }, LinearLayout.LayoutParams(0, dp(44), 1f))
+        details.addView(actions)
+        hero.addView(details, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        contentHost.addView(hero, LinearLayout.LayoutParams(-1, dp(310)).apply { bottomMargin = dp(24) })
+    }
+
+    private fun loadHomeShelf(title: String, key: String, genre: String?) {
+        val query = if (genre != null) {
+            "$api/filter?page=1&perPage=18&sort=POPULARITY_DESC&genres=" + enc(genre) + "&hideAdult=true"
+        } else {
+            "$api/filter?page=1&perPage=18&sort=SCORE_DESC&hideAdult=true"
+        }
+        request(query) { data ->
+            if (!isHomePage) return@request
+            val payload = data?.optJSONObject("data") ?: data
+            val cards = items(payload?.optJSONArray("media"))
+                .filterNot { it.optBoolean("isAdult", false) }
+            if (cards.isNotEmpty()) addAnimeShelf(title, key, cards)
+        }
+    }
+
+    private fun addAnimeShelf(title: String, key: String, cards: List<JSONObject>) {
+        if (!isHomePage || cards.isEmpty()) return
+        val heading = row().apply { gravity = Gravity.CENTER_VERTICAL }
+        heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+        heading.addView(label("➜", 25, fg, false).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(4), 0)
+            isFocusable = true
+            setOnClickListener { category(key) }
+        })
+        contentHost.addView(heading, bottom(10))
+
+        val scroller = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        scroller.addView(rail)
+        cards.forEach { item ->
+            val cover = item.optJSONObject("coverImage")
+            val posterUrl = cover?.optString("extraLarge").orEmpty()
+                .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
+            val titleObj = item.optJSONObject("title")
+            val name = titleObj?.optString("english").orEmpty()
+                .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
+            val score = item.optDouble("averageScore", 0.0).takeIf { it > 0 }
+                ?.let { String.format(java.util.Locale.US, "%.1f", it / 10.0) }.orEmpty()
+            val card = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                isFocusable = true
+                setOnClickListener { openAnime(item) }
+            }
+            val posterFrame = FrameLayout(context).apply {
+                background = rounded(surface, 14)
+                clipToOutline = true
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(surface)
+            }
+            posterFrame.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
+            if (score.isNotBlank()) {
+                val scoreTag = label("$score ★", 11, Color.WHITE, true).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(8), dp(5), dp(8), dp(5))
+                    background = rounded(0xDD111318.toInt(), 20)
+                }
+                posterFrame.addView(scoreTag, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+                    setMargins(0, dp(6), dp(6), 0)
+                })
+            }
+            card.addView(posterFrame, LinearLayout.LayoutParams(dp(142), dp(205)))
+            card.addView(label(name, 13, fg, false).apply {
+                maxLines = 2
+                gravity = Gravity.CENTER
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(3), dp(6), dp(3), 0)
+            }, LinearLayout.LayoutParams(dp(142), dp(42)))
+            rail.addView(card, LinearLayout.LayoutParams(dp(142), -2).apply { rightMargin = dp(9) })
+        }
+        contentHost.addView(scroller, bottom(22))
     }
 
     private fun category(key: String, homeLanding: Boolean = false) {
