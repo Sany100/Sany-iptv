@@ -165,6 +165,26 @@ class AniLightNativeScreen(
                     loadFiltered(filterSort, filterGenre, filterPage + 1, keepHomeChrome = isHomePage)
                 }
             }
+            var pageSwipeStartY = 0f
+            setOnTouchListener { view, event ->
+                if (pageHistory.isEmpty() || isHomePage) return@setOnTouchListener false
+                when (event.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        pageSwipeStartY = event.y
+                        false
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        val swipeUp = pageSwipeStartY - event.y
+                        val startedNearBottom = pageSwipeStartY >= height - dp(140)
+                        val atBottom = scrollY + height >= body.height - dp(24)
+                        if (startedNearBottom && atBottom && swipeUp >= dp(65)) {
+                            restorePreviousPage()
+                            true
+                        } else false
+                    }
+                    else -> false
+                }
+            }
         }
         catalogueScroll = scroll
         // Render from memory/API immediately. Domain discovery must never block first paint.
@@ -339,174 +359,18 @@ class AniLightNativeScreen(
 
     private fun addAnimeShelf(title: String, key: String, cards: List<JSONObject>) {
         if (!isHomePage || cards.isEmpty()) return
+
         val heading = row().apply { gravity = Gravity.CENTER_VERTICAL }
         heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        val dropdownContent = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, 0)
-            clipChildren = false
-            clipToPadding = false
-        }
-        // Keep the expanded catalogue inside its own scroll area. Reaching the
-        // last anime must not continue scrolling the homepage behind this dropdown.
-        var dropdownTouchStartY = 0f
-        var dropdownArrow: TextView? = null
-        var arrowHintShown = false
-        val dropdownScroll = ScrollView(context).apply {
-            visibility = View.GONE
-            isFillViewport = false
-            isNestedScrollingEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            background = android.graphics.drawable.ColorDrawable(surface)
-            setPadding(0, 0, 0, 0)
-            clipToPadding = false
-            clipChildren = false
-            addView(dropdownContent, LinearLayout.LayoutParams(-1, -2))
-            setOnTouchListener { _, event ->
-                val consumeTouch = when (event.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> {
-                        dropdownTouchStartY = event.y
-                        arrowHintShown = false
-                        catalogueScroll?.requestDisallowInterceptTouchEvent(true)
-                        false
-                    }
-                    android.view.MotionEvent.ACTION_MOVE -> {
-                        catalogueScroll?.requestDisallowInterceptTouchEvent(true)
-                        val swipeUpDistance = dropdownTouchStartY - event.y
-                        val atEnd = scrollY + height >= getChildAt(0).height - dp(24)
-                        if (atEnd && swipeUpDistance >= dp(50) && !arrowHintShown) {
-                            arrowHintShown = true
-                            dropdownArrow?.let { indicator ->
-                                indicator.text = "↑"
-                                indicator.animate().translationY(-dp(9).toFloat()).setDuration(150)
-                                    .withEndAction {
-                                        indicator.animate().translationY(0f).setDuration(150).start()
-                                    }.start()
-                            }
-                        }
-                        false
-                    }
-                    android.view.MotionEvent.ACTION_UP -> {
-                        val swipeUpDistance = dropdownTouchStartY - event.y
-                        val atEnd = scrollY + height >= getChildAt(0).height - dp(24)
-                        catalogueScroll?.requestDisallowInterceptTouchEvent(false)
-                        if (atEnd && swipeUpDistance >= dp(50)) {
-                            // A 50dp upward pull at the end shows an animated
-                            // upward arrow, then collapses this dropdown to its heading.
-                            val indicator = dropdownArrow
-                            if (indicator != null) {
-                                indicator.text = "↑"
-                                indicator.animate().translationY(-dp(18).toFloat()).setDuration(180)
-                                    .withEndAction {
-                                        visibility = View.GONE
-                                        indicator.text = "⌄"
-                                        indicator.translationY = 0f
-                                        catalogueScroll?.smoothScrollTo(0, heading.top + contentHost.top)
-                                    }.start()
-                            } else {
-                                post {
-                                    visibility = View.GONE
-                                    catalogueScroll?.smoothScrollTo(0, heading.top + contentHost.top)
-                                }
-                            }
-                            true
-                        } else {
-                            if (arrowHintShown) dropdownArrow?.text = "⌃"
-                            false
-                        }
-                    }
-                    android.view.MotionEvent.ACTION_CANCEL -> {
-                        catalogueScroll?.requestDisallowInterceptTouchEvent(false)
-                        if (arrowHintShown) dropdownArrow?.text = "⌃"
-                        false
-                    }
-                    else -> false
-                }
-                consumeTouch
-            }
-        }
         val arrow = label("⌄", 25, accent, true).apply {
             gravity = Gravity.CENTER
             setPadding(dp(14), 0, dp(8), 0)
             isFocusable = true
-            contentDescription = "Show $title dropdown"
-            setOnClickListener {
-                val expand = dropdownScroll.visibility != View.VISIBLE
-                dropdownScroll.visibility = if (expand) View.VISIBLE else View.GONE
-                text = if (expand) "⌃" else "⌄"
-                if (expand) dropdownScroll.post { dropdownScroll.scrollTo(0, 0) }
-            }
+            contentDescription = "Open $title category page"
+            setOnClickListener { openShelfPage(title, cards) }
         }
-        dropdownArrow = arrow
         heading.addView(arrow)
         contentHost.addView(heading, bottom(8))
-
-        // The arrow expands the complete shelf catalogue inline. The homepage and
-        // every other category remain mounted below it; tapping the arrow again
-        // collapses this grid without rebuilding or losing the previous page.
-        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
-        val gridCardWidth = screenWidthDp / 3f
-        val gridPosterHeight = (gridCardWidth * 1.42f).toInt()
-        var dropdownRow = row().apply {
-            gravity = Gravity.TOP
-            clipChildren = false
-            clipToPadding = false
-        }
-        cards.forEachIndexed { index, item ->
-            val cover = item.optJSONObject("coverImage")
-            val posterUrl = cover?.optString("extraLarge").orEmpty()
-                .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
-            val titleObj = item.optJSONObject("title")
-            val itemName = titleObj?.optString("english").orEmpty()
-                .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
-            val tile = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                isFocusable = true
-                setOnClickListener { openAnime(item) }
-            }
-            val posterFrame = FrameLayout(context).apply {
-                background = rounded(surface, 10)
-                clipToOutline = true
-            }
-            val poster = ImageView(context).apply {
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                setBackgroundColor(surface)
-            }
-            posterFrame.addView(poster, FrameLayout.LayoutParams(-1, -1))
-            if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
-            tile.addView(posterFrame, LinearLayout.LayoutParams(-1, dp(gridPosterHeight)))
-            tile.addView(label(itemName, 11, fg, true).apply {
-                maxLines = 2
-                gravity = Gravity.CENTER
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(dp(2), dp(5), dp(2), dp(5))
-            }, LinearLayout.LayoutParams(-1, dp(38)))
-            dropdownRow.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                leftMargin = 0
-                rightMargin = 0
-                bottomMargin = dp(8)
-            })
-            if (index % 3 == 2) {
-                dropdownContent.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
-                dropdownRow = row().apply {
-                    gravity = Gravity.TOP
-                    clipChildren = false
-                    clipToPadding = false
-                }
-            }
-        }
-        if (cards.size % 3 != 0) {
-            repeat(3 - (cards.size % 3)) {
-                dropdownRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
-                    leftMargin = dp(4)
-                    rightMargin = dp(4)
-                })
-            }
-            dropdownContent.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
-        }
-        contentHost.addView(dropdownScroll, LinearLayout.LayoutParams(-1, dp(520)).apply {
-            bottomMargin = dp(10)
-        })
 
         val scroller = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
@@ -514,8 +378,8 @@ class AniLightNativeScreen(
         }
         val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         scroller.addView(rail)
-        val shelfScreenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
-        val cardWidth = (shelfScreenWidthDp / 3f).toInt()
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val cardWidth = (screenWidthDp / 3f).toInt()
         val posterHeight = (cardWidth * 1.45f).toInt()
         cards.forEach { item ->
             val cover = item.optJSONObject("coverImage")
@@ -561,6 +425,80 @@ class AniLightNativeScreen(
             rail.addView(card, LinearLayout.LayoutParams(dp(cardWidth), -2).apply { rightMargin = dp(4) })
         }
         contentHost.addView(scroller, bottom(22))
+    }
+
+    /** Open a category as a dedicated, vertically-scrollable page. */
+    private fun openShelfPage(title: String, cards: List<JSONObject>) {
+        if (!isHomePage || cards.isEmpty()) return
+        pushCurrentPage()
+        isHomePage = false
+        showingFilterResults = false
+        filterHasNext = false
+        body.removeAllViews()
+
+        val pageHeader = row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(14))
+        }
+        val back = label("‹", 34, accent, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(8), 0, dp(18), 0)
+            contentDescription = "Back to Anime categories"
+            setOnClickListener { restorePreviousPage() }
+        }
+        pageHeader.addView(back)
+        pageHeader.addView(label(title, 21, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+        pageHeader.addView(label("${cards.size} titles", 12, muted, false))
+        body.addView(pageHeader, bottom(8))
+
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val cardWidth = (screenWidthDp / 3f).toInt()
+        val posterHeight = (cardWidth * 1.42f).toInt()
+        var gridRow = row().apply { gravity = Gravity.TOP; clipChildren = false; clipToPadding = false }
+        cards.forEachIndexed { index, item ->
+            val cover = item.optJSONObject("coverImage")
+            val posterUrl = cover?.optString("extraLarge").orEmpty()
+                .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
+            val titleObj = item.optJSONObject("title")
+            val name = titleObj?.optString("english").orEmpty()
+                .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
+            val tile = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                isFocusable = true
+                setPadding(dp(4), 0, dp(4), dp(10))
+                setOnClickListener { openAnime(item) }
+            }
+            val frame = FrameLayout(context).apply {
+                background = rounded(surface, 10)
+                clipToOutline = true
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(surface)
+            }
+            frame.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
+            tile.addView(frame, LinearLayout.LayoutParams(-1, dp(posterHeight)))
+            tile.addView(label(name, 11, fg, true).apply {
+                maxLines = 2
+                gravity = Gravity.CENTER
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(2), dp(5), dp(2), dp(3))
+            }, LinearLayout.LayoutParams(-1, dp(42)))
+            gridRow.addView(tile, LinearLayout.LayoutParams(0, -2, 1f))
+            if (index % 3 == 2) {
+                body.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+                gridRow = row().apply { gravity = Gravity.TOP; clipChildren = false; clipToPadding = false }
+            }
+        }
+        if (cards.size % 3 != 0) {
+            repeat(3 - (cards.size % 3)) {
+                gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            }
+            body.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+        }
+        body.addView(View(context), LinearLayout.LayoutParams(1, dp(24)))
+        catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
     }
 
     private fun category(key: String, homeLanding: Boolean = false) {
