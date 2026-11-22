@@ -63,7 +63,7 @@ class AniLightNativeScreen(
     }
 
     fun create(): View {
-        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(5), dp(8), dp(5), dp(24)); setBackgroundColor(bg) }
+        body = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, dp(24)); setBackgroundColor(bg) }
         val scroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER; addView(body) }
         loading("Connecting to AniLight…")
         thread(name = "AniLight-Domain") {
@@ -76,9 +76,9 @@ class AniLightNativeScreen(
     private fun home() {
         isHomePage = true
         body.removeAllViews()
-        val head = row()
-        head.addView(label("ANILIGHT", 22, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        body.addView(head, bottom(12))
+        body.addView(premiumAnimeBanner(), LinearLayout.LayoutParams(-1, dp(142)).apply {
+            setMargins(dp(9), dp(10), dp(9), dp(14))
+        })
         val search = row()
         val input = EditText(context).apply {
             hint = "Search anime"; setSingleLine(true); textSize = 14f; setTextColor(fg); setHintTextColor(muted)
@@ -132,6 +132,59 @@ class AniLightNativeScreen(
         category("trending", homeLanding = true)
     }
 
+    /** Full-width premium glass banner for the Anime landing page. */
+    private fun premiumAnimeBanner(): View {
+        val banner = FrameLayout(context).apply {
+            clipToOutline = true
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFF07152F.toInt(), 0xFF173D70.toInt(), 0xFF241B50.toInt())
+            ).apply {
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), 0x997BCBFF.toInt())
+            }
+            elevation = dp(12).toFloat()
+            cameraDistance = 10000f * context.resources.displayMetrics.density
+            rotationX = 1.8f
+        }
+        val glow = View(context).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(0x6657C7FF, 0x223B6BFF, 0x664C39C9)
+            )
+        }
+        banner.addView(glow, FrameLayout.LayoutParams(-1, -1))
+        val shine = View(context).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0x55FFFFFF, 0x00FFFFFF)
+            )
+        }
+        banner.addView(shine, FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP))
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+        }
+        val tag = label("✦  PREMIUM GLASS EXPERIENCE", 9, 0xFFBDEBFF.toInt(), true)
+        tag.letterSpacing = 0.12f
+        content.addView(tag, bottom(5))
+        val title = label("ANIME UNIVERSE", 23, Color.WHITE, true)
+        title.letterSpacing = 0.055f
+        title.setShadowLayer(dp(9).toFloat(), 0f, dp(2).toFloat(), 0xAA43BFFF.toInt())
+        content.addView(title, bottom(3))
+        content.addView(label("Explore • Discover • Stream", 11, 0xFFDCEBFF.toInt(), false))
+        banner.addView(content, FrameLayout.LayoutParams(-1, -1))
+        val shineLine = View(context).apply {
+            background = rounded(0x99C8F3FF.toInt(), 2)
+            alpha = 0.75f
+        }
+        banner.addView(shineLine, FrameLayout.LayoutParams(dp(54), dp(3), Gravity.TOP or Gravity.END).apply {
+            setMargins(0, dp(12), dp(15), 0)
+        })
+        return banner
+    }
+
     private fun category(key: String, homeLanding: Boolean = false) {
         showingFilterResults = false
         filterHasNext = false
@@ -182,9 +235,9 @@ class AniLightNativeScreen(
 
     private fun showHomeLanding(data: JSONObject) {
         body.removeAllViews()
-        val head = row()
-        head.addView(label("ANILIGHT • ANIME", 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        body.addView(head, bottom(12))
+        body.addView(premiumAnimeBanner(), LinearLayout.LayoutParams(-1, dp(142)).apply {
+            setMargins(dp(9), dp(10), dp(9), dp(14))
+        })
         val search = row()
         val input = EditText(context).apply {
             hint = "Search anime"; setSingleLine(true); textSize = 14f
