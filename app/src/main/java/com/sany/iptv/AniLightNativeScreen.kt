@@ -117,6 +117,7 @@ class AniLightNativeScreen(
 
     private fun openAnime(item: JSONObject) {
         slug = item.optString("slug")
+        language = "sub"
         if (slug.isBlank()) { toast("Anime slug পাওয়া যায়নি"); return }
         loading("Loading anime details…")
         request("$api/anime/$slug") { detail ->
@@ -259,7 +260,9 @@ class AniLightNativeScreen(
             c.requestMethod = method
             if (body != null) { c.doOutput = true; c.setRequestProperty("Content-Type", "application/json"); c.outputStream.use { it.write(body.toByteArray()) } }
             if (c.responseCode !in 200..299) return null
-            JSONObject(c.inputStream.bufferedReader().use { it.readText() })
+            val payload = c.inputStream.bufferedReader().use { it.readText() }
+            if (payload.trimStart().startsWith("[")) JSONObject().put("results", JSONArray(payload))
+            else JSONObject(payload)
         } finally { c.disconnect() }
     }
 
