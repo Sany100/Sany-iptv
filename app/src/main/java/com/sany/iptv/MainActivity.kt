@@ -86,6 +86,7 @@ class MainActivity : AppCompatActivity() {
     private val defaultNetworkBufferMode: String
         get() = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.TIRAMISU) "low" else "balanced"
     private val pickFile = 41
+    private val pickAnimeSubtitleFile = 42
     private var channels = listOf<Channel>()
     private val streamChecks = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
     @Volatile private var checkerRunning = false
@@ -1168,8 +1169,8 @@ class MainActivity : AppCompatActivity() {
             context = this,
             light = isLight,
             accent = accent,
-            onPlay = { title, url, subtitle ->
-                play(Channel(title, url, "AniLight"), true, null, subtitle, screen.playbackHeaders())
+            onPlay = { title, url, _ ->
+                play(Channel(title, url, "AniLight"), true, null, null, screen.playbackHeaders())
             }
         )
         aniLightNativeScreen = screen
@@ -3738,7 +3739,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun openPlayerSettings() {
-            val options = arrayOf("Playback speed", "Video quality")
+            val isAnimePlayback = section == "Series"
+            val options = if (isAnimePlayback) arrayOf("Playback speed", "Video quality", "Subtitle")
+                else arrayOf("Playback speed", "Video quality")
             AlertDialog.Builder(this).setTitle("Player settings").setItems(options) { _, which ->
                 if (which == 0) {
                     val speeds = arrayOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
@@ -3749,7 +3752,7 @@ class MainActivity : AppCompatActivity() {
                         p.setPlaybackSpeed(speeds[choice])
                         dialog.dismiss()
                     }.setNegativeButton("CLOSE", null).show()
-                } else {
+                } else if (which == 1) {
                     val qualities = arrayOf("auto", "480", "720", "1080")
                     val labels = arrayOf("Auto", "480p", "720p", "1080p")
                     val selected = qualities.indexOf(prefs.getString("video_quality", "auto")).coerceAtLeast(0)
@@ -3758,6 +3761,8 @@ class MainActivity : AppCompatActivity() {
                         applyVideoQuality()
                         dialog.dismiss()
                     }.setNegativeButton("CLOSE", null).show()
+                } else if (which == 2 && isAnimePlayback) {
+                    showAnimeSubtitleOptions()
                 }
             }.show()
         }
@@ -3979,6 +3984,55 @@ class MainActivity : AppCompatActivity() {
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
 
+
+    private fun showAnimeSubtitleOptions() {
+        val choices = arrayOf("Off — no subtitles", "Add subtitle file (.srt / .vtt)")
+        AlertDialog.Builder(this).setTitle("Anime subtitles").setItems(choices) { _, which ->
+            if (which == 0) {
+                applyAnimeSubtitle(null)
+            } else {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-subrip", "text/vtt", "text/plain"))
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                }, pickAnimeSubtitleFile)
+            }
+        }.setNegativeButton("CANCEL", null).show()
+    }
+
+    private fun applyAnimeSubtitle(subtitleUri: Uri?) {
+        if (section != "Series") return
+        val activePlayer = player ?: return
+        val activeChannel = currentChannel ?: return
+        val streamUrl = activeChannel.url
+        val position = activePlayer.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = activePlayer.playWhenReady
+        val item = MediaItem.Builder().setUri(streamUrl)
+        val lower = streamUrl.substringBefore("?").substringBefore("#").lowercase()
+        when {
+            lower.endsWith(".m3u8") || lower.endsWith(".m3u") || lower.contains("/hls/") || lower.contains("format=m3u8") -> item.setMimeType(MimeTypes.APPLICATION_M3U8)
+            lower.endsWith(".mpd") || lower.contains("/dash/") -> item.setMimeType(MimeTypes.APPLICATION_MPD)
+        }
+        if (subtitleUri != null) {
+            val path = subtitleUri.lastPathSegment.orEmpty().lowercase()
+            val mime = if (path.endsWith(".vtt")) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+            item.setSubtitleConfigurations(listOf(
+                MediaItem.SubtitleConfiguration.Builder(subtitleUri)
+                    .setMimeType(mime).setLanguage("und").setSelectionFlags(0).build()
+            ))
+            activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build()
+        } else {
+            activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true).build()
+        }
+        activePlayer.setMediaItem(item.build(), position)
+        activePlayer.prepare()
+        activePlayer.playWhenReady = wasPlaying
+        toast(if (subtitleUri == null) "Anime subtitles Off" else "Subtitle added")
+    }
+
     private fun applyVideoQuality(selector: DefaultTrackSelector? = trackSelector) {
         val target = selector ?: return
         val quality = prefs.getString("video_quality", "auto") ?: "auto"
@@ -4185,6 +4239,13 @@ class MainActivity : AppCompatActivity() {
     @Deprecated("Deprecated in Android API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == pickAnimeSubtitleFile && resultCode == Activity.RESULT_OK) {
+            data?.data?.let { uri ->
+                runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                applyAnimeSubtitle(uri)
+            }
+            return
+        }
         if (requestCode == pickFile && resultCode == Activity.RESULT_OK) {
             data?.data?.let { uri ->
                 toast("Importing playlist…")
