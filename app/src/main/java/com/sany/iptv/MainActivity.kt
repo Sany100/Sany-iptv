@@ -1687,9 +1687,10 @@ class MainActivity : AppCompatActivity() {
         return keywords.any { metadata.contains(it) }
     }
 
-    private fun isMovie(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
-        listOf("movie", "movies", "vod", "film", "4k film").any(it::contains) || c.url.substringBefore("?").lowercase().matches(Regex(".*\\.(mp4|mkv|avi|mov)$"))
-    }
+    // Movies is intentionally kept empty for the upcoming Movies feature.
+    // Existing playlist entries that were previously classified as Movies are
+    // now routed through the Live TV section and its existing category/checker flow.
+    private fun isMovie(c: Channel): Boolean = false
     private fun isAnime(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
         listOf("anime", "animation", "animé").any(it::contains)
     }
