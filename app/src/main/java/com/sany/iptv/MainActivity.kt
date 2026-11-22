@@ -1034,7 +1034,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Series") {
-            renderAniLightWebsite()
+            renderAniLightNative()
             return
         }
         if (section == "Movies") {
@@ -1131,8 +1131,19 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-        // AniLight is opened through its ordinary public website interface.
-    // No scraping, token generation, DRM circumvention, or access-control bypass is performed.
+        // Native AniLight catalogue, search, episodes, SUB/DUB and API-backed playback.
+    private fun renderAniLightNative() {
+        val screen = AniLightNativeScreen(
+            context = this,
+            light = isLight,
+            accent = accent,
+            onPlay = { title, url, subtitle ->
+                play(Channel(title, url, "AniLight"), true, null, subtitle)
+            }
+        )
+        contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
+    }
+
     private fun renderAniLightWebsite() {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -3318,8 +3329,8 @@ class MainActivity : AppCompatActivity() {
         input.requestFocus()
     }
 
-    private fun play(channel: Channel, startPlayback: Boolean = true, ftpCredentials: Pair<String, String>? = null) {
-        if (section != "Live TV" && section != "Movies") return
+    private fun play(channel: Channel, startPlayback: Boolean = true, ftpCredentials: Pair<String, String>? = null, subtitleUrl: String? = null) {
+        if (section != "Live TV" && section != "Movies" && section != "Series") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
@@ -3890,6 +3901,17 @@ class MainActivity : AppCompatActivity() {
                 itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
             lowerUrl.endsWith(".mpd") || lowerUrl.contains("/dash/") ->
                 itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+        }
+        if (!subtitleUrl.isNullOrBlank() && subtitleUrl.startsWith("https://")) {
+            itemBuilder.setSubtitleConfigurations(
+                listOf(
+                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
+                        .setMimeType(MimeTypes.TEXT_VTT)
+                        .setLanguage("en")
+                        .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+                        .build()
+                )
+            )
         }
         p.setMediaItem(itemBuilder.build())
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
