@@ -3825,11 +3825,12 @@ class MainActivity : AppCompatActivity() {
         val tracksAction = animeAction("▥  Tracks", "Change Anime audio language") {
             showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
         }
-        val nextEpisodeAction = animeAction("▶|  Next episode", "Play next Anime episode") {
-            aniLightNativeScreen?.playNextEpisode() ?: toast("Next episode unavailable")
+        val fullscreenAction = animeAction("⛶  Full Screen", "Switch between Fit Screen and Full Screen") {
+            setPlayerFullscreen(!isPlayerFullscreen)
         }
-        // Play/Pause is available only as the large centre overlay for Anime.
-        listOf(sourceAction, tracksAction, nextEpisodeAction).forEach { action ->
+        // Replace Next Episode with the Full Screen shortcut in the Anime action strip.
+        // Play/Pause remains available only as the large centre overlay.
+        listOf(sourceAction, tracksAction, fullscreenAction).forEach { action ->
             animeActions.addView(action, LinearLayout.LayoutParams(0, dp(32), 1f))
         }
         controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
@@ -3959,9 +3960,13 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(5)
         })
         // Fit Screen stays in its original bottom control row for Anime as well.
-        infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
-            leftMargin = dp(5)
-        })
+        // Anime gets its Full Screen control in the action strip above;
+        // keep the original bottom-row button for non-Anime players only.
+        if (!isAnimeEpisode) {
+            infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
+                leftMargin = dp(5)
+            })
+        }
         if (isAnimeEpisode) {
             // Only Pause/Resume is moved to the centre of the video.
             screen.addView(playPauseButton, FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER))
