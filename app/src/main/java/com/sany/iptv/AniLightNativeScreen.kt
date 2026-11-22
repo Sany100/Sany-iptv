@@ -253,11 +253,30 @@ class AniLightNativeScreen(
         if (!isHomePage || cards.isEmpty()) return
         val heading = row().apply { gravity = Gravity.CENTER_VERTICAL }
         heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        val dropdown = LinearLayout(context).apply {
+        val dropdownContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            background = rounded(surface, 12)
             setPadding(dp(8), dp(6), dp(8), dp(6))
+        }
+        // Keep the expanded catalogue inside its own scroll area. Reaching the
+        // last anime must not continue scrolling the homepage behind this dropdown.
+        val dropdownScroll = ScrollView(context).apply {
+            visibility = View.GONE
+            isFillViewport = false
+            isNestedScrollingEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            background = rounded(surface, 12)
+            addView(dropdownContent, ScrollView.LayoutParams(-1, -2))
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN,
+                    android.view.MotionEvent.ACTION_MOVE ->
+                        catalogueScroll?.requestDisallowInterceptTouchEvent(true)
+                    android.view.MotionEvent.ACTION_UP,
+                    android.view.MotionEvent.ACTION_CANCEL ->
+                        catalogueScroll?.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
         }
         val arrow = label("⌄", 25, accent, true).apply {
             gravity = Gravity.CENTER
@@ -265,9 +284,10 @@ class AniLightNativeScreen(
             isFocusable = true
             contentDescription = "Show $title dropdown"
             setOnClickListener {
-                val expand = dropdown.visibility != View.VISIBLE
-                dropdown.visibility = if (expand) View.VISIBLE else View.GONE
+                val expand = dropdownScroll.visibility != View.VISIBLE
+                dropdownScroll.visibility = if (expand) View.VISIBLE else View.GONE
                 text = if (expand) "⌃" else "⌄"
+                if (expand) dropdownScroll.post { dropdownScroll.scrollTo(0, 0) }
             }
         }
         heading.addView(arrow)
@@ -315,7 +335,7 @@ class AniLightNativeScreen(
                 bottomMargin = dp(10)
             })
             if (index % 3 == 2) {
-                dropdown.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
+                dropdownContent.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
                 dropdownRow = row().apply { gravity = Gravity.TOP }
             }
         }
@@ -326,9 +346,11 @@ class AniLightNativeScreen(
                     rightMargin = dp(4)
                 })
             }
-            dropdown.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
+            dropdownContent.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
         }
-        contentHost.addView(dropdown, bottom(10))
+        contentHost.addView(dropdownScroll, LinearLayout.LayoutParams(-1, dp(520)).apply {
+            bottomMargin = dp(10)
+        })
 
         val scroller = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
