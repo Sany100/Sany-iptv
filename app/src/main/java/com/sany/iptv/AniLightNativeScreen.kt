@@ -370,7 +370,7 @@ class AniLightNativeScreen(
         target.addView(strip, bottom(16))
 
         if (showingFilterResults && filterHasNext) {
-            target.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1) }.apply {
+            target.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1, keepHomeChrome = isHomePage) }.apply {
                 tag = "anilight_load_more"
             }, bottom(10))
         }
