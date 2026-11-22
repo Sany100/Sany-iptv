@@ -70,8 +70,8 @@ object MultimoviesNativeResolver {
                 val type = if (rawType == "series" || rawType == "show") "tv" else rawType
                 val name = o.optString("title").ifBlank { o.optString("name") }.trim()
                 val rawLink = o.optString("url").ifBlank { o.optString("link") }.ifBlank { o.optString("permalink") }.trim()
-                val link = absolute(rawLink)
-                if (name.isNotBlank() && isHttpUrl(link) &&
+                val link = if (rawLink.isBlank()) "" else absolute(rawLink)
+                if (name.isNotBlank() && rawLink.isNotBlank() && isHttpUrl(link) &&
                     (type == expected || (series && type == "tv"))) {
                     hits += MultimoviesHit(name, link, expected)
                 }
@@ -99,7 +99,10 @@ object MultimoviesNativeResolver {
     }
 
     fun sources(detailUrl: String): List<MultimoviesSource> {
-        if (!isHttpUrl(detailUrl) || !detailUrl.startsWith(BASE)) return emptyList()
+        val isProviderDetail = runCatching {
+            URL(detailUrl).host.equals(URL(BASE).host, ignoreCase = true)
+        }.getOrDefault(false)
+        if (!isHttpUrl(detailUrl) || !isProviderDetail) return emptyList()
         cacheRead(sourceCache, detailUrl)?.let { return it }
         val html = get(detailUrl) ?: return emptyList()
         val candidates = linkedMapOf<String, String>()
