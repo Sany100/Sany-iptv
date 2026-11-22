@@ -4437,10 +4437,6 @@ class MainActivity : AppCompatActivity() {
         // AniLight owns its own catalogue/detail navigation. Keep Back inside
         // Anime Series until its home screen is reached; only then switch to Live TV.
         if (section == "Series") {
-            if (false) {
-                lastBackPressedAt = 0L
-                return
-            }
             returnToLiveTvHome(keepPlayback = playerView != null && player != null)
             return
         }
