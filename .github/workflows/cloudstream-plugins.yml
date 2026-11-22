@@ -53,7 +53,7 @@ jobs:
           import pathlib, re, sys
           path = pathlib.Path(sys.argv[1])
           source = path.read_text()
-          pattern = r'tasks\\.withType<org\\.jetbrains\\.kotlin\\.gradle\\.tasks\\.KotlinCompile>\\s*\\{\\s*kotlinOptions\\s*\\{.*?\\n\\s*\\}\\s*\\}'
+          pattern = r'tasks\.withType<org\.jetbrains\.kotlin\.gradle\.tasks\.KotlinCompile>\s*\{\s*kotlinOptions\s*\{.*?\n\s*\}\s*\}'
           replacement = '''tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
                   compilerOptions {
                       jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
