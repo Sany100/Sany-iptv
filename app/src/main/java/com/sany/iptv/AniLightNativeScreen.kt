@@ -272,6 +272,15 @@ class AniLightNativeScreen(
         // large unused banner area above the catalogue.
         renderWatchLaterShelf()
 
+        // A dedicated paginated entry exposes the complete public Anime catalogue,
+        // rather than limiting browsing to the homepage's curated shelves.
+        val allAnimeButton = button("✦  BROWSE ALL ANIME  →") {
+            openAllAnimeCatalogue()
+        }
+        contentHost.addView(allAnimeButton, LinearLayout.LayoutParams(-1, dp(48)).apply {
+            setMargins(dp(12), dp(4), dp(12), dp(18))
+        })
+
         val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
             .filterNot { it.optBoolean("isAdult", false) }
 
@@ -436,6 +445,14 @@ class AniLightNativeScreen(
     }
 
     /** Open a category as a dedicated, vertically-scrollable page. */
+    private fun openAllAnimeCatalogue() {
+        if (!isHomePage) return
+        pushCurrentPage()
+        isShelfCategoryPage = true
+        loadFiltered("POPULARITY_DESC", null, preserveCurrentPage = true)
+        catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
+    }
+
     private fun openShelfPage(title: String, cards: List<JSONObject>, key: String) {
         if (!isHomePage || cards.isEmpty()) return
         if (key.startsWith("genre:")) {
