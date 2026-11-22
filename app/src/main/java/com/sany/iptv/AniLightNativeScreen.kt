@@ -248,22 +248,60 @@ class AniLightNativeScreen(
         heading.addView(arrow)
         contentHost.addView(heading, bottom(8))
 
-        // Arrow expands a dropdown in-place; it does not navigate away from the home page.
-        cards.take(12).forEach { item ->
+        // The arrow expands the complete shelf catalogue inline. The homepage and
+        // every other category remain mounted below it; tapping the arrow again
+        // collapses this grid without rebuilding or losing the previous page.
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val gridCardWidth = (screenWidthDp - 24f) / 3f
+        val gridPosterHeight = (gridCardWidth * 1.42f).toInt()
+        var dropdownRow = row().apply { gravity = Gravity.TOP }
+        cards.forEachIndexed { index, item ->
+            val cover = item.optJSONObject("coverImage")
+            val posterUrl = cover?.optString("extraLarge").orEmpty()
+                .ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
             val titleObj = item.optJSONObject("title")
             val itemName = titleObj?.optString("english").orEmpty()
                 .ifBlank { titleObj?.optString("romaji").orEmpty().ifBlank { "Anime" } }
-            val itemRow = row().apply {
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(8), dp(9), dp(8), dp(9))
+            val tile = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
                 isFocusable = true
                 setOnClickListener { openAnime(item) }
             }
-            itemRow.addView(label(itemName, 13, fg, false), LinearLayout.LayoutParams(0, -2, 1f))
-            itemRow.addView(label("›", 20, muted, true))
-            dropdown.addView(itemRow)
-            dropdown.addView(View(context).apply { setBackgroundColor(0x223FFFFFF) },
-                LinearLayout.LayoutParams(-1, dp(1)))
+            val posterFrame = FrameLayout(context).apply {
+                background = rounded(surface, 10)
+                clipToOutline = true
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(surface)
+            }
+            posterFrame.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            if (posterUrl.startsWith("http")) loadImage(posterUrl, poster)
+            tile.addView(posterFrame, LinearLayout.LayoutParams(-1, dp(gridPosterHeight)))
+            tile.addView(label(itemName, 11, fg, true).apply {
+                maxLines = 2
+                gravity = Gravity.CENTER
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(2), dp(5), dp(2), dp(5))
+            }, LinearLayout.LayoutParams(-1, dp(38)))
+            dropdownRow.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                leftMargin = dp(4)
+                rightMargin = dp(4)
+                bottomMargin = dp(10)
+            })
+            if (index % 3 == 2) {
+                dropdown.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
+                dropdownRow = row().apply { gravity = Gravity.TOP }
+            }
+        }
+        if (cards.size % 3 != 0) {
+            repeat(3 - (cards.size % 3)) {
+                dropdownRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f).apply {
+                    leftMargin = dp(4)
+                    rightMargin = dp(4)
+                })
+            }
+            dropdown.addView(dropdownRow, LinearLayout.LayoutParams(-1, -2))
         }
         contentHost.addView(dropdown, bottom(10))
 
