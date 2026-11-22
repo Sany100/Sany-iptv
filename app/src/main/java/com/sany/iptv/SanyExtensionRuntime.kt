@@ -265,7 +265,7 @@ object SanyExtensionRepositories {
 
     private fun resolveHttps(base: String, raw: String): String? {
         if (raw.isBlank()) return null
-        return normalizeHttpsUrl(runCatching { URL(URL(base), raw).toString() }.getOrDefault(raw))
+        return normalizeHttpsUrl(runCatching { URL(java.net.URI(base).resolve(raw).toString()).toString() }.getOrDefault(raw))
     }
 
     private fun openHttps(startUrl: String, maxRedirects: Int = 4): HttpURLConnection {
