@@ -80,6 +80,12 @@ data class CloudStreamInstalledPackage(
     val sha256: String
 )
 
+data class CloudStreamHostCompatibility(
+    val compatible: Boolean,
+    val missingClasses: List<String>,
+    val checkedClasses: List<String>
+)
+
 object SanyExtensionRepositories {
     private const val PREFS = "sany_extension_repositories"
     private const val KEY_URLS = "urls"
@@ -212,11 +218,35 @@ object SanyExtensionRepositories {
         return !target.exists() || target.delete()
     }
 
+    /**
+     * Checks whether SANY contains the core host classes required by a
+     * CloudStream plugin. This is diagnostic only: it never loads plugin DEX
+     * or invokes plugin code.
+     */
+    fun inspectHostCompatibility(context: Context): CloudStreamHostCompatibility {
+        val required = listOf(
+            "com.lagradost.cloudstream3.plugins.BasePlugin",
+            "com.lagradost.cloudstream3.plugins.Plugin",
+            "com.lagradost.cloudstream3.MainAPI",
+            "com.lagradost.cloudstream3.APIHolder",
+            "com.lagradost.cloudstream3.utils.ExtractorApi"
+        )
+        val missing = required.filter { className ->
+            runCatching { Class.forName(className, false, context.classLoader) }.isFailure
+        }
+        return CloudStreamHostCompatibility(
+            compatible = missing.isEmpty(),
+            missingClasses = missing,
+            checkedClasses = required
+        )
+    }
+
     fun runtimeNotice(): String =
         "Repository discovery, package download, SHA-256 verification and .cs3 manifest/DEX validation are supported. " +
-        "DEX execution is intentionally disabled until SANY embeds a matching CloudStream MainAPI/BasePlugin ABI, " +
-        "ExtractorApi services and lifecycle. CloudStream plugins are trusted executable code and must not be " +
-        "loaded from unknown repositories."
+        "SANY currently supports repository discovery and verified .cs3 downloads only. The host API diagnostic " +
+        "checks for core CloudStream ABI classes, but does not execute plugin DEX. Full compatibility still needs " +
+        "the matching MainAPI/BasePlugin ABI, extractor services, HTTP/runtime dependencies and lifecycle. " +
+        "CloudStream plugins are trusted executable code and must not be loaded from unknown repositories."
 
     private fun validatePackage(file: File): CloudStreamPluginManifest {
         ZipFile(file).use { zip ->
