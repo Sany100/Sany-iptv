@@ -4039,11 +4039,22 @@ class MainActivity : AppCompatActivity() {
         }
         controlsHandler.post(progressUpdater)
 
+        // While Anime is playing, a video tap briefly reveals the centre Pause
+        // control; it then fades from the layout without leaving a duplicate dock button.
+        val hideAnimeCenterPause = Runnable {
+            if (isAnimeEpisode && p.isPlaying) playPauseButton.visibility = View.GONE
+        }
         val tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             private val swipeThreshold = dp(64)
             private val swipeVelocityThreshold = dp(120)
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (isAnimeEpisode && p.isPlaying) {
+                    controlsHandler.removeCallbacks(hideAnimeCenterPause)
+                    playPauseButton.text = "Ⅱ"
+                    playPauseButton.visibility = View.VISIBLE
+                    controlsHandler.postDelayed(hideAnimeCenterPause, 1800L)
+                }
                 if (controlsPanel.visibility == View.VISIBLE) {
                     controlsHandler.removeCallbacks(hideControls)
                     hideControls.run()
