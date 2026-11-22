@@ -839,20 +839,61 @@ class AniLightNativeScreen(
         body.addView(label("EPISODES", 16, fg, true), bottom(8))
         val available = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }
             .filter { it.optBoolean("sub", false) || it.optBoolean("dub", false) }
-        available.forEach { ep ->
-            val number = ep.optInt("number", 1)
-            val line = row().apply {
-                gravity = Gravity.CENTER_VERTICAL
-                background = rounded(surface, 10)
-                setPadding(dp(12), dp(12), dp(12), dp(12))
-                isFocusable = true
-                setOnClickListener { resolveEpisode(number) }
-            }
-            line.addView(label("▶", 17, accent, true), LinearLayout.LayoutParams(dp(32), -2))
-            line.addView(label("$number. ${ep.optString("title").ifBlank { "Episode $number" }}", 13, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-            line.addView(label(language.uppercase(), 10, accent, true))
-            body.addView(line, bottom(6))
+        val episodeRows = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
         }
+        available.chunked(2).forEach { pair ->
+            val gridRow = row().apply { gravity = Gravity.TOP }
+            pair.forEach { ep ->
+                val number = ep.optInt("number", 1)
+                val title = ep.optString("title").ifBlank { "Episode $number" }
+                val card = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = rounded(surface, 12)
+                    setPadding(dp(7), dp(7), dp(7), dp(9))
+                    isFocusable = true
+                    setOnClickListener { resolveEpisode(number) }
+                }
+                val thumbUrl = listOf("thumbnail", "thumbnailUrl", "image", "imageUrl", "img", "still", "screenshot")
+                    .map { ep.optString(it) }
+                    .firstOrNull { it.startsWith("http", true) }
+                    ?: ep.optJSONObject("thumbnail")?.optString("url")?.takeIf { it.startsWith("http", true) }
+                    ?: activeAnimePosterUrl.takeIf { it.startsWith("http", true) }
+                val imageFrame = FrameLayout(context).apply {
+                    background = rounded(0xFF292D35.toInt(), 9)
+                    clipToOutline = true
+                }
+                val thumb = ImageView(context).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    setBackgroundColor(0xFF292D35.toInt())
+                }
+                imageFrame.addView(thumb, FrameLayout.LayoutParams(-1, -1))
+                if (!thumbUrl.isNullOrBlank()) loadImage(thumbUrl, thumb)
+                val play = TextView(context).apply {
+                    text = "▶"
+                    textSize = 18f
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    background = rounded(0x99000000.toInt(), 30)
+                }
+                val playSize = dp(38)
+                imageFrame.addView(play, FrameLayout.LayoutParams(playSize, playSize, Gravity.CENTER))
+                card.addView(imageFrame, LinearLayout.LayoutParams(-1, dp(94)))
+                card.addView(label("EPISODE $number", 10, accent, true), bottom(3))
+                card.addView(label(title, 12, fg, true).apply {
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+                val rating = ep.optString("rating").ifBlank { ep.optString("score") }
+                if (rating.isNotBlank()) card.addView(label("★ $rating", 10, muted, false), bottom(1))
+                gridRow.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    if (gridRow.childCount == 0) rightMargin = dp(6) else leftMargin = dp(6)
+                })
+            }
+            if (pair.size == 1) gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            episodeRows.addView(gridRow, bottom(10))
+        }
+        body.addView(episodeRows)
         if (available.isEmpty()) body.addView(label("এই ভাষায় episode পাওয়া যায়নি।", 13, muted, false))
     }
 
