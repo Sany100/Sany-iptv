@@ -56,6 +56,8 @@ jobs:
           cp -a "$GITHUB_WORKSPACE/source/cloudstream-original/AniLight" "$RUNNER_TEMP/cloudstream-build/AniLight"
           # AGP 8 requires an explicit Android namespace for library modules.
           printf '\nandroid { namespace = "com.anilight" }\n' >> "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
+          # Declare the CloudStream API stub on the actual AniLight module.
+          printf '\ndependencies { apk("com.lagradost:cloudstream3:pre-release") }\n' >> "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt"
 
