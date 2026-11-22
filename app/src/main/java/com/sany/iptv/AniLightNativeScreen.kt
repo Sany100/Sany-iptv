@@ -842,56 +842,54 @@ class AniLightNativeScreen(
         val episodeRows = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }
-        available.chunked(2).forEach { pair ->
-            val gridRow = row().apply { gravity = Gravity.TOP }
-            pair.forEach { ep ->
-                val number = ep.optInt("number", 1)
-                val title = ep.optString("title").ifBlank { "Episode $number" }
-                val card = LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    background = rounded(surface, 12)
-                    setPadding(dp(7), dp(7), dp(7), dp(9))
-                    isFocusable = true
-                    setOnClickListener { resolveEpisode(number) }
-                }
-                val thumbUrl = listOf("thumbnail", "thumbnailUrl", "image", "imageUrl", "img", "still", "screenshot")
-                    .map { ep.optString(it) }
-                    .firstOrNull { it.startsWith("http", true) }
-                    ?: ep.optJSONObject("thumbnail")?.optString("url")?.takeIf { it.startsWith("http", true) }
-                    ?: activeAnimePosterUrl.takeIf { it.startsWith("http", true) }
-                val imageFrame = FrameLayout(context).apply {
-                    background = rounded(0xFF292D35.toInt(), 9)
-                    clipToOutline = true
-                }
-                val thumb = ImageView(context).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    setBackgroundColor(0xFF292D35.toInt())
-                }
-                imageFrame.addView(thumb, FrameLayout.LayoutParams(-1, -1))
-                if (!thumbUrl.isNullOrBlank()) loadImage(thumbUrl, thumb)
-                val play = TextView(context).apply {
-                    text = "▶"
-                    textSize = 18f
-                    gravity = Gravity.CENTER
-                    setTextColor(Color.WHITE)
-                    background = rounded(0x99000000.toInt(), 30)
-                }
-                val playSize = dp(38)
-                imageFrame.addView(play, FrameLayout.LayoutParams(playSize, playSize, Gravity.CENTER))
-                card.addView(imageFrame, LinearLayout.LayoutParams(-1, dp(94)))
-                card.addView(label("EPISODE $number", 10, accent, true), bottom(3))
-                card.addView(label(title, 12, fg, true).apply {
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                })
-                val rating = ep.optString("rating").ifBlank { ep.optString("score") }
-                if (rating.isNotBlank()) card.addView(label("★ $rating", 10, muted, false), bottom(1))
-                gridRow.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                    if (gridRow.childCount == 0) rightMargin = dp(6) else leftMargin = dp(6)
-                })
+        available.forEach { ep ->
+            val number = ep.optInt("number", 1)
+            val title = ep.optString("title").ifBlank { "Episode $number" }
+            val card = row().apply {
+                gravity = Gravity.CENTER_VERTICAL
+                background = rounded(surface, 13)
+                setPadding(dp(9), dp(9), dp(10), dp(9))
+                isFocusable = true
+                setOnClickListener { resolveEpisode(number) }
             }
-            if (pair.size == 1) gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
-            episodeRows.addView(gridRow, bottom(10))
+            val thumbUrl = listOf("thumbnail", "thumbnailUrl", "image", "imageUrl", "img", "still", "screenshot")
+                .map { ep.optString(it) }
+                .firstOrNull { it.startsWith("http", true) }
+                ?: ep.optJSONObject("thumbnail")?.optString("url")?.takeIf { it.startsWith("http", true) }
+                ?: activeAnimePosterUrl.takeIf { it.startsWith("http", true) }
+            val imageFrame = FrameLayout(context).apply {
+                background = rounded(0xFF292D35.toInt(), 9)
+                clipToOutline = true
+            }
+            val thumb = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(0xFF292D35.toInt())
+            }
+            imageFrame.addView(thumb, FrameLayout.LayoutParams(-1, -1))
+            if (!thumbUrl.isNullOrBlank()) loadImage(thumbUrl, thumb)
+            val play = TextView(context).apply {
+                text = "▶"
+                textSize = 17f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = rounded(0x99000000.toInt(), 30)
+            }
+            imageFrame.addView(play, FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER))
+            card.addView(imageFrame, LinearLayout.LayoutParams(dp(126), dp(78)))
+            val details = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(11), 0, 0, 0)
+            }
+            details.addView(label("EPISODE $number", 10, accent, true), bottom(4))
+            details.addView(label(title, 13, fg, true).apply {
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }, bottom(3))
+            val rating = ep.optString("rating").ifBlank { ep.optString("score") }
+            if (rating.isNotBlank()) details.addView(label("★ $rating", 11, muted, false))
+            card.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+            episodeRows.addView(card, bottom(9))
         }
         body.addView(episodeRows)
         if (available.isEmpty()) body.addView(label("এই ভাষায় episode পাওয়া যায়নি।", 13, muted, false))
