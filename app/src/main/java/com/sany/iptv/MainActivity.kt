@@ -1028,11 +1028,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Series") {
-            renderSeriesComingSoon()
+            renderNativeMovies(true)
             return
         }
         if (section == "Movies") {
-            renderMoviesWebsite()
+            renderNativeMovies(false)
             return
         }
         if (section == "Checker") {
@@ -1098,6 +1098,18 @@ class MainActivity : AppCompatActivity() {
         listScroll.post { listScroll.scrollTo(0, restoreY.coerceAtLeast(0)) }
     }
 
+    private fun renderNativeMovies(showSeries: Boolean) {
+        val screen = NativeMoviesScreen(
+            context = this,
+            seriesMode = showSeries,
+            light = isLight,
+            accent = accent,
+            onPlay = { title, url -> play(Channel(title, url, if (showSeries) "Series" else "Movies")) }
+        )
+        contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
+    }
+
+    // Legacy WebView code remains temporarily for safe rollback; native pages no longer call it.
     // Movies uses the site's normal public web interface inside a sandboxed WebView.
     // No scraping, DRM circumvention, or stream-link extraction is performed.
     private fun renderMoviesWebsite() {
@@ -3173,7 +3185,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun play(channel: Channel, startPlayback: Boolean = true, ftpCredentials: Pair<String, String>? = null) {
-        if (section != "Live TV" && section != "Movies") return
+        if (section != "Live TV" && section != "Movies" && section != "Series") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
