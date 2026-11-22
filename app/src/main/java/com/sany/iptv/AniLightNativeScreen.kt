@@ -45,6 +45,10 @@ class AniLightNativeScreen(
     private var language = "sub"
     private var anime: JSONObject? = null
     private var isHomePage = true
+    private var filterPage = 1
+    private var filterSort = "POPULARITY_DESC"
+    private var filterGenre: String? = null
+    private var filterHasNext = false
     @Volatile private var session: String? = null
     @Volatile private var sessionExpiry = 0L
 
@@ -134,14 +138,26 @@ class AniLightNativeScreen(
             }.setNegativeButton("CANCEL", null).show()
     }
 
-    private fun loadFiltered(sort: String, genre: String?) {
+    private fun loadFiltered(sort: String, genre: String?, page: Int = 1) {
         isHomePage = false
-        loading("Applying anime filters…")
-        val query = "$api/filter?page=1&perPage=30&sort=" + enc(sort) +
+        if (page == 1) {
+            filterSort = sort
+            filterGenre = genre
+            filterPage = 1
+            filterHasNext = false
+            loading("Applying anime filters…")
+        } else {
+            filterPage = page
+        }
+        val query = "$api/filter?page=$page&perPage=30&sort=" + enc(sort) +
             (if (genre.isNullOrBlank()) "" else "&genres=" + enc(genre)) + "&hideAdult=true"
         request(query) { data ->
-            val media = data?.optJSONArray("media") ?: data?.optJSONObject("data")?.optJSONArray("media")
-            showCards("Filtered anime", items(media).filterNot { it.optBoolean("isAdult", false) })
+            val payload = data?.optJSONObject("data") ?: data
+            val media = payload?.optJSONArray("media")
+            filterHasNext = payload?.optJSONObject("pageInfo")?.optBoolean("hasNextPage", false) ?: false
+            val results = items(media).filterNot { it.optBoolean("isAdult", false) }
+            if (page > 1 && results.isEmpty()) filterHasNext = false
+            showCards("Filtered anime", results, append = page > 1)
         }
     }
 
@@ -155,13 +171,19 @@ class AniLightNativeScreen(
         }
     }
 
-    private fun showCards(title: String, cards: List<JSONObject>) {
-        body.removeAllViews()
-        val head = row()
-        head.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(button("HOME") { home() })
-        body.addView(head, bottom(12))
-        if (cards.isEmpty()) { body.addView(label("কোনো anime পাওয়া যায়নি। API unavailable হলে পরে আবার চেষ্টা করো।", 14, muted, false)); return }
+    private fun showCards(title: String, cards: List<JSONObject>, append: Boolean = false) {
+        if (append) {
+            if (body.childCount > 0 && body.getChildAt(body.childCount - 1).tag == "anilight_load_more") {
+                body.removeViewAt(body.childCount - 1)
+            }
+        } else {
+            body.removeAllViews()
+            val head = row()
+            head.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+            head.addView(button("HOME") { home() })
+            body.addView(head, bottom(12))
+        }
+        if (cards.isEmpty() && !append) { body.addView(label("কোনো anime পাওয়া যায়নি। API unavailable হলে পরে আবার চেষ্টা করো।", 14, muted, false)); return }
         cards.forEach { item ->
             val card = row().apply { gravity = Gravity.CENTER_VERTICAL; background = rounded(surface, 12); setPadding(dp(7), dp(7), dp(7), dp(7)); isFocusable = true; setOnClickListener { openAnime(item) } }
             val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
@@ -177,6 +199,14 @@ class AniLightNativeScreen(
             details.addView(label("Score: ${item.optDouble("averageScore", 0.0).let { if (it > 0) it.toString() else "N/A" }}", 11, muted, false))
             card.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
             body.addView(card, bottom(8))
+        }
+        if (filterHasNext && !append.not()) {
+            // Keep the next-page control attached only to filtered results.
+        }
+        if (filterHasNext) {
+            body.addView(button("LOAD MORE") { loadFiltered(filterSort, filterGenre, filterPage + 1) }.apply {
+                tag = "anilight_load_more"
+            }, bottom(10))
         }
     }
 
