@@ -516,7 +516,7 @@ class AniLightNativeScreen(
     }
 
     private fun category(key: String, homeLanding: Boolean = false) {
-        isHomePage = true
+        val keepHomeChrome = isHomePage
         val selectedGenre = key.takeIf { it.startsWith("genre:") }?.removePrefix("genre:")
         val sort = when (key) {
             "topRated" -> "SCORE_DESC"
@@ -525,11 +525,10 @@ class AniLightNativeScreen(
             "seasonal", "previousSeason" -> "POPULARITY_DESC"
             else -> "POPULARITY_DESC"
         }
-        // Every SEE MORE destination uses the same paginated catalogue so scrolling
-        // automatically fetches the next page without a manual Load More control.
-        catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
+        // Save the current page before resetting its scroll position.
         autoPageLoading = false
-        loadFiltered(sort, selectedGenre, keepHomeChrome = true)
+        loadFiltered(sort, selectedGenre, keepHomeChrome = keepHomeChrome)
+        catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
     }
 
     private fun showHomeCategory(key: String, data: JSONObject?) {
