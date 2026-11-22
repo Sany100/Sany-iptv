@@ -960,7 +960,6 @@ class AniLightNativeScreen(
                         }
                         for (token in tokens) {
                             val resolved = resolveToken(token) ?: continue
-                            if (checkHls && !validHls(resolved)) continue
                             val quality = entry.optString("quality").ifBlank {
                                 entry.optString("server").ifBlank { if (checkHls) "HLS" else "Auto" }
                             }
@@ -979,7 +978,7 @@ class AniLightNativeScreen(
                     add(primary, languageCode, false)
                     add(backup, languageCode, true)
                 }
-                val unique = sources.distinctBy { it.url }
+                val unique = sources.distinctBy { it.language + "|" + it.url }
                 ui.post {
                     if (unique.isEmpty()) {
                         toast("কোনো playable source পাওয়া যায়নি। Main server বা backup server-এ এই Episode-এর link নাও থাকতে পারে।")
