@@ -57,6 +57,8 @@ class AniLightNativeScreen(
     private var animeTitle = ""
     private var language = "sub"
     private var anime: JSONObject? = null
+    private var activeWatch: JSONObject? = null
+    private var currentEpisodeNumber = 0
     private var isHomePage = true
     // Category dropdown pages must be exited with the visible Back button, never a swipe gesture.
     private var isShelfCategoryPage = false
@@ -805,6 +807,7 @@ class AniLightNativeScreen(
     }
 
     private fun showDetails(detail: JSONObject, watch: JSONObject?) {
+        activeWatch = watch
         body.removeAllViews()
         val head = row()
         head.addView(button("‹ BACK") { if (!restorePreviousPage()) home() })
@@ -844,6 +847,22 @@ class AniLightNativeScreen(
             body.addView(line, bottom(6))
         }
         if (available.isEmpty()) body.addView(label("এই ভাষায় episode পাওয়া যায়নি।", 13, muted, false))
+    }
+
+    /** Plays the next available episode in the currently selected SUB/DUB language. */
+    fun playNextEpisode() {
+        val eps = activeWatch?.optJSONArray("episodes") ?: run {
+            toast("Episode list পাওয়া যায়নি")
+            return
+        }
+        val next = (0 until eps.length()).mapNotNull { eps.optJSONObject(it) }
+            .filter { it.optBoolean(language, false) && it.optInt("number", 0) > currentEpisodeNumber }
+            .minByOrNull { it.optInt("number", Int.MAX_VALUE) }
+        if (next == null) {
+            toast("এটাই শেষ Episode")
+            return
+        }
+        resolveEpisode(next.optInt("number"))
     }
 
     private fun resolveEpisode(episode: Int) {
@@ -888,6 +907,7 @@ class AniLightNativeScreen(
                     if (unique.isEmpty()) { toast("Stream পাওয়া যায়নি। AniLight API/source unavailable হতে পারে।"); showDetailsAgain(); return@post }
                     AlertDialog.Builder(context).setTitle("$animeTitle — Episode $episode")
                         .setItems(unique.map { "${it.first} • ${language.uppercase()}" }.toTypedArray()) { _, which ->
+                            currentEpisodeNumber = episode
                             saveWatchLater(anime ?: JSONObject(), episode, language)
                             onPlay("$animeTitle • Episode $episode", unique[which].second, subtitles.firstOrNull())
                         }.setNegativeButton("CANCEL", null).show()
