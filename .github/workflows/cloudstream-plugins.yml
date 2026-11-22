@@ -48,6 +48,27 @@ jobs:
           sed -i 's/com.android.tools.build:gradle:7.0.4/com.android.tools.build:gradle:8.7.3/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           sed -i 's/kotlin-gradle-plugin:1.7.10/kotlin-gradle-plugin:2.4.0/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           sed -i 's/compileSdkVersion(30)/compileSdkVersion(36)/; s/targetSdk = 30/targetSdk = 35/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
+          # Kotlin 2.4 removes the legacy kotlinOptions DSL; migrate the template compiler settings.
+          python3 - "$RUNNER_TEMP/cloudstream-build/build.gradle.kts" <<'PY'
+          import pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          source = path.read_text()
+          pattern = r'tasks\\.withType<org\\.jetbrains\\.kotlin\\.gradle\\.tasks\\.KotlinCompile>\\s*\\{\\s*kotlinOptions\\s*\\{.*?\\n\\s*\\}\\s*\\}'
+          replacement = '''tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+                  compilerOptions {
+                      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+                      freeCompilerArgs.addAll(
+                          "-Xno-call-assertions",
+                          "-Xno-param-assertions",
+                          "-Xno-receiver-assertions"
+                      )
+                  }
+              }'''
+          updated, count = re.subn(pattern, lambda _: replacement, source, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f"Expected one legacy kotlinOptions block, found {count}")
+          path.write_text(updated)
+          PY
           # Match the pinned CloudStream Gradle plugin: it registers a configuration named "cloudstream".
           sed -i 's/val apk by configurations/val cloudstream by configurations/; s/apk("com.lagradost:cloudstream3:pre-release")/cloudstream("com.lagradost:cloudstream3:pre-release")/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           # Use CloudStream-compatible NiceHttp and Jackson versions for the AniLight API client.
