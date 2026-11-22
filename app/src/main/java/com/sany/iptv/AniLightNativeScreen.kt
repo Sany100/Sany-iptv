@@ -232,12 +232,13 @@ class AniLightNativeScreen(
             return
         }
 
+        // Keep the homepage edge-to-edge: Watch Later is the first section.
+        // The featured Play/Info hero is intentionally removed to avoid the
+        // large unused banner area above the catalogue.
+        renderWatchLaterShelf()
+
         val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
             .filterNot { it.optBoolean("isAdult", false) }
-        val featured = trending.firstOrNull()
-        if (featured != null) addFeaturedHero(featured)
-
-        renderWatchLaterShelf()
 
         val shelves = listOf(
             Triple("Trending Now", "trending", items(data.optJSONObject("trending")?.optJSONArray("media"))),
@@ -334,7 +335,7 @@ class AniLightNativeScreen(
         heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
         val dropdownContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
+            setPadding(0, dp(6), 0, dp(6))
         }
         // Keep the expanded catalogue inside its own scroll area. Reaching the
         // last anime must not continue scrolling the homepage behind this dropdown.
@@ -431,7 +432,7 @@ class AniLightNativeScreen(
         // every other category remain mounted below it; tapping the arrow again
         // collapses this grid without rebuilding or losing the previous page.
         val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
-        val gridCardWidth = (screenWidthDp - 24f) / 3f
+        val gridCardWidth = screenWidthDp / 3f
         val gridPosterHeight = (gridCardWidth * 1.42f).toInt()
         var dropdownRow = row().apply { gravity = Gravity.TOP }
         cards.forEachIndexed { index, item ->
@@ -464,8 +465,8 @@ class AniLightNativeScreen(
                 setPadding(dp(2), dp(5), dp(2), dp(5))
             }, LinearLayout.LayoutParams(-1, dp(38)))
             dropdownRow.addView(tile, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                leftMargin = dp(4)
-                rightMargin = dp(4)
+                leftMargin = dp(1)
+                rightMargin = dp(1)
                 bottomMargin = dp(10)
             })
             if (index % 3 == 2) {
