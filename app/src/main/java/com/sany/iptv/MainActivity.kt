@@ -918,6 +918,7 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 setOnClickListener { showPlaylistDialog() }
             }
+            playlistSelectorContainer = playlistButton
             titleRow.addView(playlistButton, LinearLayout.LayoutParams(dp(142), dp(40)))
         }
         top.addView(titleRow)
@@ -1055,9 +1056,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Keep the original Live TV header layout; only the visible playlist
-        // selector stays removed. Playlist data and Playlist Manager are untouched.
-        playlistSelectorContainer = null
+        // Keep a reference to the header selector so section changes can
+        // reliably show it only on Live TV and Checker.
+        playlistSelectorContainer?.visibility =
+            if (section == "Live TV" || section == "Checker") View.VISIBLE else View.GONE
 
         // Keep the selected-category title/search bar outside every ScrollView.
         // This makes it stationary while channel rows scroll underneath it.
@@ -1259,7 +1261,9 @@ class MainActivity : AppCompatActivity() {
         homeHeaderContainer?.visibility = if (playerView != null || immersiveCategory) View.GONE else View.VISIBLE
         // The Live TV title is shown in the replacement banner below the brand header.
         headerTitleView?.visibility = View.VISIBLE
-        playlistSelectorContainer?.visibility = if (immersiveCategory || movieDirectory) View.GONE else View.VISIBLE
+        playlistSelectorContainer?.visibility =
+            if (section == "Checker" || (section == "Live TV" && !immersiveCategory && !movieDirectory)) View.VISIBLE
+            else View.GONE
         // Keep the category back, view-mode and search toolbar visible above channel rows.
         categoryHeaderContainer.visibility = if (section == "Live TV" && (categoryDirectory || immersiveCategory)) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
@@ -1837,6 +1841,8 @@ class MainActivity : AppCompatActivity() {
                     // and the five small navigation items. This avoids a full-screen layout
                     // pass on every menu tap.
                     headerTitleView?.text = if (section == "Series") "Development" else section
+                    playlistSelectorContainer?.visibility =
+                        if (section == "Live TV" || section == "Checker") View.VISIBLE else View.GONE
                     renderSection()
                     renderBottomNav()
                     if (isTvDevice) bottomNav.getChildAt(
