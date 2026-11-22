@@ -3502,7 +3502,7 @@ class MainActivity : AppCompatActivity() {
         ).apply {
             putAll(requestHeaders)
         }
-        val highSpeedStreaming = prefs.getBoolean("high_speed_streaming", true)
+        val highSpeedStreaming = prefs.getBoolean("high_speed_streaming", false)
         val httpFactory = DefaultHttpDataSource.Factory()
             // Keep standard IPTV headers, and add provider-specific headers only
             // for AniLight playback (including HLS segments and subtitle requests).
@@ -3558,12 +3558,12 @@ class MainActivity : AppCompatActivity() {
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        if (highSpeedStreaming) 12000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 700
                             "high" -> 2500
                             else -> 1200
                         },
-                        if (highSpeedStreaming) 60000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (highSpeedStreaming) 12000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 6000
                             "high" -> 18000
                             else -> 10000
@@ -3573,7 +3573,7 @@ class MainActivity : AppCompatActivity() {
                             "high" -> 750
                             else -> 350
                         },
-                        if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (highSpeedStreaming) 2000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 750
                             "high" -> 1800
                             else -> 1000
@@ -4256,16 +4256,16 @@ class MainActivity : AppCompatActivity() {
         val target = selector ?: return
         val quality = prefs.getString("video_quality", "auto") ?: "auto"
         val builder = target.buildUponParameters()
-        // Anime Series starts with 1080p as the preferred maximum quality.
-        // Adaptive selection may fall back to the best available lower track
-        // when the stream has no 1080p rendition or bandwidth is insufficient.
+        // Auto mode caps Anime at 720p to reduce sustained decoder/GPU load.
+        // Explicit 480p and 1080p selections remain available to the viewer.
         if (section == "Series") {
-            // Always start Anime playback with the highest available rendition
-            // up to Full HD; never ask the viewer to choose a resolution.
             builder.setPreferredAudioLanguage("hi")
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .setMaxVideoSize(1920, 1080)
-                .setMaxVideoBitrate(Int.MAX_VALUE)
+            when (quality) {
+                "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
+                "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
+                else -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
+            }
             target.setParameters(builder)
             return
         }
@@ -4492,6 +4492,12 @@ class MainActivity : AppCompatActivity() {
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
         playerView?.player = null
+        // Release codec, audio and renderer resources as soon as playback is closed.
+        player?.release()
+        player = null
+        trackSelector = null
+        loudnessEnhancer?.release()
+        loudnessEnhancer = null
         playerView = null
         animeEpisodePanel = null
         animeCenterPlayButton = null
