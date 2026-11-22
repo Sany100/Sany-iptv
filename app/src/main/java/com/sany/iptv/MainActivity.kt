@@ -4645,36 +4645,39 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         scheduleOfflineChannelRecheck()
-        // Restore the exact playback intent after returning from Home when Floating
-        // Window is disabled. The player is stopped in onStop to prevent background audio.
-        if (!prefs.getBoolean("floating_window_enabled", true)) {
-            val savedUrl = prefs.getString("resume_channel_url", null)
-            if (!savedUrl.isNullOrBlank()) {
-                val savedSection = prefs.getString("resume_channel_section", "Live TV") ?: "Live TV"
-                val shouldResumePlaying = prefs.getBoolean("resume_channel_playing", false)
-                window.decorView.postDelayed({
-                    if (!isFinishing && !isDestroyed &&
-                        !prefs.getBoolean("floating_window_enabled", true)) {
-                        val existingChannel = currentChannel?.takeIf { it.url.trim() == savedUrl }
-                        if (playerView != null && existingChannel != null && player != null) {
-                            // Same Activity instance: re-prepare the stopped media item.
-                            player?.prepare()
-                            player?.playWhenReady = shouldResumePlaying
-                            refreshPictureInPictureParams()
-                        } else if (playerView == null) {
-                            // Activity/process was recreated: rebuild the player from playlist data.
-                            val channel = channels.firstOrNull { it.url.trim() == savedUrl }
-                            if (channel != null) {
-                                section = if (savedSection == "Movies") "Movies" else "Live TV"
-                                play(channel, startPlayback = shouldResumePlaying)
-                            }
+        // Restore playback after returning from Android Home. onStop() stops the
+        // engine to prevent background audio, so restore the saved position and
+        // the exact play/pause intent even when Floating Window is enabled.
+        val savedUrl = prefs.getString("resume_channel_url", null)
+        if (!savedUrl.isNullOrBlank()) {
+            val savedSection = prefs.getString("resume_channel_section", "Live TV") ?: "Live TV"
+            val shouldResumePlaying = prefs.getBoolean("resume_channel_playing", false)
+            val savedPosition = prefs.getLong("resume_channel_position", 0L).coerceAtLeast(0L)
+            window.decorView.postDelayed({
+                if (!isFinishing && !isDestroyed) {
+                    val existingChannel = currentChannel?.takeIf { it.url.trim() == savedUrl }
+                    if (playerView != null && existingChannel != null && player != null) {
+                        // Same Activity instance: prepare the stopped item at its last position.
+                        player?.prepare()
+                        if (savedPosition > 0L) player?.seekTo(savedPosition)
+                        player?.playWhenReady = shouldResumePlaying
+                        refreshPictureInPictureParams()
+                    } else if (playerView == null) {
+                        // Activity/process was recreated: rebuild from available playlist data.
+                        val channel = channels.firstOrNull { it.url.trim() == savedUrl }
+                        if (channel != null) {
+                            section = if (savedSection == "Movies") "Movies" else "Live TV"
+                            play(channel, startPlayback = shouldResumePlaying)
+                            if (savedPosition > 0L) player?.seekTo(savedPosition)
                         }
-                        prefs.edit().remove("resume_channel_url")
-                            .remove("resume_channel_section")
-                            .remove("resume_channel_playing").apply()
                     }
-                }, 700L)
-            }
+                    prefs.edit().remove("resume_channel_url")
+                        .remove("resume_channel_section")
+                        .remove("resume_channel_playing")
+                .remove("resume_channel_position")
+                        .remove("resume_channel_position").apply()
+                }
+            }, 700L)
         }
     }
 
@@ -4870,8 +4873,8 @@ class MainActivity : AppCompatActivity() {
         val closingPip = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode
         // Save both channel identity and whether playback was running before minimizing.
         // Stop the engine while backgrounded, then restore the same play/pause intent on return.
-        val shouldRestorePlayer = !closingPip && !prefs.getBoolean("floating_window_enabled", true) &&
-            playerView != null && currentChannel != null && player?.playbackState != Player.STATE_IDLE
+        val shouldRestorePlayer = !closingPip && playerView != null &&
+            currentChannel != null && player?.playbackState != Player.STATE_IDLE
         // Save Anime Series episode progress before stopping playback in the background.
         saveAnimeResumePosition(player, currentChannel)
         val stateEditor = prefs.edit()
@@ -4879,6 +4882,7 @@ class MainActivity : AppCompatActivity() {
             stateEditor.putString("resume_channel_url", currentChannel?.url)
                 .putString("resume_channel_section", section)
                 .putBoolean("resume_channel_playing", player?.playWhenReady == true)
+                .putLong("resume_channel_position", player?.currentPosition?.coerceAtLeast(0L) ?: 0L)
         } else {
             stateEditor.remove("resume_channel_url")
                 .remove("resume_channel_section")
