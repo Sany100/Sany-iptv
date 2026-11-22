@@ -233,10 +233,9 @@ class AniLightNativeScreen(
         actions.addView(button("ⓘ  Info") { openAnime(item) }, LinearLayout.LayoutParams(0, dp(44), 1f))
         details.addView(actions)
         hero.addView(details, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-        contentHost.addView(hero, LinearLayout.LayoutParams(
-            context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density .toInt(),
-            dp(380)
-        ).apply { bottomMargin = dp(24) })
+        contentHost.addView(hero, LinearLayout.LayoutParams(-1, dp(380)).apply {
+            bottomMargin = dp(24)
+        })
     }
 
     private fun loadHomeShelf(title: String, key: String, genre: String?) {
