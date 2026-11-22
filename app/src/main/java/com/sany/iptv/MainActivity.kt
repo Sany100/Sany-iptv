@@ -4039,9 +4039,17 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                // The reference Anime Series player intentionally has no 10-second
-                // skip buttons or double-tap seek gestures.
-                return false
+                // Double-tap either half of the video to seek by ten seconds.
+                // This works in both inline/FIT and fullscreen playback.
+                val duration = p.duration
+                if (duration <= 0L || duration == C.TIME_UNSET) return true
+                val forward = e.x >= (playerView?.width ?: screen.width).coerceAtLeast(1) / 2f
+                val delta = if (forward) 10_000L else -10_000L
+                val target = (p.currentPosition + delta).coerceIn(0L, duration)
+                p.seekTo(target)
+                revealControls()
+                toast(if (forward) "+10 seconds" else "−10 seconds")
+                return true
             }
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
                 val start = e1 ?: return false
