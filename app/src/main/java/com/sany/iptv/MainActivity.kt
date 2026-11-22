@@ -141,6 +141,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var listContainer: LinearLayout
     private var playerScreen: FrameLayout? = null
     private var animeEpisodePanel: View? = null
+    private var animeCenterPlayButton: TextView? = null
+    private var animePlayerTitleOverlay: TextView? = null
     private var displayedLimit = 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
@@ -3654,6 +3656,7 @@ class MainActivity : AppCompatActivity() {
                     intArrayOf(0x99000000.toInt(), Color.TRANSPARENT)
                 )
             }
+            animePlayerTitleOverlay = animeTitle
             screen.addView(animeTitle, FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP))
         }
         // Register PiP parameters only after the real video view has a laid-out
@@ -3758,6 +3761,7 @@ class MainActivity : AppCompatActivity() {
                 setColor(0x66000000)
                 setStroke(dp(1), 0x99FFFFFF.toInt())
             }
+            animeCenterPlayButton = playPauseButton
             screen.addView(playPauseButton, FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER))
         }
 
@@ -4349,6 +4353,12 @@ class MainActivity : AppCompatActivity() {
                         panel.layoutParams = FrameLayout.LayoutParams(
                             sideWidth, -1, Gravity.END or Gravity.TOP
                         )
+                        animeCenterPlayButton?.layoutParams = FrameLayout.LayoutParams(
+                            dp(68), dp(68), Gravity.START or Gravity.CENTER_VERTICAL
+                        ).apply { leftMargin = (videoWidth / 2 - dp(34)).coerceAtLeast(0) }
+                        animePlayerTitleOverlay?.layoutParams = FrameLayout.LayoutParams(
+                            videoWidth, dp(58), Gravity.START or Gravity.TOP
+                        )
                         playerControlsPanel?.let { controls ->
                             (controls.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
                                 lp.width = videoWidth
@@ -4364,6 +4374,8 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 playerView?.layoutParams = FrameLayout.LayoutParams(-1, if (enabled) -1 else dp(235), if (enabled) Gravity.CENTER else Gravity.TOP)
+                animeCenterPlayButton?.layoutParams = FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER)
+                animePlayerTitleOverlay?.layoutParams = FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP)
                 playerControlsPanel?.let { controls ->
                     (controls.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
                         lp.width = -1
@@ -4437,6 +4449,8 @@ class MainActivity : AppCompatActivity() {
         playerView?.player = null
         playerView = null
         animeEpisodePanel = null
+        animeCenterPlayButton = null
+        animePlayerTitleOverlay = null
         playerScreen?.let { root.removeView(it) }
         playerScreen = null
         updateHomeHeaderVisibility()
