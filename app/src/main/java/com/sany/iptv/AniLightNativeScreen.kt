@@ -265,7 +265,7 @@ class AniLightNativeScreen(
             isNestedScrollingEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             background = rounded(surface, 12)
-            addView(dropdownContent, ScrollView.LayoutParams(-1, -2))
+            addView(dropdownContent, LinearLayout.LayoutParams(-1, -2))
             setOnTouchListener { _, event ->
                 when (event.actionMasked) {
                     android.view.MotionEvent.ACTION_DOWN,
