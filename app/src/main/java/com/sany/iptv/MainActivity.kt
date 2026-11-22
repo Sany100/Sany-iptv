@@ -1181,19 +1181,6 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), dp(6), dp(4), dp(8))
-        }
-        toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(40), 1f))
-        toolbar.addView(actionButton("OPEN") {
-            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://anilight.live/"))) }
-            catch (_: Exception) { toast("Browser খোলা যাচ্ছে না") }
-        }, LinearLayout.LayoutParams(dp(76), dp(38)).apply { rightMargin = dp(6) })
-        toolbar.addView(actionButton("↻ REFRESH") { aniLightWebView?.reload() }, LinearLayout.LayoutParams(dp(112), dp(38)))
-        page.addView(toolbar, LinearLayout.LayoutParams(-1, -2))
-
         val browser = aniLightWebView ?: WebView(this).apply {
             setBackgroundColor(Color.WHITE)
             settings.javaScriptEnabled = true
