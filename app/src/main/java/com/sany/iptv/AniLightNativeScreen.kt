@@ -815,63 +815,22 @@ class AniLightNativeScreen(
         head.addView(label("ANIME DETAILS", 13, accent, true).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
         body.addView(head, bottom(12))
         val cover = detail.optJSONObject("coverImage")
-        val posterUrl = cover?.optString("extraLarge").orEmpty().ifBlank { cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() } }
+        val posterUrl = cover?.optString("large").orEmpty().ifBlank { cover?.optString("medium").orEmpty() }
         activeAnimePosterUrl = posterUrl
-        val bannerObject = detail.optJSONObject("bannerImage")
-        val bannerUrl = detail.optString("bannerImage").takeIf { it.startsWith("http", true) }
-            ?: bannerObject?.optString("extraLarge")?.takeIf { it.startsWith("http", true) }
-            ?: posterUrl
-        val hero = ImageView(context).apply {
+        val info = row()
+        val poster = ImageView(context).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             setBackgroundColor(surface)
         }
-        if (bannerUrl.startsWith("http", true)) loadImage(bannerUrl, hero)
-        body.addView(hero, LinearLayout.LayoutParams(-1, dp(174)).apply { bottomMargin = dp(10) })
-        body.addView(label(animeTitle, 19, fg, true), bottom(5))
-        body.addView(label("${detail.optString("format")} • ${detail.optString("status")} • ${detail.optInt("seasonYear").takeIf { it > 0 } ?: ""} • Episodes: ${detail.optInt("episodes", watch?.optJSONArray("episodes")?.length() ?: 0)} • Score: ${detail.optDouble("averageScore", 0.0)}", 11, muted, false), bottom(10))
-        val genres = detail.optJSONArray("genres")
-        if (genres != null && genres.length() > 0) {
-            val genreScroll = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
-            val genreRow = row()
-            for (i in 0 until genres.length()) {
-                val genre = genres.optString(i).trim()
-                if (genre.isNotBlank()) genreRow.addView(label(genre, 11, fg, true).apply {
-                    background = rounded(surface, 18)
-                    setPadding(dp(10), dp(6), dp(10), dp(6))
-                }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(6) })
-            }
-            genreScroll.addView(genreRow)
-            body.addView(genreScroll, bottom(10))
-        }
-        val characters = detail.optJSONObject("characters")?.optJSONArray("edges")
-        if (characters != null && characters.length() > 0) {
-            body.addView(label("CAST", 14, fg, true), bottom(6))
-            val castScroll = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false }
-            val castRow = row()
-            for (i in 0 until minOf(characters.length(), 8)) {
-                val node = characters.optJSONObject(i)?.optJSONObject("node") ?: continue
-                val castName = node.optJSONObject("name")?.optString("full").orEmpty()
-                val imageUrl = node.optJSONObject("image")?.optString("large").orEmpty()
-                val castItem = LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER
-                    setPadding(dp(4), 0, dp(4), 0)
-                }
-                val portrait = ImageView(context).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    background = rounded(surface, 30)
-                }
-                if (imageUrl.startsWith("http", true)) loadImage(imageUrl, portrait)
-                castItem.addView(portrait, LinearLayout.LayoutParams(dp(54), dp(54)))
-                if (castName.isNotBlank()) castItem.addView(label(castName, 10, muted, false).apply {
-                    maxLines = 2
-                    gravity = Gravity.CENTER
-                }, LinearLayout.LayoutParams(dp(72), -2))
-                castRow.addView(castItem)
-            }
-            castScroll.addView(castRow)
-            body.addView(castScroll, bottom(12))
-        }
+        info.addView(poster, LinearLayout.LayoutParams(dp(96), dp(136)).apply { rightMargin = dp(10) })
+        if (posterUrl.startsWith("http", true)) loadImage(posterUrl, poster)
+        val meta = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        meta.addView(label(animeTitle, 17, fg, true))
+        meta.addView(label("${detail.optString("format")} • ${detail.optString("status")}", 11, muted, false))
+        meta.addView(label("Episodes: ${detail.optInt("episodes", watch?.optJSONArray("episodes")?.length() ?: 0)}", 12, muted, false))
+        meta.addView(label("Score: ${detail.optDouble("averageScore", 0.0)}", 12, muted, false))
+        info.addView(meta, LinearLayout.LayoutParams(0, -2, 1f))
+        body.addView(info, bottom(12))
         val plot = android.text.Html.fromHtml(detail.optString("description"), android.text.Html.FROM_HTML_MODE_COMPACT).toString().trim()
         if (plot.isNotBlank()) body.addView(label(plot, 13, muted, false), bottom(12))
         val eps = watch?.optJSONArray("episodes")
@@ -885,45 +844,17 @@ class AniLightNativeScreen(
         val available = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }.filter { it.optBoolean(language, false) }
         available.forEach { ep ->
             val number = ep.optInt("number", 1)
-            val episodeTitle = ep.optString("title").ifBlank { "Episode $number" }
-            val thumbnailUrl = listOf("thumbnail", "thumbnailUrl", "image", "imageUrl", "img")
-                .map { ep.optString(it) }.firstOrNull { it.startsWith("http", true) }
-                ?: posterUrl
-            val card = row().apply {
+            val line = row().apply {
                 gravity = Gravity.CENTER_VERTICAL
                 background = rounded(surface, 10)
-                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setPadding(dp(12), dp(12), dp(12), dp(12))
                 isFocusable = true
                 setOnClickListener { resolveEpisode(number) }
             }
-            val thumb = FrameLayout(context).apply {
-                background = rounded(bg, 7)
-                clipToOutline = true
-            }
-            val image = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
-            thumb.addView(image, FrameLayout.LayoutParams(-1, -1))
-            if (thumbnailUrl.startsWith("http", true)) loadImage(thumbnailUrl, image)
-            thumb.addView(label("▶", 16, Color.WHITE, true).apply {
-                gravity = Gravity.CENTER
-                background = rounded(0x99000000.toInt(), 24)
-                setPadding(dp(8), dp(5), dp(8), dp(5))
-            })
-            card.addView(thumb, LinearLayout.LayoutParams(dp(104), dp(66)).apply { rightMargin = dp(10) })
-            val details = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            details.addView(label("$number. $episodeTitle", 13, fg, true))
-            val runtime = ep.optString("duration").ifBlank { ep.optString("length") }
-            val date = ep.optString("airDate").ifBlank { ep.optString("date") }
-            val metaLine = listOf(runtime, date, language.uppercase()).filter { it.isNotBlank() }.joinToString(" • ")
-            if (metaLine.isNotBlank()) details.addView(label(metaLine, 10, muted, false))
-            val summary = android.text.Html.fromHtml(
-                ep.optString("description"), android.text.Html.FROM_HTML_MODE_COMPACT
-            ).toString().trim()
-            if (summary.isNotBlank()) details.addView(label(summary, 11, muted, false).apply {
-                maxLines = 3
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            })
-            card.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
-            body.addView(card, bottom(7))
+            line.addView(label("▶", 17, accent, true), LinearLayout.LayoutParams(dp(32), -2))
+            line.addView(label("$number. ${ep.optString("title").ifBlank { "Episode $number" }}", 13, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+            line.addView(label(language.uppercase(), 10, accent, true))
+            body.addView(line, bottom(6))
         }
         if (available.isEmpty()) body.addView(label("এই ভাষায় episode পাওয়া যায়নি।", 13, muted, false))
     }
