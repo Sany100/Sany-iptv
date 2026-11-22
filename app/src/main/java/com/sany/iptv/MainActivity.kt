@@ -904,7 +904,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, dp(7))
         })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        headerTitleView = text(if (section == "Movies") "Movies" else section, 19, white, true)
+        headerTitleView = text(if (section == "Series") "Development" else section, 19, white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         if (section == "Live TV") {
             val playlistButton = text("Sany iptv Channel  ▾", 10, accent, true).apply {
@@ -1028,7 +1028,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Series") {
-            renderNativeMovies(true)
+            renderDevelopmentSection()
             return
         }
         if (section == "Movies") {
@@ -1099,14 +1099,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderNativeMovies(showSeries: Boolean) {
+        if (showSeries) {
+            renderDevelopmentSection()
+            return
+        }
         val screen = NativeMoviesScreen(
             context = this,
-            seriesMode = showSeries,
+            seriesMode = false,
             light = isLight,
             accent = accent,
-            onPlay = { title, url -> play(Channel(title, url, if (showSeries) "Series" else "Movies")) }
+            onPlay = { title, url -> play(Channel(title, url, "Movies")) }
         )
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
+    }
+
+    // Series is intentionally disabled. Keep this page empty except for its label.
+    private fun renderDevelopmentSection() {
+        contentArea.removeAllViews()
+        contentArea.addView(
+            text("Development", 16, muted, true).apply {
+                gravity = Gravity.CENTER
+            },
+            LinearLayout.LayoutParams(-1, -1)
+        )
     }
 
     // Legacy WebView code remains temporarily for safe rollback; native pages no longer call it.
@@ -1814,7 +1829,7 @@ class MainActivity : AppCompatActivity() {
                     // Reuse the existing shell and header; rebuild only the page content
                     // and the five small navigation items. This avoids a full-screen layout
                     // pass on every menu tap.
-                    headerTitleView?.text = if (section == "Movies") "Movies" else section
+                    headerTitleView?.text = if (section == "Series") "Development" else section
                     renderSection()
                     renderBottomNav()
                     if (isTvDevice) bottomNav.getChildAt(
@@ -1843,7 +1858,7 @@ class MainActivity : AppCompatActivity() {
                 item.addView(loadingRow, LinearLayout.LayoutParams(-1, -2))
             } else {
                 item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
-                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else name, 12, if (active) accent else muted, active).apply {
+                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Development" else name, 12, if (active) accent else muted, active).apply {
                     gravity = Gravity.CENTER
                     setPadding(0, 0, 0, 0)
                 }
@@ -3185,7 +3200,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun play(channel: Channel, startPlayback: Boolean = true, ftpCredentials: Pair<String, String>? = null) {
-        if (section != "Live TV" && section != "Movies" && section != "Series") return
+        if (section != "Live TV" && section != "Movies") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
