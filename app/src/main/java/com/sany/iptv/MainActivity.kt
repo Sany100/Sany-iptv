@@ -9,7 +9,6 @@ import android.content.Intent
 import android.net.Uri
 import android.content.pm.ActivityInfo
 import android.graphics.Color
-import android.media.audiofx.LoudnessEnhancer
 import android.graphics.BitmapFactory
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -39,7 +38,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DataSource
@@ -111,7 +109,6 @@ class MainActivity : AppCompatActivity() {
     private var searchQuery = ""
     private var liveTvSearchQuery = ""
     private var player: ExoPlayer? = null
-    private var loudnessEnhancer: LoudnessEnhancer? = null
     private var trackSelector: DefaultTrackSelector? = null
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
     private var playbackRetryCount = 0
@@ -3723,22 +3720,15 @@ class MainActivity : AppCompatActivity() {
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(streamDataSourceFactory)
 
+        // Use Media3's platform-default decoder ordering for every section.
+        // A custom codec-priority selector can force a broken software/hardware decoder
+        // to the front of the list and crash playback across Live TV, Movies and Anime.
+        // Keep decoder fallback enabled so Media3 can try another compatible decoder.
+        val rendererFactory = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
         val p = player ?: ExoPlayer.Builder(
             this,
-            DefaultRenderersFactory(this)
-                // If a device decoder fails during longer Anime playback, allow Media3
-                // to fall back to another compatible decoder instead of terminating playback.
-                .setEnableDecoderFallback(true)
-                .setMediaCodecSelector(
-                    MediaCodecSelector { mimeType, secure, tunneling ->
-                        val available = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, secure, tunneling)
-                        val preferHardware = prefs.getBoolean("hardware_decoder", true)
-                        // Keep every compatible decoder in the list; only change priority.
-                        // Filtering to hardware-only/software-only can leave no recovery path
-                        // when a codec crashes or rejects a particular episode stream.
-                        available.sortedBy { if (it.hardwareAccelerated == preferHardware) 0 else 1 }
-                    }
-                )
+            rendererFactory
         ).setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(DefaultTrackSelector(this).also { selector ->
                 trackSelector = selector
@@ -3839,17 +3829,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 })
                 player = created
-                // Raise all-channel amplitude to approximately +70% (4.6 dB).
-                // This is applied to the shared audio session used by every channel.
-                try {
-                    loudnessEnhancer?.release()
-                    loudnessEnhancer = LoudnessEnhancer(created.audioSessionId).apply {
-                        setTargetGain(460)
-                        enabled = true
-                    }
-                } catch (_: Exception) {
-                    loudnessEnhancer = null
-                }
             }
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
@@ -4725,8 +4704,6 @@ class MainActivity : AppCompatActivity() {
         player?.release()
         player = null
         trackSelector = null
-        loudnessEnhancer?.release()
-        loudnessEnhancer = null
         playerView = null
         animeEpisodePanel = null
         animeCenterPlayButton = null
