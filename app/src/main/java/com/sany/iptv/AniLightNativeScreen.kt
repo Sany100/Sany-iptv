@@ -65,11 +65,84 @@ class AniLightNativeScreen(
     @Volatile private var session: String? = null
     @Volatile private var sessionExpiry = 0L
 
+    // Anime-only page history. Detached page views preserve their exact UI and scroll state.
+    private data class AnimePageSnapshot(
+        val children: List<View>,
+        val scrollY: Int,
+        val isHomePage: Boolean,
+        val showingFilterResults: Boolean,
+        val filterHasNext: Boolean,
+        val filterPage: Int,
+        val filterSort: String,
+        val filterGenre: String?,
+        val autoPageLoading: Boolean,
+        val slug: String,
+        val animeId: Int,
+        val animeTitle: String,
+        val language: String,
+        val anime: JSONObject?,
+        val contentHost: LinearLayout?
+    )
+    private val pageHistory = java.util.ArrayDeque<AnimePageSnapshot>()
+
+    private fun pushCurrentPage() {
+        if (!::body.isInitialized || body.childCount == 0) return
+        val savedContentHost = if (isHomePage && ::contentHost.isInitialized) contentHost else null
+        val children = (0 until body.childCount).map { body.getChildAt(it) }
+        pageHistory.addLast(
+            AnimePageSnapshot(
+                children, catalogueScroll?.scrollY ?: 0, isHomePage,
+                showingFilterResults, filterHasNext, filterPage, filterSort,
+                filterGenre, autoPageLoading, slug, animeId, animeTitle,
+                language, anime, savedContentHost
+            )
+        )
+        body.removeAllViews()
+        // Keep the saved homepage view untouched while the destination renders.
+        if (savedContentHost != null) {
+            contentHost = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, dp(4), 0, dp(24))
+            }
+            body.addView(contentHost, bottom(12))
+        }
+    }
+
+    private fun restorePreviousPage(): Boolean {
+        if (pageHistory.isEmpty() || !::body.isInitialized) return false
+        val previous = pageHistory.removeLast()
+        body.removeAllViews()
+        previous.children.forEach { body.addView(it) }
+        if (previous.contentHost != null) contentHost = previous.contentHost
+        isHomePage = previous.isHomePage
+        showingFilterResults = previous.showingFilterResults
+        filterHasNext = previous.filterHasNext
+        filterPage = previous.filterPage
+        filterSort = previous.filterSort
+        filterGenre = previous.filterGenre
+        autoPageLoading = previous.autoPageLoading
+        slug = previous.slug
+        animeId = previous.animeId
+        animeTitle = previous.animeTitle
+        language = previous.language
+        anime = previous.anime
+        catalogueScroll?.post { catalogueScroll?.scrollTo(0, previous.scrollY) }
+        return true
+    }
+
+    private fun goHome() {
+        pageHistory.clear()
+        home()
+    }
+
     /** Returns true when Back was consumed inside the AniLight screen. */
     fun handleBack(): Boolean {
-        if (isHomePage) return false
-        home()
-        return true
+        if (restorePreviousPage()) return true
+        if (!isHomePage) {
+            home()
+            return true
+        }
+        return false
     }
 
     fun create(): View {
@@ -491,6 +564,7 @@ class AniLightNativeScreen(
     }
 
     private fun loadFiltered(sort: String, genre: String?, page: Int = 1, keepHomeChrome: Boolean = false) {
+        if (page == 1) pushCurrentPage()
         isHomePage = keepHomeChrome
         showingFilterResults = true
         if (page == 1) {
@@ -528,6 +602,7 @@ class AniLightNativeScreen(
         showingFilterResults = false
         filterHasNext = false
         if (q.isBlank()) { category("trending"); return }
+        pushCurrentPage()
         isHomePage = false
         loading("Searching…")
         request("$api/search?q=${enc(q)}&hideAdult=true") { data ->
@@ -546,7 +621,7 @@ class AniLightNativeScreen(
             target.removeAllViews()
             val head = row()
             head.addView(label(title.uppercase(), 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-            head.addView(button("HOME") { home() })
+            head.addView(button("HOME") { goHome() })
             target.addView(head, bottom(14))
         }
         if (cards.isEmpty() && !append) {
@@ -691,10 +766,12 @@ class AniLightNativeScreen(
     }
 
     private fun openAnime(item: JSONObject) {
+        val nextSlug = item.optString("slug")
+        if (nextSlug.isBlank()) { toast("Anime slug পাওয়া যায়নি"); return }
+        pushCurrentPage()
         isHomePage = false
-        slug = item.optString("slug")
+        slug = nextSlug
         language = "sub"
-        if (slug.isBlank()) { toast("Anime slug পাওয়া যায়নি"); return }
         loading("Loading anime details…")
         request("$api/anime/$slug") { detail ->
             if (detail == null) { toast("Anime details load হয়নি"); return@request }
@@ -709,7 +786,7 @@ class AniLightNativeScreen(
     private fun showDetails(detail: JSONObject, watch: JSONObject?) {
         body.removeAllViews()
         val head = row()
-        head.addView(button("‹ BACK") { home() })
+        head.addView(button("‹ BACK") { if (!restorePreviousPage()) home() })
         head.addView(label("ANIME DETAILS", 13, accent, true).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(0, -2, 1f))
         body.addView(head, bottom(12))
         val cover = detail.optJSONObject("coverImage")
