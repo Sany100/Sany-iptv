@@ -1118,21 +1118,31 @@ class AniLightNativeScreen(
                     }.thenByDescending {
                         Regex("(\\d{3,4})").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                     })
-                val selected = preferred.firstOrNull()
                 ui.post {
-                    if (selected == null) {
+                    if (preferred.isEmpty()) {
                         toast("কোনো playable source পাওয়া যায়নি। Main server বা backup server-এ এই Episode-এর link নাও থাকতে পারে।")
                         showDetailsAgain()
                         return@post
                     }
-                    language = selected.language
                     currentEpisodeNumber = episode
-                    saveWatchLater(anime ?: JSONObject(), episode, selected.language)
-                    onPlay(
-                        "$animeTitle • Episode $episode • ${selected.language.uppercase()}",
-                        selected.url,
-                        subtitlesByLanguage[selected.language]?.firstOrNull()
-                    )
+                    val labels = preferred.mapIndexed { index, source ->
+                        val langLabel = if (source.language.equals("dub", true)) "DUB" else "SUB"
+                        "$langLabel  •  ${source.quality}  •  Server ${index + 1}"
+                    }.toTypedArray()
+                    AlertDialog.Builder(context)
+                        .setTitle("$animeTitle • Episode $episode\nSelect video source")
+                        .setItems(labels) { _, which ->
+                            val selected = preferred[which]
+                            language = selected.language
+                            saveWatchLater(anime ?: JSONObject(), episode, selected.language)
+                            onPlay(
+                                "$animeTitle • Episode $episode • ${selected.language.uppercase()} • ${selected.quality}",
+                                selected.url,
+                                subtitlesByLanguage[selected.language]?.firstOrNull()
+                            )
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
                     showDetailsAgain()
                 }
             } catch (e: Exception) {
