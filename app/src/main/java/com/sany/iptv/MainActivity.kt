@@ -1489,8 +1489,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // Build the Live TV directory from playlist metadata immediately.
+        // Stream verification continues in the background and only controls which
+        // channels can actually appear in the playable channel list.
         val directoryChannels = if (section == "Live TV") {
-            liveTvVisibleCandidates().filter { !isMovie(it) && !isSeries(it) }
+            channels.filter { !isMovie(it) && !isSeries(it) }
         } else channels
         val groups = listOf("All") + directoryChannels.asSequence().map { it.group }
             .distinct().filter { it.isNotBlank() }.take(250).sorted().toList()
@@ -2728,8 +2731,8 @@ class MainActivity : AppCompatActivity() {
     // Try multiple public delivery routes; use the last successful local copy offline.
     private fun fetchPlaylistText(url: String): String {
         val candidates = if (url == permanentPlaylistUrl) listOf(
-            permanentPlaylistUrl,
             "https://cdn.jsdelivr.net/gh/Sany100/Sany-iptv@main/playlist.m3u",
+            permanentPlaylistUrl,
             "https://github.com/Sany100/Sany-iptv/raw/refs/heads/main/playlist.m3u"
         ) else listOf(url)
         var lastError: Exception? = null
@@ -2737,8 +2740,8 @@ class MainActivity : AppCompatActivity() {
             var connection: HttpURLConnection? = null
             try {
                 connection = URL(candidate).openConnection() as HttpURLConnection
-                connection.connectTimeout = 10000
-                connection.readTimeout = 20000
+                connection.connectTimeout = 5000
+                connection.readTimeout = 12000
                 connection.instanceFollowRedirects = true
                 connection.useCaches = false
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) SANY-IPTV/1.0")
@@ -2781,8 +2784,14 @@ class MainActivity : AppCompatActivity() {
                     if (parsed.isEmpty()) {
                         toast("No playable entries found in this playlist")
                     } else {
+                        val playlistChanged = parsed != channels
+                        val needsLiveTvRender = playlistChanged || section != "Live TV" ||
+                            selectedGroup != "Select category" || searchQuery.isNotEmpty()
                         channels = parsed
-                        streamChecks.clear()
+                        // Keep the last known stream-health results so verified channels
+                        // remain visible immediately while this launch's refresh runs.
+                        val currentUrls = parsed.mapTo(HashSet()) { it.url }
+                        streamChecks.keys.retainAll(currentUrls)
                         savePlaylistUrl(url)
                         section = "Live TV"
                         selectedGroup = "Select category"; searchQuery = ""
@@ -2792,7 +2801,7 @@ class MainActivity : AppCompatActivity() {
                             prefs.edit().putString("epg_url", detectedEpgUrl).apply()
                             if (prefs.getBoolean("auto_add_epg", true)) updateEpgData(detectedEpgUrl, false)
                         }
-                        renderHome()
+                        if (needsLiveTvRender) renderHome()
                         startPlaylistCheck(false)
                         toast(if (usedCache) "Offline mode: loaded ${channels.size} saved items"
                             else "Loaded ${channels.size} items — checking streams")
