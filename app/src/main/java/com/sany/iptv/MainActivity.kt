@@ -1184,7 +1184,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), dp(6), dp(4), dp(8))
         }
-        toolbar.addView(text("ANILIGHT", 13, accent, true), LinearLayout.LayoutParams(0, dp(40), 1f))
+        toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(40), 1f))
         toolbar.addView(actionButton("OPEN") {
             try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://anilight.live/"))) }
             catch (_: Exception) { toast("Browser খোলা যাচ্ছে না") }
