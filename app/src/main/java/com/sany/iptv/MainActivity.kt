@@ -3635,13 +3635,20 @@ class MainActivity : AppCompatActivity() {
             if (p.isPlaying) p.pause() else p.play()
         }
         val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
-        transportRow.addView(channelIdentity, LinearLayout.LayoutParams(dp(126), -1))
+        // Anime episodes do not use channel identity or channel-skip controls.
+        val isAnimeEpisode = section == "Series"
+        channelIdentity.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
+        previousButton.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
+        nextButton.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
+        if (!isAnimeEpisode) transportRow.addView(channelIdentity, LinearLayout.LayoutParams(dp(126), -1))
         listOf(previousButton, playPauseButton, nextButton).forEachIndexed { index, button ->
             button.textSize = if (index == 1) 21f else 19f
             button.typeface = if (index == 1) Typeface.create("sans-serif-light", Typeface.NORMAL) else Typeface.DEFAULT
-            transportRow.addView(button, LinearLayout.LayoutParams(0, dp(27), 1f).apply {
-                if (index == 1) { leftMargin = dp(4); rightMargin = dp(4) }
-            })
+            if (button.visibility == View.VISIBLE) {
+                transportRow.addView(button, LinearLayout.LayoutParams(0, dp(27), 1f).apply {
+                    if (index == 1 && !isAnimeEpisode) { leftMargin = dp(4); rightMargin = dp(4) }
+                })
+            }
         }
         controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(27)))
 
@@ -3812,6 +3819,7 @@ class MainActivity : AppCompatActivity() {
                 positionLabel.text = formatPlayerTime(position)
                 durationLabel.text = formatPlayerTime(if (duration > 0) duration else 0L)
                 playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
+                if (section == "Series" && position > 0L && position % 5_000L < 600L) saveAnimeResumePosition(p, channel)
                 controlsHandler.postDelayed(this, 500L)
             }
         }
@@ -3927,7 +3935,9 @@ class MainActivity : AppCompatActivity() {
                 )
             )
         }
-        p.setMediaItem(itemBuilder.build())
+        val mediaItem = itemBuilder.build()
+        val animeResumePosition = if (section == "Series") prefs.getLong(animeResumePreferenceKey(channel), 0L).coerceAtLeast(0L) else 0L
+        if (animeResumePosition > 0L) p.setMediaItem(mediaItem, animeResumePosition) else p.setMediaItem(mediaItem)
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
         p.prepare()
         p.playWhenReady = startPlayback
@@ -3949,6 +3959,19 @@ class MainActivity : AppCompatActivity() {
             }
         }
         target.setParameters(builder)
+    }
+
+    private fun animeResumePreferenceKey(channel: Channel): String = "anime_resume_" + channel.name.trim().hashCode().toString()
+
+    private fun saveAnimeResumePosition(activePlayer: ExoPlayer?, channel: Channel?) {
+        if (section != "Series" || activePlayer == null || channel == null) return
+        val duration = activePlayer.duration
+        val position = activePlayer.currentPosition.coerceAtLeast(0L)
+        if (duration <= 0L || position < 10_000L) return
+        val editor = prefs.edit()
+        if (activePlayer.playbackState == Player.STATE_ENDED || duration - position <= 30_000L) editor.remove(animeResumePreferenceKey(channel))
+        else editor.putLong(animeResumePreferenceKey(channel), position)
+        editor.apply()
     }
 
     private fun formatPlayerTime(milliseconds: Long): String {
@@ -4455,6 +4478,8 @@ class MainActivity : AppCompatActivity() {
         // Stop the engine while backgrounded, then restore the same play/pause intent on return.
         val shouldRestorePlayer = !closingPip && !prefs.getBoolean("floating_window_enabled", true) &&
             playerView != null && currentChannel != null && player?.playbackState != Player.STATE_IDLE
+        // Save Anime Series episode progress before stopping playback in the background.
+        saveAnimeResumePosition(player, currentChannel)
         val stateEditor = prefs.edit()
         if (shouldRestorePlayer) {
             stateEditor.putString("resume_channel_url", currentChannel?.url)
