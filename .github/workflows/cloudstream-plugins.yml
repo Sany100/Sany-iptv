@@ -47,9 +47,10 @@ jobs:
           sed -i 's/gradle-7.4-bin.zip/gradle-8.12-bin.zip/' "$RUNNER_TEMP/cloudstream-build/gradle/wrapper/gradle-wrapper.properties"
           sed -i 's/com.android.tools.build:gradle:7.0.4/com.android.tools.build:gradle:8.7.3/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           sed -i 's/kotlin-gradle-plugin:1.7.10/kotlin-gradle-plugin:2.4.0/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
+          sed -i 's/compileSdkVersion(30)/compileSdkVersion(36)/; s/targetSdk = 30/targetSdk = 35/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           # Match the pinned CloudStream Gradle plugin: it registers a configuration named "cloudstream".
           sed -i 's/val apk by configurations/val cloudstream by configurations/; s/apk("com.lagradost:cloudstream3:pre-release")/cloudstream("com.lagradost:cloudstream3:pre-release")/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
-          # AniLight does not use NiceHttp; the template dependency is currently unavailable from JitPack.
+          # Use CloudStream-compatible NiceHttp and Jackson versions for the AniLight API client.
           sed -i 's/implementation("com.github.Blatzar:NiceHttp:0.3.2")/implementation("com.github.Blatzar:NiceHttp:0.4.18")/; /implementation("org.jsoup:jsoup:1.13.1")/a\\        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           cp -a "$GITHUB_WORKSPACE/source/cloudstream-original/AniLight" "$RUNNER_TEMP/cloudstream-build/AniLight"
           # AGP 8 requires an explicit Android namespace for library modules.
