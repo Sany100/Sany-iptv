@@ -241,3 +241,24 @@ The workflow is triggered by changes to either `cloudstream-runtime/**` or
 before claiming AniLight source/API compatibility. Even a successful compile
 does not prove that the generated `.cs3` loads in SANY, that AniLight's live
 movie API returns a playable URL, or that SANY Media3 playback succeeds.
+
+
+## 2026-11-23 exact AniLight ABI compile result
+
+The pinned upstream ABI validation workflow completed successfully:
+
+- Workflow run: https://github.com/Sany100/Sany-iptv/actions/runs/45094997414
+- Run ID: `45094997414`
+- Commit tested: `b7d6cb8652e0172fc9ca7dfe76b3b61ae8fe9321`
+- Upstream baseline build: passed.
+- Unchanged AniLight provider compile against the exact upstream Android app/library classpath: passed.
+
+This closes the source/API compile probe only. The validation copied the provider
+source into the pinned upstream app module and compiled it there; it did not
+create an embeddable SANY Android library, execute the packaged `.cs3` DEX,
+exercise live AniLight API calls, or play a stream through SANY Media3.
+
+Next gate is a separately testable host-service bridge for AniLight's provider
+calls (HTTP client, JSON utilities, coroutine/runtime services and provider
+registration). DEX loading must remain disabled until those services and the
+matching upstream ABI are present in SANY and covered by tests.
