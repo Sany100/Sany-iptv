@@ -1365,8 +1365,10 @@ class AniLightNativeScreen(
                 // Resolve all load-balancer tokens concurrently. Previously each
                 // token performed its own redirect request one after another, so
                 // a page with several qualities could take many seconds to show.
-                val linkPool = Executors.newFixedThreadPool(8)
-                val pendingLinks = mutableListOf<java.util.concurrent.Future<ResolvedSource?>>()
+                // Use a wider pool and collect completed redirects immediately.
+                val linkPool = Executors.newFixedThreadPool(16)
+                val linkCompletions = java.util.concurrent.ExecutorCompletionService<ResolvedSource?>(linkPool)
+                var linkTaskCount = 0
                 fun add(data: JSONObject?, languageCode: String, checkHls: Boolean) {
                     val subtitles = subtitlesByLanguage.getOrPut(languageCode) { linkedSetOf() }
                     val tracks = data?.optJSONArray("tracks")
@@ -1390,7 +1392,8 @@ class AniLightNativeScreen(
                             val quality = entry.optString("quality").ifBlank {
                                 entry.optString("server").ifBlank { if (checkHls) "HLS" else "Auto" }
                             }
-                            pendingLinks.add(linkPool.submit<ResolvedSource?> {
+                            linkTaskCount++
+                            linkCompletions.submit<ResolvedSource?> {
                                 val resolved = resolveToken(token) ?: return@submit null
                                 // AniLight load-balancer URLs are often extensionless.
                                 // Use advertised quality and URL hints instead of a slow probe.
@@ -1421,24 +1424,38 @@ class AniLightNativeScreen(
                     )
                 }
                 val sourcePool = Executors.newFixedThreadPool(4)
+                val sourceCompletions = java.util.concurrent.ExecutorCompletionService<Triple<String, Boolean, JSONObject?>>(sourcePool)
                 try {
-                    val futures = requests.map { request ->
-                        sourcePool.submit<Triple<String, Boolean, JSONObject?>> {
+                    requests.forEach { request ->
+                        sourceCompletions.submit<Triple<String, Boolean, JSONObject?>> {
                             Triple(request.first, request.second, sourceBlocking(request.third))
                         }
                     }
-                    futures.forEach { future ->
-                        val (languageCode, isBackup, data) = future.get()
-                        add(data, languageCode, isBackup)
+                    // Do not let one slow SUB/DUB or backup endpoint block faster results.
+                    var completed = 0
+                    val metadataDeadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(4)
+                    while (completed < requests.size) {
+                        val remaining = metadataDeadline - System.nanoTime()
+                        if (remaining <= 0) break
+                        val future = sourceCompletions.poll(remaining, java.util.concurrent.TimeUnit.NANOSECONDS) ?: break
+                        runCatching { future.get() }.getOrNull()?.let { (languageCode, isBackup, data) ->
+                            add(data, languageCode, isBackup)
+                        }
+                        completed++
                     }
                 } finally {
-                    sourcePool.shutdown()
+                    sourcePool.shutdownNow()
                 }
                 try {
-                    // All token redirects run in parallel; retain the provider order
-                    // when collecting results so the source list remains predictable.
-                    pendingLinks.forEach { future ->
+                    // Show available sources quickly; skip only redirects that exceed the short wait budget.
+                    var completed = 0
+                    val linkDeadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
+                    while (completed < linkTaskCount) {
+                        val remaining = linkDeadline - System.nanoTime()
+                        if (remaining <= 0) break
+                        val future = linkCompletions.poll(remaining, java.util.concurrent.TimeUnit.NANOSECONDS) ?: break
                         runCatching { future.get() }.getOrNull()?.let { sources.add(it) }
+                        completed++
                     }
                 } finally {
                     linkPool.shutdownNow()
