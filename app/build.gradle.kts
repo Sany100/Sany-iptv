@@ -35,11 +35,7 @@ android {
             }
         }
     }
-    sourceSets.getByName("main").java.apply {
-        srcDir("../cloudstream-original/AniLight/src/main/kotlin")
-        // Donation UI depends on CloudStream's app-only CommonActivity and is not part of SANY's provider host.
-        exclude("com/raghav/donation/**")
-    }
+    sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
 
     defaultConfig {
         minSdk = 23
