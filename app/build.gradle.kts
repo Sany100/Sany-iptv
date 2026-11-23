@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
 }
 
 // Firebase is enabled when app/google-services.json is supplied (local file or CI secret).
