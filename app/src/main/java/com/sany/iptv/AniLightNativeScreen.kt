@@ -36,7 +36,8 @@ class AniLightNativeScreen(
     private val accent: Int,
     private val onPlay: (SanyPlaybackRequest) -> Unit,
     private val onPlaybackLoading: (String, Boolean) -> Unit = { _, _ -> },
-    private val onBrowseCloudStreamProviders: () -> Unit = {}
+    private val onBrowseCloudStreamProviders: () -> Unit = {},
+    private val onCloudStreamResult: (providerName: String, url: String, title: String) -> Unit = { _, _, _ -> }
 ) {
     @Volatile private var api = "https://api.anilight.live/api"
     @Volatile private var site = "https://anilight.live"
@@ -601,6 +602,10 @@ class AniLightNativeScreen(
                             setPadding(dp(12), dp(12), dp(12), dp(12))
                             background = rounded(surface, 10)
                             contentDescription = "${provider.name}: $title"
+                            isFocusable = true
+                            setOnClickListener {
+                                onCloudStreamResult(provider.name, entry.url, title)
+                            }
                         }
                         host.addView(row, bottom(6))
                         count++
