@@ -280,7 +280,7 @@ object SanyMovieExtensionManager {
             setRequestProperty("Accept", "application/json")
         }
         try {
-            require(connection.responseCode in 200..299) { "Repository HTTP ${connection.responseCode}" }
+            require(connection.responseCode in 200..299) { "Repository HTTP ${connection.responseCode}: $url" }
             val output = ByteArrayOutputStream()
             connection.inputStream.use { input ->
                 val buffer = ByteArray(8 * 1024)
@@ -340,7 +340,7 @@ object SanyMovieExtensionManager {
                 require(!location.isNullOrBlank()) { "Repository redirect has no Location header" }
                 current = URL(current, location)
             } else {
-                require(status in 200..299) { "Movie repository HTTP $status" }
+                require(status in 200..299) { "Movie repository HTTP $status: ${current.toString()}" }
                 return connection
             }
         }
