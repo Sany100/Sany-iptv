@@ -31,7 +31,8 @@ class NativeMoviesScreen(
     private val accent: Int,
     private val onPlay: (String, String) -> Unit,
     private val onManageExtensions: () -> Unit = {},
-    private val onOpenExtensionProvider: (String) -> Unit = {}
+    private val onOpenExtensionProvider: (String) -> Unit = {},
+    private val onOpenExtensionTitle: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     private data class Movie(val title: String, val url: String, val category: String, val poster: String)
     private val prefs = context.getSharedPreferences("sany_iptv", Context.MODE_PRIVATE)
@@ -117,6 +118,11 @@ class NativeMoviesScreen(
                 body.addView(entry, LinearLayout.LayoutParams(-1, dp(52)).apply {
                     bottomMargin = dp(8)
                 })
+                val homeHost = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+                body.addView(homeHost, LinearLayout.LayoutParams(-1, -2).apply {
+                    bottomMargin = dp(14)
+                })
+                loadExtensionHome(provider.name, homeHost)
             }
         }
 
@@ -139,6 +145,76 @@ class NativeMoviesScreen(
         movies.map { it.category }.distinct().forEach { category ->
             addSectionTitle(category)
             addMovieRow(movies.filter { it.category == category })
+        }
+    }
+
+    /** Load the provider's own homepage catalogue into the separate Movies screen. */
+    private fun loadExtensionHome(providerName: String, host: LinearLayout) {
+        host.removeAllViews()
+        host.addView(label("Loading $providerName movies…", 13, muted, false))
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val result = runCatching {
+                kotlinx.coroutines.withTimeout(25_000L) {
+                    SanyCloudStreamPluginRuntime.homePage(providerName, 1)
+                }
+            }
+            mainHandler.post {
+                if (host.parent == null) return@post
+                host.removeAllViews()
+                result.onSuccess { shelves ->
+                    val visibleShelves = shelves.filter { it.list.isNotEmpty() }
+                    if (visibleShelves.isEmpty()) {
+                        host.addView(label(
+                            "$providerName-এর homepage catalogue নেই। SEARCH MOVIES দিয়ে খুঁজুন।",
+                            13, muted, false
+                        ))
+                    } else {
+                        visibleShelves.forEach { shelf ->
+                            host.addView(label(shelf.name, 17, fg, true),
+                                LinearLayout.LayoutParams(-1, -2).apply {
+                                    topMargin = dp(8); bottomMargin = dp(8)
+                                })
+                            val row = LinearLayout(context).apply {
+                                orientation = LinearLayout.HORIZONTAL
+                            }
+                            shelf.list.take(20).forEach { item ->
+                                val tile = TextView(context).apply {
+                                    text = item.name
+                                    textSize = 13f
+                                    typeface = Typeface.DEFAULT_BOLD
+                                    setTextColor(fg)
+                                    gravity = Gravity.CENTER
+                                    setPadding(dp(12), dp(14), dp(12), dp(14))
+                                    minWidth = dp(132)
+                                    maxWidth = dp(172)
+                                    minHeight = dp(88)
+                                    background = rounded(card, 14)
+                                    isFocusable = true
+                                    setOnClickListener {
+                                        onOpenExtensionTitle(providerName, item.url, item.name)
+                                    }
+                                }
+                                row.addView(tile, LinearLayout.LayoutParams(-2, -2).apply {
+                                    rightMargin = dp(8)
+                                })
+                            }
+                            val horizontal = HorizontalScrollView(context).apply {
+                                isHorizontalScrollBarEnabled = false
+                                overScrollMode = View.OVER_SCROLL_NEVER
+                                addView(row)
+                            }
+                            host.addView(horizontal, LinearLayout.LayoutParams(-1, -2).apply {
+                                bottomMargin = dp(10)
+                            })
+                        }
+                    }
+                }.onFailure { error ->
+                    host.addView(label(
+                        "Movie catalogue load failed: ${error.message ?: error.javaClass.simpleName}",
+                        13, muted, false
+                    ))
+                }
+            }
         }
     }
 
