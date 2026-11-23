@@ -61,3 +61,26 @@ Do not enable `PathClassLoader` merely because a DEX file exists. A plugin may e
 ## Current implementation boundary
 
 The current `SanyExtensionRuntime.kt` remains a repository/package downloader and validator. It does not execute plugin DEX. The audit above is not a claim of completed CloudStream runtime support.
+
+
+## 2026-11-23 source-port checkpoint
+
+The exact pinned upstream source for the following GPL-3.0 host API classes has
+now been vendored as a reference snapshot under `cloudstream-runtime/upstream-source/`:
+
+- `library/.../plugins/BasePlugin.kt` — commit-pinned upstream implementation.
+- `app/.../plugins/Plugin.kt` — Android plugin lifecycle base class.
+
+These files are intentionally outside the Android app source set. They are **not
+compiled into SANY yet** and do not make .cs3 execution available. This avoids
+introducing unresolved upstream dependencies or accidentally shipping a fake ABI.
+
+The next source-port dependency set must include the real `MainAPI`, `APIHolder`,
+`ExtractorApi`, extractor registry, host HTTP client, serialization/model types,
+logging and coroutine utilities. `BasePlugin` itself directly references
+`APIHolder`, `MainAPI`, `ExtractorApi`, `extractorApis`, and the upstream
+logging API, so compiling only these two vendored classes is insufficient.
+
+Validation gate remains unchanged: compile, install, load the actual AniLight
+.cs3 package, register its provider, search, load details/episodes, extract a
+playable source, play through SANY Media3, and unload without stale registrations.
