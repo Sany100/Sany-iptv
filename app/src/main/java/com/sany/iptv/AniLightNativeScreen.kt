@@ -316,18 +316,9 @@ class AniLightNativeScreen(
             return
         }
 
-        // Show a true edge-to-edge landscape Anime banner first. Prefer a real
-        // bannerImage so portrait covers are never stretched into a wide hero.
+        // Keep Watch Later at the top; omit the featured hero/banner section.
         val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
             .filterNot { it.optBoolean("isAdult", false) }
-        // Do not show the Overgeared featured banner above Watch Later.
-        trending.firstOrNull { item ->
-            val title = item.optJSONObject("title")
-            val name = title?.optString("english").orEmpty()
-                .ifBlank { title?.optString("romaji").orEmpty() }
-            item.optString("bannerImage").startsWith("http") &&
-                !name.contains("overgeared", ignoreCase = true)
-        }?.let { addFeaturedHero(it) }
 
         renderWatchLaterShelf()
 
