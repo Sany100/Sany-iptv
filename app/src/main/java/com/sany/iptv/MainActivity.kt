@@ -4621,14 +4621,28 @@ class MainActivity : AppCompatActivity() {
                 .setMessage("Current source: $host")
                 .setPositiveButton("OK", null).show()
         }
-        // Audio track selection is automatic: Bengali → Hindi → English.
+        // Track control sits between Source and Full Screen for Anime playback.
+        val trackAction = animeAction("≡  Track", "Select audio, subtitle or video tracks") {
+            val choices = arrayOf("Audio tracks", "Subtitles", "Video quality")
+            AlertDialog.Builder(this)
+                .setTitle("Tracks")
+                .setItems(choices) { _, which ->
+                    when (which) {
+                        0 -> showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio tracks", false)
+                        1 -> showAnimeTrackSelection(C.TRACK_TYPE_TEXT, "Subtitles", true)
+                        2 -> showAnimeTrackSelection(C.TRACK_TYPE_VIDEO, "Video quality", false)
+                    }
+                }
+                .setNegativeButton("CLOSE", null)
+                .show()
+        }
         var onAnimeFullscreenToggle: (() -> Unit)? = null
-        val fullscreenAction = animeAction("⛶  Fit Screen", "Switch between Fit Screen and Full Screen") {
+        val fullscreenAction = animeAction("⛶  Full Screen", "Switch between Full Screen and Fit Screen") {
             onAnimeFullscreenToggle?.invoke() ?: setPlayerFullscreen(!isPlayerFullscreen)
         }
-        // Replace Next Episode with the Full Screen shortcut in the Anime action strip.
+        // Replace Next Episode with Track and Full Screen shortcuts in the Anime action strip.
         // Play/Pause remains available only as the large centre overlay.
-        listOf(sourceAction, fullscreenAction).forEach { action ->
+        listOf(sourceAction, trackAction, fullscreenAction).forEach { action ->
             animeActions.addView(action, LinearLayout.LayoutParams(0, dp(32), 1f))
         }
         controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
