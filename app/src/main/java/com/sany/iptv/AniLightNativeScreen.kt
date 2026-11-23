@@ -1078,7 +1078,12 @@ class AniLightNativeScreen(
         loading("Loading all audio tracks and video sources for Episode $episode…")
         thread(name = "AniLight-Resolve") {
             try {
-                data class ResolvedSource(val language: String, val quality: String, val url: String)
+                data class ResolvedSource(
+                    val language: String,
+                    val quality: String,
+                    val url: String,
+                    val mimeType: String?
+                )
                 val sources = mutableListOf<ResolvedSource>()
                 val subtitlesByLanguage = linkedMapOf<String, LinkedHashSet<String>>()
                 fun add(data: JSONObject?, languageCode: String, checkHls: Boolean) {
@@ -1105,7 +1110,18 @@ class AniLightNativeScreen(
                             val quality = entry.optString("quality").ifBlank {
                                 entry.optString("server").ifBlank { if (checkHls) "HLS" else "Auto" }
                             }
-                            sources.add(ResolvedSource(languageCode, quality, resolved))
+                            // AniLight load-balancer URLs are often extensionless. Media3
+                            // otherwise guesses Progressive playback and rejects an HLS manifest.
+                            // Probe the resolved endpoint and pass an explicit HLS MIME hint.
+                            val hls = quality.contains("hls", ignoreCase = true) || validHls(resolved)
+                            sources.add(
+                                ResolvedSource(
+                                    languageCode,
+                                    quality,
+                                    resolved,
+                                    if (hls) "application/x-mpegURL" else null
+                                )
+                            )
                         }
                     }
                 }
@@ -1173,6 +1189,7 @@ class AniLightNativeScreen(
                                     title = "$animeTitle • Episode $episode • ${selected.language.uppercase()} • ${selected.quality}",
                                     url = selected.url,
                                     provider = "AniLight",
+                                    streamMimeType = selected.mimeType,
                                     quality = selected.quality,
                                     audioLanguage = selected.language,
                                     headers = playbackHeaders(),
@@ -1424,9 +1441,28 @@ class AniLightNativeScreen(
     }
 
     private fun validHls(url: String): Boolean {
-        val c = open(url, emptyMap(), true)
-        return try { c.responseCode in 200..299 && c.inputStream.bufferedReader().use { it.readText().take(4096) }.startsWith("#EXTM3U") }
-        catch (_: Exception) { false } finally { c.disconnect() }
+        val c = open(
+            url,
+            mapOf("Accept" to "application/vnd.apple.mpegurl, application/x-mpegURL, */*"),
+            true
+        ).apply {
+            connectTimeout = 7000
+            readTimeout = 9000
+        }
+        return try {
+            if (c.responseCode !in 200..299) return false
+            val contentType = c.contentType.orEmpty().lowercase()
+            if (contentType.contains("mpegurl") || contentType.contains("vnd.apple")) return true
+            c.inputStream.bufferedReader().use { reader ->
+                val prefix = CharArray(256)
+                val count = reader.read(prefix)
+                count > 0 && String(prefix, 0, count).trimStart().startsWith("#EXTM3U")
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            c.disconnect()
+        }
     }
 
     private fun request(url: String, done: (JSONObject?) -> Unit) {
