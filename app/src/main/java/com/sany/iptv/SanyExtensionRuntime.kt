@@ -198,20 +198,28 @@ object SanyExtensionRepositories {
     fun syncOfficialAnimePlugins(context: Context): CloudStreamAutoSyncReport {
         val indexUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
         val packageBase = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/"
-        val allowed = setOf("AniLight", "Anichi", "YugenAnime", "WcofunProvider")
         val index = JSONArray(readHttps(indexUrl, MAX_JSON_BYTES))
         val packages = mutableListOf<File>()
         val failures = mutableListOf<String>()
-
-        for (internalName in allowed) {
-            val item = (0 until index.length())
-                .mapNotNull { index.optJSONObject(it) }
-                .firstOrNull { it.optString("internalName") == internalName }
-            if (item == null) {
-                failures += "$internalName: missing from trusted plugin index"
-                continue
+        // Discover every active, supported Anime provider in the trusted SANY index.
+        // New providers published to this index are picked up on the next sync.
+        val animePlugins = (0 until index.length())
+            .mapNotNull { index.optJSONObject(it) }
+            .filter { item ->
+                val types = item.optJSONArray("tvTypes")
+                val isAnime = types != null && (0 until types.length()).any { i ->
+                    types.optString(i).equals("Anime", true) ||
+                        types.optString(i).equals("AnimeMovie", true) ||
+                        types.optString(i).equals("OVA", true)
+                }
+                val name = item.optString("internalName")
+                isAnime && item.optInt("status", 1) != 0 &&
+                    item.optInt("apiVersion", 1) <= SUPPORTED_PLUGIN_API &&
+                    name.matches(Regex("[A-Za-z0-9_.-]{1,100}"))
             }
 
+        for (item in animePlugins) {
+            val internalName = item.optString("internalName")
             try {
                 val expectedUrl = packageBase + "$internalName.cs3"
                 require(item.optString("url") == expectedUrl) {
