@@ -356,6 +356,13 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 report.failures.forEach { android.util.Log.e("SANY-CS", "Anime plugin sync failed: $it") }
+                SanyMovieExtensionManager.loadInstalled(applicationContext).forEach { result ->
+                    if (result.success) {
+                        android.util.Log.i("SANY-MOVIE", "Movie extension restored: ${result.pluginName}")
+                    } else {
+                        android.util.Log.e("SANY-MOVIE", "Movie extension restore failed: ${result.error}")
+                    }
+                }
             }.onFailure { error ->
                 android.util.Log.e("SANY-CS", "Anime plugin auto-sync failed", error)
             }
