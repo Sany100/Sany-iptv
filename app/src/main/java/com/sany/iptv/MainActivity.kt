@@ -1549,11 +1549,13 @@ class MainActivity : AppCompatActivity() {
         selectedIndex: Int
     ) {
         if (requests.isEmpty() || selectedIndex !in requests.indices) return
-        val ordered = listOf(requests[selectedIndex]) + requests.filterIndexed { index, _ -> index != selectedIndex }
-        animeFallbackRequests = ordered
-        animeFallbackIndex = 0
-        toast("Source 1/${ordered.size}: ${ordered.first().provider}")
-        playSanyPlaybackRequest(ordered.first(), preserveFallbackQueue = true)
+        // Respect the exact source the user selected. Do not silently switch
+        // to another provider/link if this selected source fails to start.
+        val selected = requests[selectedIndex]
+        animeFallbackRequests = emptyList()
+        animeFallbackIndex = -1
+        toast("Selected source: ${selected.provider}")
+        playSanyPlaybackRequest(selected)
     }
 
     private fun tryNextAnimeFallback(): Boolean {
