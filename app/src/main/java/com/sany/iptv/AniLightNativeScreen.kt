@@ -1395,7 +1395,7 @@ class AniLightNativeScreen(
                                 entry.optString("server").ifBlank { if (checkHls) "HLS" else "Auto" }
                             }
                             linkTaskCount++
-                            linkCompletions.submit<ResolvedSource?> {
+                            linkCompletions.submit {
                                 val resolved = resolveToken(token) ?: return@submit null
                                 // AniLight load-balancer URLs are often extensionless.
                                 // Use advertised quality and URL hints instead of a slow probe.
@@ -1410,7 +1410,7 @@ class AniLightNativeScreen(
                                     if (hls) "application/x-mpegURL" else null,
                                     if (checkHls) "Backup" else "Main"
                                 )
-                            })
+                            }
                         }
                     }
                 }
@@ -1432,7 +1432,7 @@ class AniLightNativeScreen(
                 val linkDeadline = startedAt + java.util.concurrent.TimeUnit.SECONDS.toNanos(7)
                 try {
                     requests.forEach { request ->
-                        sourceCompletions.submit<Triple<String, Boolean, JSONObject?>> {
+                        sourceCompletions.submit {
                             Triple(request.first, request.second, sourceBlocking(request.third))
                         }
                     }
