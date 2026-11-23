@@ -4427,6 +4427,13 @@ class MainActivity : AppCompatActivity() {
                     override fun onIsLoadingChanged(isLoading: Boolean) {
                         if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
                     }
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        // Enable PiP auto-entry only while an actual video is playing.
+                        // Pausing/stopping immediately unregisters the PiP entry path.
+                        refreshPictureInPictureParams()
+                    }
+                })
+                created.addVideoListener(object : androidx.media3.common.VideoListener {
                     override fun onRenderedFirstFrame() {
                         if (section == "Series") {
                             runOnUiThread {
@@ -4435,11 +4442,6 @@ class MainActivity : AppCompatActivity() {
                                 updateAnimeFullscreenBuffering()
                             }
                         }
-                    }
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        // Enable PiP auto-entry only while an actual video is playing.
-                        // Pausing/stopping immediately unregisters the PiP entry path.
-                        refreshPictureInPictureParams()
                     }
                 })
                 player = created
@@ -4651,7 +4653,10 @@ class MainActivity : AppCompatActivity() {
         var onAnimeFullscreenToggle: (() -> Unit)? = null
         val fullscreenAction = animeAction("⛶  Full Screen", "Switch between Full Screen and Fit Screen") {
             onAnimeFullscreenToggle?.invoke() ?: setPlayerFullscreen(!isPlayerFullscreen)
-        }.also { animeFullscreenActionButton = it }
+        }.also {
+            animeFullscreenActionButton = it
+            it.text = if (isPlayerFullscreen) "⤢  Fit Screen" else "⛶  Full Screen"
+        }
         // Replace Next Episode with Track and Full Screen shortcuts in the Anime action strip.
         // Play/Pause remains available only as the large centre overlay.
         listOf(sourceAction, trackAction, fullscreenAction).forEach { action ->
