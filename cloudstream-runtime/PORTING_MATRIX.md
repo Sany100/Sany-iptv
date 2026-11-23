@@ -142,3 +142,13 @@ This is a scope reduction for the anime-only first milestone, not a claim that
 the full CloudStream runtime or all extractors are already supported.
 
 See [ANI_LIGHT_ABI_DEPENDENCIES.md](ANI_LIGHT_ABI_DEPENDENCIES.md) for the concrete AniLight provider symbol/dependency map and the first compile boundary.
+
+
+## AniLight host-UI decoupling checkpoint (2026-11-23)
+
+Removed the provider's `DonationManager` import and homepage invocation. The
+AniLight provider no longer calls into CloudStream's donation dialog or
+`CommonActivity` lifecycle. This reduces one host coupling only; it does not
+replace the upstream plugin ABI, HTTP/JSON services, provider registry, DEX
+loader, lifecycle manager, or SANY Media3 adapter. The provider still cannot
+be loaded from `.cs3` by SANY at this checkpoint.
