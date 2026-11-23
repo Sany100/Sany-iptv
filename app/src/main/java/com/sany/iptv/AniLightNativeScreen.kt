@@ -34,7 +34,7 @@ class AniLightNativeScreen(
     private val context: Context,
     private val light: Boolean,
     private val accent: Int,
-    private val onPlay: (String, String, String?) -> Unit
+    private val onPlay: (SanyPlaybackRequest) -> Unit
 ) {
     @Volatile private var api = "https://api.anilight.live/api"
     @Volatile private var site = "https://anilight.live"
@@ -1158,10 +1158,26 @@ class AniLightNativeScreen(
                             val selected = preferred[which]
                             language = selected.language
                             saveWatchLater(anime ?: JSONObject(), episode, selected.language)
+                            val selectedSubtitles = subtitlesByLanguage[selected.language]
+                                .orEmpty()
+                                .mapIndexed { subtitleIndex, subtitleUrl ->
+                                    SanySubtitleTrack(
+                                        url = subtitleUrl,
+                                        language = selected.language,
+                                        mimeType = "text/vtt",
+                                        label = "${selected.language.uppercase()} Subtitle ${subtitleIndex + 1}"
+                                    )
+                                }
                             onPlay(
-                                "$animeTitle • Episode $episode • ${selected.language.uppercase()} • ${selected.quality}",
-                                selected.url,
-                                subtitlesByLanguage[selected.language]?.firstOrNull()
+                                SanyPlaybackRequest(
+                                    title = "$animeTitle • Episode $episode • ${selected.language.uppercase()} • ${selected.quality}",
+                                    url = selected.url,
+                                    provider = "AniLight",
+                                    quality = selected.quality,
+                                    audioLanguage = selected.language,
+                                    headers = playbackHeaders(),
+                                    subtitles = selectedSubtitles
+                                )
                             )
                         }
                         .setNegativeButton("Cancel", null)
