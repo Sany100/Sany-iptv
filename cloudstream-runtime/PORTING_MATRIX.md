@@ -140,3 +140,5 @@ The focused first runtime milestone is now:
 
 This is a scope reduction for the anime-only first milestone, not a claim that
 the full CloudStream runtime or all extractors are already supported.
+
+See [ANI_LIGHT_ABI_DEPENDENCIES.md](ANI_LIGHT_ABI_DEPENDENCIES.md) for the concrete AniLight provider symbol/dependency map and the first compile boundary.
