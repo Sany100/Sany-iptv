@@ -32,6 +32,8 @@ object SanyMovieExtensionManager {
     private const val PREFS = "sany_movie_extensions"
     private const val KEY_REPOSITORIES = "repositories"
     private const val KEY_INSTALLED = "installed"
+    private const val KEY_DEFAULT_REPOSITORY_SEEDED = "default_repository_seeded"
+    private const val DEFAULT_MOVIE_REPOSITORY = "https://raw.githubusercontent.com/dipender98/Indflix/builds/repo.json"
     private const val CONNECT_TIMEOUT_MS = 12_000
     private const val READ_TIMEOUT_MS = 25_000
     private const val MAX_INDEX_BYTES = 2 * 1024 * 1024
@@ -60,7 +62,13 @@ object SanyMovieExtensionManager {
 
     @Synchronized
     fun repositories(context: Context): List<Repository> {
-        val array = JSONArray(prefs(context).getString(KEY_REPOSITORIES, "[]") ?: "[]")
+        val store = prefs(context)
+        val array = JSONArray(store.getString(KEY_REPOSITORIES, "[]") ?: "[]")
+        if (array.length() == 0 && !store.getBoolean(KEY_DEFAULT_REPOSITORY_SEEDED, false)) {
+            array.put(JSONObject().put("url", DEFAULT_MOVIE_REPOSITORY).put("name", "Indflix"))
+            store.edit().putString(KEY_REPOSITORIES, array.toString())
+                .putBoolean(KEY_DEFAULT_REPOSITORY_SEEDED, true).commit()
+        }
         return (0 until array.length()).mapNotNull { i ->
             val item = array.optJSONObject(i) ?: return@mapNotNull null
             val url = item.optString("url").trim()
