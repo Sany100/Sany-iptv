@@ -46,6 +46,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.TrackSelectionDialogBuilder
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -1283,7 +1284,8 @@ class MainActivity : AppCompatActivity() {
                 streamMimeTypeHint = request.streamMimeType,
                 subtitleTracks = request.subtitles,
                 preferredAudioLanguages = request.audioLanguage?.split(',')?.map(String::trim),
-                qualityHint = request.quality
+                qualityHint = request.quality,
+                externalAudioTracks = request.audioTracks
             )
         } catch (error: Exception) {
             showAnimePlaybackLoading("", false)
@@ -3964,7 +3966,8 @@ class MainActivity : AppCompatActivity() {
         streamMimeTypeHint: String? = null,
         subtitleTracks: List<SanySubtitleTrack> = emptyList(),
         preferredAudioLanguages: List<String>? = null,
-        qualityHint: String? = null
+        qualityHint: String? = null,
+        externalAudioTracks: List<SanyAudioTrack> = emptyList()
     ) {
         if (section != "Live TV" && section != "Movies" && section != "Series") return
         if (channel.url.isBlank()) {
@@ -4783,7 +4786,35 @@ class MainActivity : AppCompatActivity() {
             .build()
         val mediaItem = itemBuilder.build()
         val animeResumePosition = if (section == "Series") prefs.getLong(animeResumePreferenceKey(channel), 0L).coerceAtLeast(0L) else 0L
-        if (animeResumePosition > 0L) p.setMediaItem(mediaItem, animeResumePosition) else p.setMediaItem(mediaItem)
+        val validExternalAudio = externalAudioTracks.filter { track ->
+            track.url.startsWith("https://", true) || track.url.startsWith("http://", true)
+        }.distinctBy { it.url }
+        if (validExternalAudio.isEmpty()) {
+            if (animeResumePosition > 0L) p.setMediaItem(mediaItem, animeResumePosition) else p.setMediaItem(mediaItem)
+        } else {
+            // CloudStream exposes some alternate dubs as separate audio files rather than
+            // embedded HLS/DASH renditions. Merge each audio-only source with the video so
+            // Media3 exposes them as selectable audio track groups.
+            val videoSource = mediaSourceFactory.createMediaSource(mediaItem)
+            val audioSources = validExternalAudio.map { track ->
+                val audioHeaders = linkedMapOf<String, String>().apply {
+                    putAll(mediaHeaders)
+                    putAll(track.headers)
+                }
+                val audioFactory = DefaultHttpDataSource.Factory()
+                    .setUserAgent(audioHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                    .setDefaultRequestProperties(audioHeaders)
+                    .setConnectTimeoutMs(if (highSpeedStreaming) 10000 else 5000)
+                    .setReadTimeoutMs(if (highSpeedStreaming) 30000 else 15000)
+                    .setAllowCrossProtocolRedirects(true)
+                val audioMediaSourceFactory = DefaultMediaSourceFactory(this)
+                    .setDataSourceFactory(audioFactory)
+                audioMediaSourceFactory.createMediaSource(MediaItem.fromUri(track.url))
+            }
+            val mergedSource = MergingMediaSource(videoSource, *audioSources.toTypedArray())
+            if (animeResumePosition > 0L) p.setMediaSource(mergedSource, animeResumePosition)
+            else p.setMediaSource(mergedSource)
+        }
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
         p.prepare()
         p.playWhenReady = startPlayback
