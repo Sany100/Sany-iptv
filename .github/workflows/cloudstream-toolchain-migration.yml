@@ -88,7 +88,18 @@ jobs:
           grep -n 'org.jetbrains.kotlin.multiplatform' "$FILE"
 
       - name: Compile AniLight provider against the exact CloudStream library ABI
-        run: gradle --no-daemon --stacktrace :cloudstream-anilight-abi:assembleDebug
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLUGIN="cloudstream-original/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt"
+          BACKUP="${PLUGIN}.abi-excluded"
+          test -f "$PLUGIN"
+          mv "$PLUGIN" "$BACKUP"
+          restore_plugin() {
+            if [ -f "$BACKUP" ]; then mv "$BACKUP" "$PLUGIN"; fi
+          }
+          trap restore_plugin EXIT
+          gradle --no-daemon --stacktrace :cloudstream-anilight-abi:assembleDebug
 
       - name: Compile AniLight Plugin host and SANY DEX runtime
         run: gradle --no-daemon --stacktrace :app:compileDebugKotlin
