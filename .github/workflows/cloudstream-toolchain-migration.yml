@@ -1,6 +1,5 @@
 # CI workflow for the pinned CloudStream runtime migration.
 name: CloudStream toolchain migration validation
-
 on:
   push:
     branches:
@@ -16,14 +15,11 @@ on:
       - "gradle.properties"
       - ".github/workflows/cloudstream-toolchain-migration.yml"
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: cloudstream-toolchain-migration
   cancel-in-progress: true
-
 jobs:
   sany-debug:
     runs-on: ubuntu-latest
@@ -35,23 +31,19 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
       - name: Verify pinned CloudStream revision
         run: |
           test "$(git -C cloudstream-upstream rev-parse HEAD)" = "a28e6468f54cfe420feebd205d3d21d08ed0cde8"
           test -f cloudstream-upstream/library/build.gradle.kts
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "9.4.1"
-
       - name: Install Android SDK 36
         shell: bash
         run: |
@@ -62,7 +54,6 @@ jobs:
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
           set -o pipefail
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-
       - name: Align compile SDK with available stable Android platform
         shell: bash
         run: |
@@ -71,14 +62,12 @@ jobs:
           sed -i 's/compileSdk = "37"/compileSdk = "36"/' cloudstream-upstream/gradle/libs.versions.toml
           grep -n 'compileSdk = 36' app/build.gradle.kts
           grep -n 'compileSdk = "36"' cloudstream-upstream/gradle/libs.versions.toml
-
       - name: Verify toolchain versions
         run: |
           gradle --version
           grep -n '9.1.1' build.gradle.kts
           grep -n 'compileSdk = 36' app/build.gradle.kts
           grep -n '1.9.3' app/build.gradle.kts
-
       - name: Align upstream KMP plugin request with AGP-provided classpath
         shell: bash
         run: |
@@ -86,7 +75,6 @@ jobs:
           FILE="cloudstream-upstream/library/build.gradle.kts"
           sed -i 's/alias(libs.plugins.kotlin.multiplatform)/id("org.jetbrains.kotlin.multiplatform")/' "$FILE"
           grep -n 'org.jetbrains.kotlin.multiplatform' "$FILE"
-
       - name: Compile AniLight provider against the exact CloudStream library ABI
         shell: bash
         run: |
@@ -100,7 +88,6 @@ jobs:
           }
           trap restore_plugin EXIT
           gradle --no-daemon --stacktrace :cloudstream-anilight-abi:assembleDebug
-
       - name: Compile AniLight Plugin host and build SANY debug APK
         shell: bash
         run: |
@@ -114,8 +101,7 @@ jobs:
             if [ -d "$DONATION_BACKUP" ]; then mv "$DONATION_BACKUP" "$DONATION_DIR"; fi
           }
           trap restore_donation EXIT
-          gradle --no-daemon --stacktrace :app:compileDebugKotlin assembleDebug
-
+          gradle --no-daemon --stacktrace :app:compileDebugKotlin :app:assembleDebug
       - name: Upload migration APK
         uses: actions/upload-artifact@v4
         with:
