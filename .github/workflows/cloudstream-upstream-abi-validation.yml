@@ -58,6 +58,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: |-
+            platform-tools
+            platforms;android-37
+            build-tools;36.0.0
 
       - name: Build the exact upstream library and Android plugin host
         working-directory: cloudstream-upstream
@@ -74,7 +79,7 @@ jobs:
           {
             echo "## CloudStream upstream ABI baseline"
             echo
-            echo "- Pinned source: `recloudstream/cloudstream@a28e6468f54cfe420feebd205d3d21d08ed0cde8`"
+            echo "- Pinned source: recloudstream/cloudstream@a28e6468f54cfe420feebd205d3d21d08ed0cde8"
             echo "- This job compiles upstream :library and the upstream Android plugin host."
             echo "- This is not yet the AniLight-against-local-source ABI probe and does not enable plugin loading in SANY."
             echo "- SANY APK integration, DEX loading, and playback remain separate acceptance gates."
