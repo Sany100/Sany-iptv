@@ -54,7 +54,7 @@ class AniLightNativeScreen(
         override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
     }
     private val posterRequests = ConcurrentHashMap.newKeySet<String>()
-    private val posterExecutor = Executors.newFixedThreadPool(3)
+    private val posterExecutor = Executors.newFixedThreadPool(5)
     private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
     private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
@@ -83,11 +83,13 @@ class AniLightNativeScreen(
     private var isAnimeSearchPage = false
     private var animeSearchResultsHost: LinearLayout? = null
     private var animeSearchRequestVersion = 0
+    private var animeSearchDebounce: Runnable? = null
 
     private data class UnifiedAnimeSource(
         val providerName: String,
         val url: String,
         val title: String,
+        val bannerUrl: String = "",
         val nativeItem: JSONObject? = null
     )
 
@@ -532,7 +534,11 @@ class AniLightNativeScreen(
         input.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(text: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
-                searchAnimeLive(text?.toString().orEmpty())
+                animeSearchDebounce?.let { ui.removeCallbacks(it) }
+                val value = text?.toString().orEmpty()
+                val task = Runnable { searchAnimeLive(value) }
+                animeSearchDebounce = task
+                ui.postDelayed(task, 320L)
             }
             override fun afterTextChanged(editable: android.text.Editable?) = Unit
         })
@@ -552,7 +558,7 @@ class AniLightNativeScreen(
             host.addView(label("এখানে Anime-এর নাম লিখলেই ফলাফল দেখাবে।", 13, muted, false))
             return
         }
-        host.addView(label("Searching…", 13, muted, false))
+        host.addView(label("Searching all Anime sources…", 13, muted, false))
         request("$api/search?q=" + enc(query.trim()) + "&hideAdult=true") { data ->
             if (!isAnimeSearchPage || version != animeSearchRequestVersion) return@request
             val arr = data?.optJSONArray("results")
@@ -583,29 +589,37 @@ class AniLightNativeScreen(
                 val slugValue = item.optString("slug")
                 val key = normalized.replace(title.trim().lowercase(java.util.Locale.ROOT), "")
                 if (key.isNotBlank() && slugValue.isNotBlank()) {
+                    val banner = item.optString("bannerImage").takeIf { it.startsWith("http") }
+                        ?: item.optJSONObject("coverImage")?.optString("extraLarge").orEmpty()
                     grouped.getOrPut(key) { mutableListOf() }.add(
-                        UnifiedAnimeSource("AniLight", slugValue, title, item)
+                        UnifiedAnimeSource("AniLight", slugValue, title, banner, item)
                     )
                 }
             }
 
             runCatching {
                 kotlinx.coroutines.runBlocking {
-                    SanyCloudStreamPluginRuntime.providers().forEach { provider ->
-                        val entries = runCatching {
-                            SanyCloudStreamPluginRuntime.search(provider.name, query)
-                        }.getOrElse { error ->
-                            android.util.Log.w("SANY-AnimeSearch", "${provider.name}: ${error.message}")
-                            emptyList<com.lagradost.cloudstream3.SearchResponse>()
-                        }
-                        entries.forEach { entry ->
-                            val title = entry.name.trim()
-                            if (title.isBlank()) return@forEach
-                            val key = normalized.replace(title.lowercase(java.util.Locale.ROOT), "")
-                            if (key.isBlank()) return@forEach
-                            val sources = grouped.getOrPut(key) { mutableListOf() }
-                            if (sources.none { it.providerName.equals(provider.name, true) && it.url == entry.url }) {
-                                sources.add(UnifiedAnimeSource(provider.name, entry.url, title))
+                    // Search providers concurrently so one slow source does not block the rest.
+                    kotlinx.coroutines.coroutineScope {
+                        val providerResults = SanyCloudStreamPluginRuntime.providers().map { provider ->
+                            kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                                provider to runCatching { SanyCloudStreamPluginRuntime.search(provider.name, query) }
+                            }
+                        }.awaitAll()
+                        providerResults.forEach { (provider, result) ->
+                            val entries = result.getOrElse { error ->
+                                android.util.Log.w("SANY-AnimeSearch", "${provider.name}: ${error.message}")
+                                emptyList<com.lagradost.cloudstream3.SearchResponse>()
+                            }
+                            entries.forEach entryLoop@ { entry ->
+                                val title = entry.name.trim()
+                                if (title.isBlank()) return@entryLoop
+                                val key = normalized.replace(title.lowercase(java.util.Locale.ROOT), "")
+                                if (key.isBlank()) return@entryLoop
+                                val sources = grouped.getOrPut(key) { mutableListOf() }
+                                if (sources.none { it.providerName.equals(provider.name, true) && it.url == entry.url }) {
+                                    sources.add(UnifiedAnimeSource(provider.name, entry.url, title, entry.posterUrl.orEmpty()))
+                                }
                             }
                         }
                     }
@@ -632,6 +646,15 @@ class AniLightNativeScreen(
                         orientation = LinearLayout.VERTICAL
                         setPadding(dp(12), dp(10), dp(12), dp(10))
                         background = rounded(surface, 10)
+                    }
+                    val bannerUrl = sources.firstOrNull { it.bannerUrl.startsWith("http") }?.bannerUrl.orEmpty()
+                    if (bannerUrl.isNotBlank()) {
+                        val banner = ImageView(context).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            setBackgroundColor(surface)
+                        }
+                        card.addView(banner, LinearLayout.LayoutParams(-1, dp(150)).apply { bottomMargin = dp(8) })
+                        loadImage(bannerUrl, banner)
                     }
                     card.addView(label(displayTitle, 14, fg, true), bottom(6))
                     val providerNames = sources.map { it.providerName }.distinct()
