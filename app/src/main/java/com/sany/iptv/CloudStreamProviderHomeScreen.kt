@@ -106,7 +106,7 @@ class CloudStreamProviderHomeScreen(
         page.addView(label("Search anime on $providerName"), topMargin(18))
         val search = EditText(context).apply {
             hint = "Anime title লিখুন"
-            singleLine = true
+            setSingleLine(true)
             setTextColor(foregroundColor)
             setHintTextColor(0xFF8993A3.toInt())
             setPadding(dp(14), dp(12), dp(14), dp(12))
