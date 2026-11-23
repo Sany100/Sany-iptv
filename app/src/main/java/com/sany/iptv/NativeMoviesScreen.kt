@@ -262,8 +262,15 @@ class NativeMoviesScreen(
         background = rounded(accent, 12); setOnClickListener { action() }
     }
 
-    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
-        setColor(color); cornerRadius = dp(radius).toFloat()
+    private fun rounded(color: Int, radius: Int) = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        if (color == card) {
+            if (light) intArrayOf(0xEFFFFFFF.toInt(), 0xDDE6F1FF.toInt(), 0xF7FFFFFF.toInt())
+            else intArrayOf(0xAA49688F.toInt(), 0xB0121D30.toInt(), 0xAA202F49.toInt())
+        } else intArrayOf(color, color)
+    ).apply {
+        cornerRadius = dp(radius).toFloat()
+        if (color == card) setStroke(dp(1), if (light) 0xDFFFFFFF.toInt() else 0xBDA9CFFF.toInt())
     }
 
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
