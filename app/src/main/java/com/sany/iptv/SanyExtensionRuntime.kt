@@ -103,6 +103,11 @@ data class CloudStreamInstalledPackage(
     val sha256: String
 )
 
+data class CloudStreamAutoSyncReport(
+    val packages: List<File>,
+    val failures: List<String>
+)
+
 data class CloudStreamHostCompatibility(
     val compatible: Boolean,
     val missingClasses: List<String>,
@@ -184,44 +189,84 @@ object SanyExtensionRepositories {
      * The index and package are pinned to this repository's builds branch; no file picker
      * or user-supplied repository is required for the built-in AniLight provider.
      */
+    /**
+     * Synchronizes the built-in Anime provider set from SANY's pinned builds index.
+     * Only explicitly allowlisted providers and SANY-owned package URLs are accepted.
+     * Each package must carry a SHA-256 hash and is independently validated.
+     */
+    @Synchronized
+    fun syncOfficialAnimePlugins(context: Context): CloudStreamAutoSyncReport {
+        val indexUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
+        val packageBase = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/"
+        val allowed = setOf("AniLight", "Anichi", "YugenAnime", "WcofunProvider")
+        val index = JSONArray(readHttps(indexUrl, MAX_JSON_BYTES))
+        val packages = mutableListOf<File>()
+        val failures = mutableListOf<String>()
+
+        for (internalName in allowed) {
+            val item = (0 until index.length())
+                .mapNotNull { index.optJSONObject(it) }
+                .firstOrNull { it.optString("internalName") == internalName }
+            if (item == null) {
+                failures += "$internalName: missing from trusted plugin index"
+                continue
+            }
+
+            try {
+                val expectedUrl = packageBase + "$internalName.cs3"
+                require(item.optString("url") == expectedUrl) {
+                    "$internalName: package URL is not on the trusted SANY builds branch"
+                }
+                val expectedHash = item.optString("fileHash")
+                require(expectedHash.startsWith("sha256-", ignoreCase = true)) {
+                    "$internalName: trusted SHA-256 metadata is missing"
+                }
+                val authors = item.optJSONArray("authors")
+                val tvTypes = item.optJSONArray("tvTypes")
+                val plugin = CloudStreamPluginInfo(
+                    name = item.optString("name").ifBlank { internalName },
+                    internalName = internalName,
+                    version = item.optInt("version", 0),
+                    apiVersion = item.optInt("apiVersion", 1),
+                    status = item.optInt("status", 1),
+                    description = item.optString("description"),
+                    authors = authors?.let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } }
+                        ?: item.optString("authors"),
+                    language = item.optString("language"),
+                    tvTypes = tvTypes?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                    fileSize = if (item.has("fileSize") && !item.isNull("fileSize")) item.optLong("fileSize") else null,
+                    fileHash = expectedHash,
+                    downloadUrl = expectedUrl
+                )
+                require(plugin.tvTypes.any { it.equals("Anime", true) || it.equals("AnimeMovie", true) || it.equals("OVA", true) }) {
+                    "$internalName: index does not identify an Anime provider"
+                }
+                require(plugin.status != 0) { "$internalName: provider is marked offline" }
+
+                val expectedDigest = expectedHash.removePrefix("sha256-").lowercase()
+                val existing = installedPackages(context).firstOrNull { it.name == "$internalName.cs3" }
+                val installed = if (existing != null &&
+                    sha256(existing).equals(expectedDigest, ignoreCase = true) &&
+                    validatePackage(existing).version == plugin.version
+                ) {
+                    existing
+                } else {
+                    downloadAndValidate(context, plugin).file
+                }
+                packages += installed
+            } catch (error: Throwable) {
+                failures += "$internalName: ${error.message ?: error.javaClass.simpleName}"
+            }
+        }
+        return CloudStreamAutoSyncReport(packages, failures)
+    }
+
     @Synchronized
     fun syncOfficialAniLight(context: Context): File {
-        val indexUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
-        val index = JSONArray(readHttps(indexUrl, MAX_JSON_BYTES))
-        val item = (0 until index.length())
-            .mapNotNull { index.optJSONObject(it) }
-            .firstOrNull { it.optString("internalName") == "AniLight" }
-            ?: error("Official AniLight entry is missing from plugins.json")
-
-        val downloadUrl = item.optString("url")
-        require(downloadUrl == "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AniLight.cs3") {
-            "Official AniLight download URL did not match the trusted GitHub release path"
-        }
-        val authors = item.optJSONArray("authors")
-        val tvTypes = item.optJSONArray("tvTypes")
-        val plugin = CloudStreamPluginInfo(
-            name = item.optString("name").ifBlank { "AniLight" },
-            internalName = "AniLight",
-            version = item.optInt("version", 0),
-            apiVersion = item.optInt("apiVersion", 1),
-            status = item.optInt("status", 1),
-            description = item.optString("description"),
-            authors = authors?.let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } }
-                ?: item.optString("authors"),
-            language = item.optString("language"),
-            tvTypes = tvTypes?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-            fileSize = if (item.has("fileSize") && !item.isNull("fileSize")) item.optLong("fileSize") else null,
-            fileHash = item.optString("fileHash").takeIf { it.isNotBlank() },
-            downloadUrl = downloadUrl
-        )
-        val expectedHash = plugin.fileHash?.removePrefix("sha256-")?.lowercase()
-        val existing = installedPackages(context).firstOrNull { it.name == "AniLight.cs3" }
-        if (existing != null && !expectedHash.isNullOrBlank() &&
-            sha256(existing).equals(expectedHash, ignoreCase = true)) {
-            val manifest = validatePackage(existing)
-            if (manifest.version == plugin.version) return existing
-        }
-        return downloadAndValidate(context, plugin).file
+        val report = syncOfficialAnimePlugins(context)
+        return report.packages.firstOrNull { it.name == "AniLight.cs3" }
+            ?: error(report.failures.firstOrNull { it.startsWith("AniLight:") }
+                ?: "AniLight was not synchronized")
     }
 
     /**
