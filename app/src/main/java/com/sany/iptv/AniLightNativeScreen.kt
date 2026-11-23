@@ -1484,7 +1484,7 @@ class AniLightNativeScreen(
                         episodeSourceResolving = false
                     }
                     activeSourceDialog = dialog
-
+                    dialog.show()
                 }
             } catch (e: Exception) {
                 ui.post {
