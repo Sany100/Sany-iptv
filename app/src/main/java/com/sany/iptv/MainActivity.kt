@@ -1412,7 +1412,8 @@ class MainActivity : AppCompatActivity() {
             light = isLight,
             accent = accent,
             onPlay = { title, url -> play(Channel(title, url, "Movies")) },
-            onManageExtensions = { showMovieExtensionManager() }
+            onManageExtensions = { showMovieExtensionManager() },
+            onOpenExtensionProvider = { providerName -> showMovieExtensionSearch(providerName) }
         )
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
     }
