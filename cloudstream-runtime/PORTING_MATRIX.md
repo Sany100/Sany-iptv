@@ -178,3 +178,24 @@ verified live. The CloudStream runtime/Dex loading status is unchanged.
 - Published repository index on the `builds` branch declares `Anime`, `AnimeMovie`, and `OVA`.
 - The packaged DEX contains AniLight provider/API classes and compiled movie/source-resolver code. Static package inspection is not a live API test or playback test.
 - Live AniLight movie API/source resolution and SANY device playback remain unverified. The current SANY host still does not execute CloudStream DEX plugins.
+
+
+## SANY host adapter architecture checkpoint (2026-11-23)
+
+Added [SANY_HOST_ADAPTER_DESIGN.md](SANY_HOST_ADAPTER_DESIGN.md) after inspecting
+the current `MainActivity.kt`, `SanyExtensionRuntime.kt`, and app Gradle
+configuration. The audit confirms the built-in AniLight native screen already
+passes a URL and provider headers into SANY's Media3 playback method; the
+downloaded CloudStream `.cs3` package path remains verification-only.
+
+The design separates the work into an exact upstream ABI Android library,
+plugin-scoped DEX loader/lifecycle, and a CloudStream-to-SANY Media3 DTO
+adapter. It also records a concrete playback gap: the current SANY player
+accepts provider headers but only one optional subtitle URL (assumed WebVTT).
+Multiple subtitle tracks with their actual MIME types/languages must be added
+before the CloudStream player adapter is considered complete.
+
+Next coding gate is an isolated compile experiment for the exact pinned
+upstream ABI/dependency slice against the unmodified AniLight provider. No
+plugin DEX execution or player changes should be enabled before that gate
+passes. This is an architecture checkpoint, not runtime implementation.
