@@ -363,6 +363,10 @@ class MainActivity : AppCompatActivity() {
                         android.util.Log.e("SANY-MOVIE", "Movie extension restore failed: ${result.error}")
                     }
                 }
+                // The Movies screen may have been created before async extension restore finished.
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed && section == "Movies") renderSection()
+                }
             }.onFailure { error ->
                 android.util.Log.e("SANY-CS", "Anime plugin auto-sync failed", error)
             }
@@ -1298,6 +1302,9 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { loaded ->
                     if (loaded.success) {
+                        // Refresh the active Movies page so the newly registered provider and
+                        // its homepage catalogue appear immediately without restarting the app.
+                        if (section == "Movies") renderSection()
                         AlertDialog.Builder(this).setTitle("Movie extension installed")
                             .setMessage("${loaded.pluginName}\\nProviders: ${loaded.providerNames.joinToString()}")
                             .setPositiveButton("SEARCH MOVIES") { _, _ ->
