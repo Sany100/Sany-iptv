@@ -212,9 +212,10 @@ class AniLightNativeScreen(
             addView(body)
             setOnScrollChangeListener { view: View, _: Int, scrollY: Int, _: Int, _: Int ->
                 val sv = view as ScrollView
-                val nearBottom = scrollY + sv.height >= body.height - dp(520)
+                val nearBottom = scrollY + sv.height >= body.height - dp(80)
                 if (nearBottom && showingFilterResults && filterHasNext && !autoPageLoading) {
                     autoPageLoading = true
+                    showPaginationFooter(isLoading = true)
                     loadFiltered(filterSort, filterGenre, filterPage + 1, keepHomeChrome = isHomePage)
                 }
             }
@@ -319,8 +320,14 @@ class AniLightNativeScreen(
         // bannerImage so portrait covers are never stretched into a wide hero.
         val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
             .filterNot { it.optBoolean("isAdult", false) }
-        trending.firstOrNull { it.optString("bannerImage").startsWith("http") }
-            ?.let { addFeaturedHero(it) }
+        // Do not show the Overgeared featured banner above Watch Later.
+        trending.firstOrNull { item ->
+            val title = item.optJSONObject("title")
+            val name = title?.optString("english").orEmpty()
+                .ifBlank { title?.optString("romaji").orEmpty() }
+            item.optString("bannerImage").startsWith("http") &&
+                !name.contains("overgeared", ignoreCase = true)
+        }?.let { addFeaturedHero(it) }
 
         renderWatchLaterShelf()
 
@@ -903,6 +910,7 @@ class AniLightNativeScreen(
             }
         } else {
             filterPage = page
+            showPaginationFooter(isLoading = true)
         }
         val query = "$api/filter?page=$page&perPage=30&sort=" + enc(sort) +
             (if (genre.isNullOrBlank()) "" else "&genres=" + enc(genre)) + "&hideAdult=true"
@@ -1093,7 +1101,38 @@ class AniLightNativeScreen(
             target.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
         }
 
-        // Pagination is automatic on scroll; no Load More button is shown.
+        // Keep a visible footer at the end of the catalogue. It changes to an
+        // indeterminate spinner while the next page is being fetched.
+        if (showingFilterResults && filterHasNext) showPaginationFooter(isLoading = autoPageLoading)
+    }
+
+    private fun showPaginationFooter(isLoading: Boolean) {
+        val target = if (isHomePage) contentHost else body
+        val existing = (0 until target.childCount)
+            .map { target.getChildAt(it) }
+            .firstOrNull { it.tag == "anilight_load_more" }
+        if (existing != null) target.removeView(existing)
+
+        val footer = LinearLayout(context).apply {
+            tag = "anilight_load_more"
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(18), dp(12), dp(22))
+        }
+        if (isLoading) {
+            footer.addView(android.widget.ProgressBar(context).apply {
+                isIndeterminate = true
+            }, LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                rightMargin = dp(10)
+            })
+            footer.addView(label("Loading more anime…", 13, muted, true))
+        } else {
+            footer.addView(label("＋", 19, accent, true), LinearLayout.LayoutParams(-2, -2).apply {
+                rightMargin = dp(8)
+            })
+            footer.addView(label("Scroll down to load more", 13, muted, false))
+        }
+        target.addView(footer, bottom(8))
     }
 
     private fun openAnime(item: JSONObject) {
