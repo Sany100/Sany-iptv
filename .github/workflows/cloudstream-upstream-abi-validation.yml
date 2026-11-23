@@ -1,0 +1,81 @@
+name: Validate pinned CloudStream upstream ABI baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/cloudstream-gpl-runtime-port
+    paths:
+      - "cloudstream-runtime/**"
+      - ".github/workflows/cloudstream-upstream-abi-validation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudstream-upstream-abi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  upstream-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout SANY integration source
+        uses: actions/checkout@v4
+        with:
+          path: sany
+
+      - name: Checkout exact CloudStream upstream revision
+        uses: actions/checkout@v4
+        with:
+          repository: recloudstream/cloudstream
+          ref: a28e6468f54cfe420feebd205d3d21d08ed0cde8
+          path: cloudstream-upstream
+
+      - name: Verify immutable upstream revision and ABI source files
+        working-directory: cloudstream-upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "a28e6468f54cfe420feebd205d3d21d08ed0cde8"
+          test -f library/src/commonMain/kotlin/com/lagradost/cloudstream3/MainAPI.kt
+          test -f library/src/commonMain/kotlin/com/lagradost/cloudstream3/plugins/BasePlugin.kt
+          test -f library/src/commonMain/kotlin/com/lagradost/cloudstream3/utils/ExtractorApi.kt
+          test -f app/src/main/java/com/lagradost/cloudstream3/plugins/Plugin.kt
+          test -f app/src/main/java/com/lagradost/cloudstream3/plugins/PluginManager.kt
+          echo "Pinned upstream revision: $ACTUAL"
+          echo "MainAPI, BasePlugin and ExtractorApi are in :library."
+          echo "Android Plugin and PluginManager are in :app."
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+          cache-dependency-path: cloudstream-upstream/gradle/libs.versions.toml
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build the exact upstream library and Android plugin host
+        working-directory: cloudstream-upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace :library:assemble :app:compileDebugKotlin
+
+      - name: Record the scope of this validation
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## CloudStream upstream ABI baseline"
+            echo
+            echo "- Pinned source: `recloudstream/cloudstream@a28e6468f54cfe420feebd205d3d21d08ed0cde8`"
+            echo "- This job compiles upstream :library and the upstream Android plugin host."
+            echo "- This is not yet the AniLight-against-local-source ABI probe and does not enable plugin loading in SANY."
+            echo "- SANY APK integration, DEX loading, and playback remain separate acceptance gates."
+          } >> "$GITHUB_STEP_SUMMARY"
