@@ -2192,25 +2192,27 @@ class MainActivity : AppCompatActivity() {
                                                         "Size: $size\n" +
                                                         "Authors: ${plugin.authors}\n\n" +
                                                         "${plugin.description}\n\n" +
-                                                        "Download করলে SHA-256, ZIP, manifest.json ও classes.dex যাচাই হবে। এই ধাপে plugin execute হবে না।"
+                                                        "Download-এর পর SHA-256, ZIP ও manifest যাচাই করে CloudStream DEX runtime-এ load করার চেষ্টা হবে।"
                                                     )
                                                     .setPositiveButton("DOWNLOAD & VERIFY") { _, _ ->
                                                         toast("Downloading and verifying…")
                                                         thread(name = "SANY-Plugin-Download") {
                                                             val result = runCatching {
-                                                                SanyExtensionRepositories.downloadAndValidate(this, plugin)
+                                                                val installed = SanyExtensionRepositories.downloadAndValidate(this, plugin)
+                                                                installed to SanyCloudStreamPluginRuntime.load(this, installed.file)
                                                             }
                                                             runOnUiThread {
                                                                 if (isFinishing || isDestroyed) return@runOnUiThread
-                                                                result.onSuccess { installed ->
+                                                                result.onSuccess { (installed, loaded) ->
                                                                     AlertDialog.Builder(this)
-                                                                        .setTitle("Package verified")
+                                                                        .setTitle(if (loaded.success) "CloudStream plugin loaded" else "Package verified; load failed")
                                                                         .setMessage(
                                                                             "Name: ${installed.manifest.name}\n" +
                                                                             "Plugin class: ${installed.manifest.pluginClassName}\n" +
                                                                             "Version: ${installed.manifest.version}\n" +
                                                                             "SHA-256: ${installed.sha256}\n\n" +
-                                                                            "Package app-private storage-এ রাখা হয়েছে। Runtime API bridge সম্পূর্ণ না হওয়া পর্যন্ত এটি চালু করা হবে না।"
+                                                                            if (loaded.success) "Registered providers:\n" + loaded.providerNames.joinToString("\n")
+                                                                            else "DEX load error: ${loaded.error ?: "Unknown error"}"
                                                                         )
                                                                         .setPositiveButton("OK", null)
                                                                         .show()
@@ -2243,13 +2245,30 @@ class MainActivity : AppCompatActivity() {
                             AlertDialog.Builder(this)
                                 .setTitle("Downloaded packages")
                                 .setItems(names) { _, index ->
+                                    val selected = files[index]
                                     AlertDialog.Builder(this)
-                                        .setMessage("এই package সরাবেন?\n${names[index]}")
-                                        .setPositiveButton("REMOVE") { _, _ ->
-                                            if (SanyExtensionRepositories.removeInstalledPackage(this, names[index])) {
-                                                toast("Package removed")
+                                        .setTitle(selected.name)
+                                        .setItems(arrayOf("LOAD / RELOAD", "REMOVE")) { _, action ->
+                                            if (action == 0) {
+                                                toast("CloudStream DEX loading…")
+                                                thread(name = "SANY-Plugin-Load") {
+                                                    val result = SanyCloudStreamPluginRuntime.load(this, selected)
+                                                    runOnUiThread {
+                                                        if (isFinishing || isDestroyed) return@runOnUiThread
+                                                        AlertDialog.Builder(this)
+                                                            .setTitle(if (result.success) "Plugin loaded" else "Plugin load failed")
+                                                            .setMessage(if (result.success) result.providerNames.joinToString("\n") else result.error ?: "Unknown DEX load error")
+                                                            .setPositiveButton("OK", null)
+                                                            .show()
+                                                    }
+                                                }
                                             } else {
-                                                toast("Package remove করা যায়নি")
+                                                SanyCloudStreamPluginRuntime.unload(selected)
+                                                if (SanyExtensionRepositories.removeInstalledPackage(this, selected.name)) {
+                                                    toast("Package removed")
+                                                } else {
+                                                    toast("Package remove করা যায়নি")
+                                                }
                                             }
                                         }
                                         .setNegativeButton("CANCEL", null)
@@ -2263,7 +2282,7 @@ class MainActivity : AppCompatActivity() {
                         val report = SanyExtensionRepositories.inspectHostCompatibility(this)
                         val message = if (report.compatible) {
                             "সব ${report.checkedClasses.size}টি core CloudStream API class পাওয়া গেছে.\n\n" +
-                            "এটি শুধু class-presence check; plugin execution বা ABI compatibility এখনো নিশ্চিত করে না।"
+                            "Core CloudStream ABI এবং AniLight Plugin host class পাওয়া গেছে। এটি runtime load-এর প্রস্তুতি যাচাই; প্রতিটি plugin-এর সফল DEX load আলাদাভাবে পরীক্ষা করতে হবে।"
                         } else {
                             "SANY-তে ${report.missingClasses.size}টি প্রয়োজনীয় CloudStream API class নেই:\n\n" +
                             report.missingClasses.joinToString("\n") { "• $it" } +

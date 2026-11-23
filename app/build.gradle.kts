@@ -35,6 +35,8 @@ android {
             }
         }
     }
+    sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
+
     defaultConfig {
         minSdk = 23
         targetSdk = 35
@@ -79,4 +81,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:1.9.3")
     implementation("androidx.media3:media3-ui:1.9.3")
     implementation("commons-net:commons-net:3.11.1")
+    implementation("com.github.Blatzar:NiceHttp:0.4.18")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 }

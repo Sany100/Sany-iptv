@@ -265,11 +265,10 @@ object SanyExtensionRepositories {
     }
 
     fun runtimeNotice(): String =
-        "Repository discovery, package download, SHA-256 verification and .cs3 manifest/DEX validation are supported. " +
-        "SANY currently supports repository discovery and verified .cs3 downloads only. The host API diagnostic " +
-        "checks for core CloudStream ABI classes, but does not execute plugin DEX. Full compatibility still needs " +
-        "the matching MainAPI/BasePlugin ABI, extractor services, HTTP/runtime dependencies and lifecycle. " +
-        "CloudStream plugins are trusted executable code and must not be loaded from unknown repositories."
+        "SANY embeds the pinned CloudStream library ABI and an AniLight-compatible Android Plugin host. " +
+        "Verified .cs3 packages can be executed through the DEX runtime and register MainAPI providers. " +
+        "This is not the complete CloudStream app PluginManager: VideoClickAction integrations and arbitrary " +
+        "app-specific plugin services are not supported. Only install trusted plugin packages."
 
     private fun validatePackage(file: File): CloudStreamPluginManifest {
         ZipFile(file).use { zip ->
