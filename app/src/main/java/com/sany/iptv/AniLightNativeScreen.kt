@@ -1501,6 +1501,9 @@ class AniLightNativeScreen(
         if (!posterRequests.add(url)) return
         posterExecutor.execute {
             var bitmap: Bitmap? = null
+            // Once a decoded bitmap is placed in the shared LRU cache, the cache and
+            // ImageViews may still be drawing it. Never recycle it from this task.
+            var bitmapTransferredToCache = false
             try {
                 val directory = File(context.cacheDir, "anilight_posters").apply { mkdirs() }
                 val file = File(directory, url.hashCode().toString() + ".img")
@@ -1538,13 +1541,21 @@ class AniLightNativeScreen(
                 }
                 bitmap?.let { decoded ->
                     posterMemoryCache.put(url, decoded)
-                    ui.post { if (target.tag == url) target.setImageBitmap(decoded) }
+                    bitmapTransferredToCache = true
+                    ui.post {
+                        if (target.tag == url && !decoded.isRecycled) {
+                            target.setImageBitmap(decoded)
+                        }
+                    }
                 }
                 // Keep the disk cache bounded; evict oldest poster files first.
                 val files = directory.listFiles()?.filter { it.isFile && it.extension == "img" }.orEmpty()
                 if (files.size > 240) files.sortedBy { it.lastModified() }.take(files.size - 200).forEach { it.delete() }
             } catch (_: Exception) {
-                bitmap?.recycle()
+                // Recycle only while this worker still exclusively owns the bitmap.
+                // Recycling after cache insertion can crash ImageView drawing with
+                // "Canvas: trying to use a recycled bitmap".
+                if (!bitmapTransferredToCache) bitmap?.takeUnless { it.isRecycled }?.recycle()
             } finally {
                 posterRequests.remove(url)
             }
