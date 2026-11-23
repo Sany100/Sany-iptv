@@ -18,7 +18,7 @@ tasks.configureEach {
 
 android {
     namespace = "com.sany.iptv"
-    compileSdk = 35
+    compileSdk = 36
 
     val releaseStoreFile = System.getenv("SANY_KEYSTORE_PATH")
     val releaseStorePassword = System.getenv("SANY_KEYSTORE_PASSWORD")
@@ -77,9 +77,9 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
-    implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
-    implementation("androidx.media3:media3-ui:1.5.1")
+    implementation("androidx.media3:media3-exoplayer:1.9.3")
+    implementation("androidx.media3:media3-exoplayer-hls:1.9.3")
+    implementation("androidx.media3:media3-exoplayer-dash:1.9.3")
+    implementation("androidx.media3:media3-ui:1.9.3")
     implementation("commons-net:commons-net:3.11.1")
 }
