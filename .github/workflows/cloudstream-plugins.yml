@@ -2,6 +2,8 @@ name: Build AniLight CloudStream Plugin
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
   push:
     branches:
       - main
@@ -91,32 +93,41 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/plugin-output"
           find AniLight/build -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \;
           test -s build/plugins.json
-          # Import a reviewed set of English Anime providers from a pinned GPL-3.0
-          # upstream build commit. Verify size, ZIP structure, manifest/version,
-          # then pin each imported package with SHA-256 in SANY's plugin index.
+          # Import every active Anime/AnimeMovie/OVA provider supported by this
+          # CloudStream plugin API. The weekly workflow follows the upstream builds
+          # index so newly published provider versions are picked up automatically.
+          # Each .cs3 is checked and pinned by SHA-256 before SANY publishes it.
           python3 - "$GITHUB_WORKSPACE/plugin-output" build/plugins.json <<'PY'
-          import hashlib, io, json, pathlib, sys, urllib.request, zipfile
+          import hashlib, io, json, pathlib, sys, urllib.parse, urllib.request, zipfile
           out = pathlib.Path(sys.argv[1])
           own_index_path = pathlib.Path(sys.argv[2])
-          upstream = "https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/6da85d924f69ffb6beaa27f56ddf167e47016c1f"
+          upstream = "https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/builds"
           upstream_index = json.load(urllib.request.urlopen(upstream + "/plugins.json", timeout=30))
-          selected = {"Anichi", "YugenAnime", "WcofunProvider"}
+          anime_types = {"anime", "animemovie", "ova"}
+          selected = [
+              item for item in upstream_index
+              if item.get("status") == 1
+              and item.get("apiVersion", 1) <= 1
+              and anime_types.intersection(str(x).lower() for x in item.get("tvTypes", []))
+          ]
           imported = []
-          for name in sorted(selected):
-              item = next((x for x in upstream_index if x.get("internalName") == name), None)
-              if not item:
-                  raise SystemExit(f"Missing upstream index entry: {name}")
-              if item.get("status") != 1 or item.get("apiVersion", 1) > 1:
-                  raise SystemExit(f"{name} is offline or uses unsupported plugin API")
-              if "Anime" not in item.get("tvTypes", []):
-                  raise SystemExit(f"{name} is not indexed as an Anime provider")
+          for item in sorted(selected, key=lambda x: x.get("internalName", "")):
+              name = item.get("internalName", "")
+              if not name or not name.replace("_", "").replace("-", "").replace(".", "").isalnum():
+                  print(f"Skip invalid provider name: {name!r}")
+                  continue
               filename = name + ".cs3"
-              data = urllib.request.urlopen(upstream + "/" + filename, timeout=60).read()
+              source_url = item.get("url", "")
+              expected_url = upstream + "/" + filename
+              if source_url != expected_url:
+                  print(f"Skip {name}: unexpected upstream package URL {source_url}")
+                  continue
+              data = urllib.request.urlopen(source_url, timeout=60).read()
               if not data or len(data) > 80 * 1024 * 1024:
                   raise SystemExit(f"{name}: invalid package size")
               expected_size = item.get("fileSize")
               if expected_size and len(data) != expected_size:
-                  raise SystemExit(f"{name}: package size differs from pinned index")
+                  raise SystemExit(f"{name}: package size differs from upstream index")
               with zipfile.ZipFile(io.BytesIO(data)) as archive:
                   if "classes.dex" not in archive.namelist() or "manifest.json" not in archive.namelist():
                       raise SystemExit(f"{name}: missing classes.dex or manifest.json")
@@ -133,6 +144,8 @@ jobs:
               record["url"] = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/" + filename
               imported.append(record)
               print(f"Imported {name} v{item['version']} ({len(data)} bytes, sha256 {digest})")
+          if not imported:
+              raise SystemExit("No active compatible Anime providers were found upstream")
           own_index = json.loads(own_index_path.read_text())
           by_name = {x.get("internalName"): x for x in own_index}
           for item in imported:
@@ -140,6 +153,7 @@ jobs:
           combined = list(by_name.values())
           combined.sort(key=lambda x: (x.get("internalName") != "AniLight", x.get("name", "")))
           (out / "plugins.json").write_text(json.dumps(combined, indent=2))
+          print(f"Published candidate Anime providers: {len(imported)}")
           PY
           test -s "$GITHUB_WORKSPACE/plugin-output/plugins.json"
           test "$(find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' | wc -l)" -ge 4
@@ -169,10 +183,10 @@ jobs:
           cd "$GITHUB_WORKSPACE/publish"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$PLUGIN_FILE" plugins.json
+          git add -- "*.cs3" plugins.json
           if git diff --cached --quiet; then
             echo "No repository changes to publish"
           else
-            git commit -m "Publish AniLight CloudStream plugin"
+            git commit -m "Publish updated CloudStream Anime providers"
             git push origin builds
           fi
