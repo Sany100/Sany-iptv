@@ -79,6 +79,8 @@ class AniLightNativeScreen(
     private var anime: JSONObject? = null
     private var activeWatch: JSONObject? = null
     private var currentEpisodeNumber = 0
+    @Volatile private var episodeSourceResolving = false
+    private var activeSourceDialog: AlertDialog? = null
     private var activeAnimePosterUrl = ""
     private var isHomePage = true
     // Category dropdown pages must be exited with the visible Back button, never a swipe gesture.
@@ -1312,6 +1314,9 @@ class AniLightNativeScreen(
     }
 
     private fun resolveEpisode(episode: Int) {
+        // Ignore rapid/repeated taps while the same source request or picker is active.
+        if (episodeSourceResolving || activeSourceDialog?.isShowing == true) return
+        episodeSourceResolving = true
         onPlaybackLoading("$animeTitle • Episode $episode", true)
         // Loading is displayed on the video surface by MainActivity; never
         // replace the Anime page with a separate full-screen loading page.
@@ -1353,7 +1358,13 @@ class AniLightNativeScreen(
                             // AniLight load-balancer URLs are often extensionless. Media3
                             // otherwise guesses Progressive playback and rejects an HLS manifest.
                             // Probe the resolved endpoint and pass an explicit HLS MIME hint.
-                            val hls = quality.contains("hls", ignoreCase = true) || validHls(resolved)
+                            // Avoid a second network probe for every source just to detect HLS:
+                            // it delayed the picker by up to several seconds per link. Use metadata
+                            // and URL hints; Media3 can infer the type from the response otherwise.
+                            val cleanUrl = resolved.substringBefore("?").substringBefore("#").lowercase()
+                            val hls = quality.contains("hls", ignoreCase = true) ||
+                                cleanUrl.endsWith(".m3u8") || cleanUrl.endsWith(".m3u") ||
+                                cleanUrl.contains("/hls/")
                             sources.add(
                                 ResolvedSource(
                                     languageCode,
@@ -1410,15 +1421,15 @@ class AniLightNativeScreen(
                 ui.post {
                     onPlaybackLoading("", false)
                     if (preferred.isEmpty()) {
+                        episodeSourceResolving = false
                         toast("কোনো playable source পাওয়া যায়নি। Main server বা backup server-এ এই Episode-এর link নাও থাকতে পারে।")
                         showDetailsAgain()
                         return@post
                     }
 
-                    // Preserve the original source-picking flow: resolve every link,
-                    // let the user choose one explicitly, then press PLAY. Never
-                    // silently start the first available source.
-                    val sourceLabels = preferred.mapIndexed { index, source ->
+                    // Choosing a source starts playback immediately. There is no
+                    // second PLAY confirmation step.
+                    val sourceLabels = preferred.map { source ->
                         val languageLabel = when (source.language.lowercase()) {
                             "dub" -> "DUB"
                             "sub" -> "SUB"
@@ -1426,28 +1437,13 @@ class AniLightNativeScreen(
                         }
                         "$languageLabel • ${source.quality} • ${source.server}"
                     }.toTypedArray()
-                    var selectedIndex = -1
                     lateinit var dialog: AlertDialog
                     dialog = AlertDialog.Builder(context)
                         .setTitle("$animeTitle • Episode $episode — Sources")
-                        .setSingleChoiceItems(sourceLabels, -1) { _, which ->
-                            selectedIndex = which
-                            if (dialog.isShowing) {
-                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                            }
-                        }
-                        .setNegativeButton("Cancel") { _, _ -> showDetailsAgain() }
-                        .setPositiveButton("PLAY", null)
-                        .create()
-                    dialog.setOnShowListener {
-                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                            val index = selectedIndex
-                            if (index !in preferred.indices) {
-                                toast("আগে একটি Source নির্বাচন করুন")
-                                return@setOnClickListener
-                            }
-                            val selected = preferred[index]
+                        .setItems(sourceLabels) { _, which ->
+                            val selected = preferred.getOrNull(which) ?: return@setItems
+                            episodeSourceResolving = false
+                            activeSourceDialog = null
                             currentEpisodeNumber = episode
                             language = selected.language
                             saveWatchLater(anime ?: JSONObject(), episode, selected.language)
@@ -1477,11 +1473,23 @@ class AniLightNativeScreen(
                             dialog.dismiss()
                             showDetailsAgain()
                         }
+                        .setNegativeButton("Cancel") { _, _ ->
+                            episodeSourceResolving = false
+                            activeSourceDialog = null
+                            showDetailsAgain()
+                        }
+                        .create()
+                    dialog.setOnDismissListener {
+                        if (activeSourceDialog === dialog) activeSourceDialog = null
+                        episodeSourceResolving = false
                     }
-                    dialog.show()
+                    activeSourceDialog = dialog
+
                 }
             } catch (e: Exception) {
                 ui.post {
+                    episodeSourceResolving = false
+                    activeSourceDialog = null
                     onPlaybackLoading("", false)
                     toast(e.message ?: "Stream resolve failed")
                     showDetailsAgain()
