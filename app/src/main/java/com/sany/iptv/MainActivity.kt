@@ -1,5 +1,7 @@
 package com.sany.iptv
 
+import com.lagradost.cloudstream3.newEpisode
+
 import android.app.Activity
 import android.animation.ValueAnimator
 import android.view.animation.DecelerateInterpolator
