@@ -1,8 +1,5 @@
 plugins {
     id("com.android.application")
-    // The pinned CloudStream KMP plugin places Kotlin Gradle on the shared
-    // classpath. Apply the already-resolved Android plugin without a version.
-    id("org.jetbrains.kotlin.android")
 }
 
 // Firebase is enabled when app/google-services.json is supplied (local file or CI secret).
