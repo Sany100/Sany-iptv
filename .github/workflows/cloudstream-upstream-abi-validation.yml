@@ -7,6 +7,7 @@ on:
       - feature/cloudstream-gpl-runtime-port
     paths:
       - "cloudstream-runtime/**"
+      - "cloudstream-original/AniLight/**"
       - ".github/workflows/cloudstream-upstream-abi-validation.yml"
 
 permissions:
@@ -82,6 +83,18 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon --stacktrace :library:assemble :app:compileStableDebugKotlin
 
+      - name: Compile the unchanged AniLight provider against the exact upstream Android host ABI
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d sany/cloudstream-original/AniLight/src/main/kotlin
+          # Compile the real provider sources inside the pinned upstream app module.
+          # This exposes the actual upstream :library and Android :app APIs on the
+          # compiler classpath; no local/fake CloudStream ABI stubs are introduced.
+          cp -R sany/cloudstream-original/AniLight/src/main/kotlin/. cloudstream-upstream/app/src/main/java/
+          cd cloudstream-upstream
+          ./gradlew --no-daemon --stacktrace :app:compileStableDebugKotlin
+
       - name: Record the scope of this validation
         if: always()
         shell: bash
@@ -91,6 +104,7 @@ jobs:
             echo
             echo "- Pinned source: recloudstream/cloudstream@a28e6468f54cfe420feebd205d3d21d08ed0cde8"
             echo "- This job compiles upstream :library and the upstream Android plugin host stable debug variant."
-            echo "- This is not yet the AniLight-against-local-source ABI probe and does not enable plugin loading in SANY."
+            echo "- It then compiles the unchanged AniLight Kotlin source inside that exact pinned upstream Android app module, against the real upstream app/library classpath."
+            echo "- This validates source/API compatibility only; it does not prove DEX loading, live API responses, or playback in SANY."
             echo "- SANY APK integration, DEX loading, and playback remain separate acceptance gates."
           } >> "$GITHUB_STEP_SUMMARY"
