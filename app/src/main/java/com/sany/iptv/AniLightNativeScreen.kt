@@ -1820,7 +1820,18 @@ class AniLightNativeScreen(
     private fun bottom(n: Int) = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(n) }
     private fun button(value: String, action: () -> Unit) = TextView(context).apply { text = value; gravity = Gravity.CENTER; textSize = 11f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); isFocusable = true; setPadding(dp(12), dp(9), dp(12), dp(9)); background = rounded(accent, 10); setOnClickListener { action() } }
     private fun label(value: String, size: Int, color: Int, bold: Boolean) = TextView(context).apply { text = value; textSize = size.toFloat(); setTextColor(color); if (bold) typeface = Typeface.DEFAULT_BOLD }
-    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
+    // Translucent Liquid Glass surfaces for Anime cards; keep badges/buttons solid.
+    private fun rounded(color: Int, radius: Int) = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        if (color == surface) {
+            if (light) intArrayOf(0xEFFFFFFF.toInt(), 0xDDE6F1FF.toInt(), 0xF7FFFFFF.toInt())
+            else intArrayOf(0xAA49688F.toInt(), 0xB0121D30.toInt(), 0xAA202F49.toInt())
+        } else intArrayOf(color, color)
+    ).apply {
+        cornerRadius = dp(radius).toFloat()
+        if (color == surface) setStroke(dp(1),
+            if (light) 0xDFFFFFFF.toInt() else 0xBDA9CFFF.toInt())
+    }
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
     private fun openSite() { runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(site))) } }
     private fun toast(s: String) = android.widget.Toast.makeText(context, s, android.widget.Toast.LENGTH_LONG).show()
