@@ -39,7 +39,7 @@ This document records the source audit for the SANY-hosted runtime port. It is d
 
 ## Anime-only provider scope
 
-The SANY AniLight provider on this branch is restricted to `TvType.Anime` and `TvType.OVA`. Movie homepage rows are removed, `MOVIE` search results are filtered, and `load()` rejects movie details. This is a provider-content restriction; it does not imply that the CloudStream host ABI has been integrated.
+The AniLight provider now declares `TvType.Anime`, `TvType.OVA`, and `TvType.AnimeMovie`. It adds an `Anime Movies` homepage row backed by `popularMovies`, retains `MOVIE` search results, and builds a single `Movie` episode for movie details. Movie link extraction uses the same AniLight sources/session/token resolver as episodic content, requesting episode number `1` with `sub` or `dub` language. When movie watch rows omit both audio flags, the provider currently falls back to one SUB movie row. This fallback is a compatibility assumption, not yet confirmed against a live movie API response. The `.cs3` plugin artifact built successfully at workflow run `45092214003`; its archive contains `manifest.json` and `classes.dex`, and DEX inspection confirms AniLight provider/API classes and movie/source-resolution code are packaged. This does not mean SANY's APK can execute the DEX: the CloudStream host ABI and DEX loader remain unintegrated.
 
 ## Runtime safety gate
 
@@ -52,7 +52,8 @@ Do not enable `PathClassLoader` merely because a DEX file exists. A plugin may e
 - Load the pinned AniLight `.cs3` package on-device without linkage/class verification errors.
 - Instantiate the manifest-declared plugin class using the matching classloader.
 - Run plugin load lifecycle and register at least one `MainAPI` provider and extractor.
-- Search, load details, enumerate episodes, and resolve at least one playable source.
+- Search, load details, enumerate episodes (including a real AnimeMovie), and resolve at least one real movie stream URL from the live AniLight API.
+- Confirm a real movie stream starts in SANY's Media3 player on-device, including redirect/headers and audio/subtitle behavior.
 - Pass source URL, headers, subtitles, and quality into SANY's existing Media3 playback path.
 - Unload the plugin and prove provider/extractor registrations and classloader references are removed.
 - Repeat on minSdk 23 and a current Android version.
@@ -168,3 +169,12 @@ The provider catalog metadata now advertises `AnimeMovie`. The stream route
 is implemented against the API contract visible in the provider source, but
 the actual movie API response shape and playable link have not yet been
 verified live. The CloudStream runtime/Dex loading status is unchanged.
+
+
+## 2026-11-23 AnimeMovie artifact checkpoint
+
+- CloudStream plugin workflow run: https://github.com/Sany100/Sany-iptv/actions/runs/45092214003 (completed successfully).
+- Artifact: `anilight-cloudstream-plugin`; archive contains `AniLight.cs3` and `plugins.json`.
+- Published repository index on the `builds` branch declares `Anime`, `AnimeMovie`, and `OVA`.
+- The packaged DEX contains AniLight provider/API classes and compiled movie/source-resolver code. Static package inspection is not a live API test or playback test.
+- Live AniLight movie API/source resolution and SANY device playback remain unverified. The current SANY host still does not execute CloudStream DEX plugins.
