@@ -1129,7 +1129,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Movies") {
-            renderMoviesDevelopmentSection()
+            renderNativeMovies(false)
             return
         }
         if (section == "Checker") {
