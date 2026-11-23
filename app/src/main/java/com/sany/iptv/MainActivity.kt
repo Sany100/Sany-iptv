@@ -1216,6 +1216,184 @@ class MainActivity : AppCompatActivity() {
         contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
     }
 
+    private fun showMovieExtensionManager() {
+        val actions = arrayOf("Browse Movie extensions", "Add Movie repository", "Manage installed extensions")
+        AlertDialog.Builder(this)
+            .setTitle("Movie Extension Manager")
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> loadMovieExtensionCatalogue()
+                    1 -> {
+                        val field = EditText(this).apply {
+                            hint = "HTTPS Movie repository index URL"
+                            setSingleLine(true)
+                            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+                        }
+                        AlertDialog.Builder(this).setTitle("Add Movie repository").setView(field)
+                            .setNegativeButton("CANCEL", null)
+                            .setPositiveButton("ADD") { _, _ ->
+                                val url = field.text.toString().trim()
+                                runCatching { SanyMovieExtensionManager.addRepository(this, url) }
+                                    .onSuccess { toast("Movie repository added"); loadMovieExtensionCatalogue() }
+                                    .onFailure { toast("Repository error: ${it.message}") }
+                            }.show()
+                    }
+                    2 -> showInstalledMovieExtensions()
+                }
+            }.setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun loadMovieExtensionCatalogue() {
+        toast("Movie repositories loading…")
+        thread(name = "SANY-Movie-Extension-Catalogue") {
+            val result = runCatching { SanyMovieExtensionManager.catalogue(applicationContext) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { entries ->
+                    if (entries.isEmpty()) {
+                        AlertDialog.Builder(this).setTitle("Movie Extensions")
+                            .setMessage("কোনো Movie extension পাওয়া যায়নি। আগে একটি HTTPS Movie repository যোগ করো।")
+                            .setPositiveButton("ADD REPOSITORY") { _, _ -> showMovieExtensionManager() }
+                            .setNegativeButton("CLOSE", null).show()
+                        return@onSuccess
+                    }
+                    val installed = SanyMovieExtensionManager.installed(this).associateBy { it.id }
+                    val labels = entries.map { item ->
+                        val current = installed[item.id]
+                        if (current == null) "${item.name}  •  ${item.version}  •  INSTALL"
+                        else "${item.name}  •  ${item.version}  •  INSTALLED ${current.version}"
+                    }.toTypedArray()
+                    AlertDialog.Builder(this).setTitle("Movie Extension Catalogue")
+                        .setItems(labels) { _, index ->
+                            val item = entries[index]
+                            AlertDialog.Builder(this).setTitle(item.name)
+                                .setMessage(item.description.ifBlank { "Version ${item.version}" } + "\\n\\nVersion: ${item.version}")
+                                .setPositiveButton(if (installed.containsKey(item.id)) "UPDATE / REPAIR" else "INSTALL") { _, _ ->
+                                    installMovieExtension(item)
+                                }.setNegativeButton("CANCEL", null).show()
+                        }.setNegativeButton("CLOSE", null).show()
+                }.onFailure {
+                    AlertDialog.Builder(this).setTitle("Movie repository error")
+                        .setMessage(it.message ?: it.javaClass.simpleName)
+                        .setPositiveButton("OK", null).show()
+                }
+            }
+        }
+    }
+
+    private fun installMovieExtension(extension: SanyMovieExtensionManager.Extension) {
+        toast("Installing ${extension.name}…")
+        thread(name = "SANY-Movie-Extension-Install") {
+            val result = runCatching {
+                SanyMovieExtensionManager.installOrUpdate(applicationContext, extension)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { loaded ->
+                    if (loaded.success) {
+                        AlertDialog.Builder(this).setTitle("Movie extension installed")
+                            .setMessage("${loaded.pluginName}\\nProviders: ${loaded.providerNames.joinToString()}")
+                            .setPositiveButton("SEARCH MOVIES") { _, _ ->
+                                loaded.providerNames.firstOrNull()?.let { showMovieExtensionSearch(it) }
+                            }.setNegativeButton("CLOSE", null).show()
+                    } else {
+                        toast("Install failed: ${loaded.error ?: "Unknown error"}")
+                    }
+                }.onFailure { toast("Install failed: ${it.message ?: it.javaClass.simpleName}") }
+            }
+        }
+    }
+
+    private fun showInstalledMovieExtensions() {
+        val installed = SanyMovieExtensionManager.installed(this)
+        if (installed.isEmpty()) {
+            AlertDialog.Builder(this).setTitle("Installed Movie Extensions")
+                .setMessage("এখনো কোনো Movie extension install করা হয়নি।")
+                .setPositiveButton("BROWSE") { _, _ -> loadMovieExtensionCatalogue() }
+                .setNegativeButton("CLOSE", null).show()
+            return
+        }
+        val labels = installed.map { "${it.name}  •  ${it.version}" }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Installed Movie Extensions")
+            .setItems(labels) { _, index ->
+                val item = installed[index]
+                AlertDialog.Builder(this).setTitle(item.name)
+                    .setMessage("Version: ${item.version}")
+                    .setPositiveButton("SEARCH") { _, _ ->
+                        val provider = SanyCloudStreamPluginRuntime.providers().firstOrNull {
+                            it.sourcePlugin == item.packagePath
+                        }
+                        if (provider == null) toast("এই extension-এর কোনো active provider নেই")
+                        else showMovieExtensionSearch(provider.name)
+                    }
+                    .setNeutralButton("UNINSTALL") { _, _ ->
+                        runCatching { SanyMovieExtensionManager.uninstall(this, item.id) }
+                            .onSuccess { toast(if (it) "Movie extension removed" else "Remove failed") }
+                            .onFailure { toast("Remove failed: ${it.message}") }
+                    }.setNegativeButton("CLOSE", null).show()
+            }.setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun showMovieExtensionSearch(providerName: String) {
+        val field = EditText(this).apply { hint = "Search movie title"; setSingleLine(true) }
+        AlertDialog.Builder(this).setTitle("Search • $providerName").setView(field)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("SEARCH") { _, _ ->
+                val query = field.text.toString().trim()
+                if (query.isBlank()) return@setPositiveButton
+                thread(name = "SANY-Movie-Search") {
+                    val result = runCatching { SanyCloudStreamPluginRuntime.search(providerName, query) }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        result.onSuccess { items ->
+                            if (items.isEmpty()) {
+                                toast("কোনো Movie পাওয়া যায়নি")
+                            } else {
+                                AlertDialog.Builder(this).setTitle("Movie results • ${items.size}")
+                                    .setItems(items.map { it.name }.toTypedArray()) { _, index ->
+                                        openMovieExtensionTitle(providerName, items[index].url, items[index].name)
+                                    }.setNegativeButton("CLOSE", null).show()
+                            }
+                        }.onFailure { toast("Movie search failed: ${it.message}") }
+                    }
+                }
+            }.show()
+    }
+
+    private fun openMovieExtensionTitle(providerName: String, url: String, fallbackTitle: String) {
+        toast("Loading movie details…")
+        thread(name = "SANY-Movie-Details") {
+            val result = runCatching { SanyCloudStreamPluginRuntime.load(providerName, url) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { response ->
+                    val movie = response as? com.lagradost.cloudstream3.MovieLoadResponse
+                    if (movie == null) {
+                        toast("এই extension result টি Movie নয়; Movie page-এ দেখানো হয়নি")
+                        return@onSuccess
+                    }
+                    toast("Resolving ${movie.name.ifBlank { fallbackTitle }}…")
+                    thread(name = "SANY-Movie-Resolve") {
+                        val links = runCatching {
+                            kotlinx.coroutines.runBlocking {
+                                SanyCloudStreamPluginRuntime.resolvePlayback(
+                                    providerName, movie.name.ifBlank { fallbackTitle }, movie.dataUrl
+                                )
+                            }
+                        }
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            links.onSuccess { sources ->
+                                if (sources.isEmpty()) toast("এই Movie-এর কোনো playable source পাওয়া যায়নি")
+                                else showAnimeSourcePicker(movie.name.ifBlank { fallbackTitle }, sources)
+                            }.onFailure { toast("Source resolve failed: ${it.message}") }
+                        }
+                    }
+                }.onFailure { toast("Movie details failed: ${it.message}") }
+            }
+        }
+    }
+
     private fun renderNativeMovies(showSeries: Boolean) {
         if (showSeries) {
             renderDevelopmentSection()
@@ -1226,7 +1404,8 @@ class MainActivity : AppCompatActivity() {
             seriesMode = false,
             light = isLight,
             accent = accent,
-            onPlay = { title, url -> play(Channel(title, url, "Movies")) }
+            onPlay = { title, url -> play(Channel(title, url, "Movies")) },
+            onManageExtensions = { showMovieExtensionManager() }
         )
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
     }
