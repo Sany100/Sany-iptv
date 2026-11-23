@@ -30,9 +30,16 @@ This document records the source audit for the SANY-hosted runtime port. It is d
 
 1. The upstream `library` is Kotlin Multiplatform, not a small standalone Android JAR.
 2. Its build uses a newer Android Gradle Plugin line and newer Android/Media3 dependencies than the current SANY app. Importing the upstream Gradle module unchanged would force a broad build-tool/dependency upgrade.
-3. `BasePlugin` directly calls `APIHolder`, `MainAPI`, `ExtractorApi`, `extractorApis`, and the upstream logging service. Copying only the base class cannot provide a working ABI.
-4. The upstream Android `Plugin` adds Context/resource/settings hooks. The upstream `PluginManager` also depends on CloudStream application state, repository storage, activity callbacks, AndroidX Fragment APIs, notifications, and UI utilities. It cannot be copied into SANY unchanged.
-5. `MainAPI` and `ExtractorApi` depend on a broad model/helper/network surface. A minimal class with the same name would not be binary compatible with compiled `.cs3` providers.
+3. `BasePlugin` exposes the binary-facing `registerMainAPI(MainAPI)`, `registerExtractorAPI(ExtractorApi)`, `beforeUnload()`, `load()`, and `filename` members. Registration mutates `APIHolder.allProviders`, calls `APIHolder.addPluginMapping`, writes `sourcePlugin`, and appends to the global `extractorApis` collection. These registry contracts and their collection element types must match compiled plugin bytecode.
+4. The Android `Plugin` subclass adds `load(Context)`, `registerVideoClickAction`, `Resources?`, and an `openSettings` callback. Even plugins that do not use settings still link against the `Plugin` superclass and its ABI.
+5. `ExtractorApi.kt` imports a large built-in extractor catalogue plus `Ksoup`, `AudioFile`, `IDownloadableMinimum`, `SubtitleFile`, `USER_AGENT`, and the global `app` HTTP service. It is not a single independent interface that can safely be copied alone.
+6. The pinned `library` build uses Kotlin Multiplatform Android/JVM source sets and dependencies including Jackson Kotlin, kotlinx serialization/coroutines, NiceHttp, Ktor HTTP, Ksoup/Jsoup, Rhino, cryptography, and NewPipeExtractor. The SANY app currently uses AGP 8.7.3, compileSdk 35, Kotlin Android 2.4.0, and Media3 1.5.1; upstream uses AGP 9.1.1, compileSdk 37, and Media3 1.9.3. A direct module import is not a safe incremental change.
+7. The upstream Android `PluginManager` depends on CloudStream application state, repository storage, activity callbacks, AndroidX Fragment APIs, notifications, and UI utilities. It cannot be copied into SANY unchanged.
+8. `MainAPI` and `ExtractorApi` depend on a broad model/helper/network surface. A minimal class with the same name would not be binary compatible with compiled `.cs3` providers.
+
+## Anime-only provider scope
+
+The SANY AniLight provider on this branch is restricted to `TvType.Anime` and `TvType.OVA`. Movie homepage rows are removed, `MOVIE` search results are filtered, and `load()` rejects movie details. This is a provider-content restriction; it does not imply that the CloudStream host ABI has been integrated.
 
 ## Runtime safety gate
 
