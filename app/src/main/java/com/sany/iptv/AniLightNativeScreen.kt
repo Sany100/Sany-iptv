@@ -34,7 +34,8 @@ class AniLightNativeScreen(
     private val context: Context,
     private val light: Boolean,
     private val accent: Int,
-    private val onPlay: (SanyPlaybackRequest) -> Unit
+    private val onPlay: (SanyPlaybackRequest) -> Unit,
+    private val onPlaybackLoading: (String, Boolean) -> Unit = { _, _ -> }
 ) {
     @Volatile private var api = "https://api.anilight.live/api"
     @Volatile private var site = "https://anilight.live"
@@ -1164,6 +1165,7 @@ class AniLightNativeScreen(
     }
 
     private fun resolveEpisode(episode: Int) {
+        onPlaybackLoading("$animeTitle • Episode $episode", true)
         loading("Loading all audio tracks and video sources for Episode $episode…")
         thread(name = "AniLight-Resolve") {
             try {
@@ -1257,6 +1259,7 @@ class AniLightNativeScreen(
                 )
                 ui.post {
                     if (preferred.isEmpty()) {
+                        onPlaybackLoading("", false)
                         toast("কোনো playable source পাওয়া যায়নি। Main server বা backup server-এ এই Episode-এর link নাও থাকতে পারে।")
                         showDetailsAgain()
                         return@post
@@ -1290,7 +1293,11 @@ class AniLightNativeScreen(
                     showDetailsAgain()
                 }
             } catch (e: Exception) {
-                ui.post { toast(e.message ?: "Stream resolve failed"); showDetailsAgain() }
+                ui.post {
+                    onPlaybackLoading("", false)
+                    toast(e.message ?: "Stream resolve failed")
+                    showDetailsAgain()
+                }
             }
         }
     }
