@@ -1426,10 +1426,14 @@ class AniLightNativeScreen(
                         "$languageLabel • ${source.quality} • $serverLabel"
                     }.toTypedArray()
                     var selectedIndex = -1
-                    val dialog = AlertDialog.Builder(context)
+                    lateinit var dialog: AlertDialog
+                    dialog = AlertDialog.Builder(context)
                         .setTitle("$animeTitle • Episode $episode — Sources")
                         .setSingleChoiceItems(sourceLabels, -1) { _, which ->
                             selectedIndex = which
+                            if (dialog.isShowing) {
+                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                            }
                         }
                         .setNegativeButton("Cancel") { _, _ -> showDetailsAgain() }
                         .setPositiveButton("PLAY", null)
@@ -1472,13 +1476,8 @@ class AniLightNativeScreen(
                             dialog.dismiss()
                             showDetailsAgain()
                         }
-                        dialog.listView.setOnItemClickListener { _, _, which, _ ->
-                            selectedIndex = which
-                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                        }
                     }
                     dialog.show()
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
                 }
             } catch (e: Exception) {
                 ui.post {
