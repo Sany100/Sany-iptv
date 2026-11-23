@@ -96,6 +96,8 @@ class MainActivity : AppCompatActivity() {
     private val checkerProgressCount = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var liveTvPublishedCount = 0
     private var checkerFilter = "All"
+    // Copy/export controls remain hidden until the session is unlocked with the owner key.
+    private var checkerCopyUnlocked = false
     private var checkerDisplayedLimit = 250
     private var checkerSummaryView: TextView? = null
     private var checkerRunButton: TextView? = null
@@ -1021,7 +1023,7 @@ class MainActivity : AppCompatActivity() {
                 } else bottomNav.getChildAt(0)
             }
             else -> bottomNav.getChildAt(
-                listOf("Live TV", "Checker", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
+                listOf("Live TV", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
             )
         }
         target?.requestFocus()
@@ -1604,6 +1606,24 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(4), 0, dp(4), 0)
             }
+            val checkerShortcut = text("✓  CHECKER", 11, accent, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(13), 0, dp(13), 0)
+                background = glass(10)
+                isFocusable = true
+                contentDescription = "Open Checker page"
+                applyTvFocusStyle(this)
+                setOnClickListener {
+                    section = "Checker"
+                    selectedGroup = "All"
+                    searchQuery = ""
+                    prefs.edit().putString("ui_section", "Checker").apply()
+                    renderHome()
+                }
+            }
+            toolbar.addView(checkerShortcut, LinearLayout.LayoutParams(-2, dp(36)).apply {
+                rightMargin = dp(8)
+            })
             toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(36), 1f))
             toolbar.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(34)))
             categoryHeaderContainer.addView(toolbar, LinearLayout.LayoutParams(-1, dp(38)))
@@ -2138,7 +2158,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderBottomNav() {
         bottomNav.removeAllViews()
-        listOf("Live TV" to "▣", "Checker" to "✓", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
+        listOf("Live TV" to "▣", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
                 isFocusable = true
@@ -2181,7 +2201,7 @@ class MainActivity : AppCompatActivity() {
                     renderSection()
                     renderBottomNav()
                     if (isTvDevice) bottomNav.getChildAt(
-                        listOf("Live TV", "Checker", "Movies", "Series", "Settings").indexOf(section)
+                        listOf("Live TV", "Movies", "Series", "Settings").indexOf(section)
                     )?.requestFocus()
                 }
             }
@@ -3396,7 +3416,53 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) { streamChecks.clear() }
     }
 
+    private fun showCheckerSecretKeyDialog() {
+        if (checkerCopyUnlocked) {
+            renderCheckerSection()
+            return
+        }
+        val keyInput = EditText(this).apply {
+            hint = "Enter secret key"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+            setSingleLine(true)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Unlock Copy Options")
+            .setMessage("Copy and export options are hidden. Enter the authorized secret key to show them.")
+            .setView(keyInput)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("UNLOCK", null)
+            .create().apply {
+                setOnShowListener {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val enteredHash = try {
+                            java.security.MessageDigest.getInstance("SHA-256")
+                                .digest(keyInput.text.toString().trim().toByteArray(Charsets.UTF_8))
+                                .joinToString("") { byte -> "%02x".format(byte) }
+                        } catch (_: Exception) { "" }
+                        // Compare a digest rather than storing the key as readable source text.
+                        if (enteredHash == "0978f052a4bb8742bcd2bb5a8f70330b4e8481d6167eddddbba65bc16b22e02e") {
+                            checkerCopyUnlocked = true
+                            dismiss()
+                            renderCheckerSection()
+                            toast("Copy options unlocked")
+                        } else {
+                            keyInput.error = "Incorrect secret key"
+                        }
+                    }
+                }
+                show()
+            }
+    }
+
     private fun copyCheckerResults(statusFilter: String? = null, fullReport: Boolean = false) {
+        if (!checkerCopyUnlocked) {
+            showCheckerSecretKeyDialog()
+            return
+        }
         val selected = if (statusFilter == null || statusFilter == "All") {
             channels.filter { fullReport || streamChecks.containsKey(it.url) }
         } else {
@@ -3564,11 +3630,19 @@ class MainActivity : AppCompatActivity() {
         box.addView(checkerRunButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
             bottomMargin = dp(6)
         })
-        box.addView(actionButton("▤  COPY REPORT") {
-            copyCheckerResults(fullReport = true)
-        }, LinearLayout.LayoutParams(-1, dp(40)).apply {
-            bottomMargin = dp(8)
-        })
+        if (checkerCopyUnlocked) {
+            box.addView(actionButton("▤  COPY REPORT") {
+                copyCheckerResults(fullReport = true)
+            }, LinearLayout.LayoutParams(-1, dp(40)).apply {
+                bottomMargin = dp(8)
+            })
+        } else {
+            box.addView(actionButton("🔒  UNLOCK COPY OPTIONS") {
+                showCheckerSecretKeyDialog()
+            }, LinearLayout.LayoutParams(-1, dp(40)).apply {
+                bottomMargin = dp(8)
+            })
+        }
 
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val filterScroll = HorizontalScrollView(this).apply {
@@ -3597,7 +3671,7 @@ class MainActivity : AppCompatActivity() {
                     renderCheckerSection()
                 }
             }, LinearLayout.LayoutParams(-2, dp(36)))
-            if (filter != "Checking") {
+            if (filter != "Checking" && checkerCopyUnlocked) {
                 filterGroup.addView(text("⧉", 16, accent, true).apply {
                     gravity = Gravity.CENTER
                     setPadding(dp(8), 0, dp(10), 0)
