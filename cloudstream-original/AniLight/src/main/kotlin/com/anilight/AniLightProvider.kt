@@ -41,7 +41,7 @@ class AniLightProvider : MainAPI() {
     override var name = "AniLight"
     override var lang = "en"
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
+    // Anime series only. Movie entries are deliberately excluded from this provider.\noverride val supportedTypes = setOf(TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
         "home:trending" to "Trending Now",
