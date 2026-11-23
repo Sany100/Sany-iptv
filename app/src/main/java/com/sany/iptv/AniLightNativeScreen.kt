@@ -287,9 +287,15 @@ class AniLightNativeScreen(
             return
         }
 
-        // Keep the homepage edge-to-edge: Watch Later is the first section.
-        // The featured Play/Info hero is intentionally removed to avoid the
-        // large unused banner area above the catalogue.
+        // Show a real server-provided banner using the featured/trending artwork.
+        // This keeps the catalogue visually integrated without exposing the
+        // internal CloudStream provider manager in the public Anime UI.
+        val featured = items(data.optJSONObject("trending")?.optJSONArray("media"))
+            .firstOrNull { !it.optBoolean("isAdult", false) }
+            ?: items(data.optJSONObject("popular")?.optJSONArray("media"))
+                .firstOrNull { !it.optBoolean("isAdult", false) }
+        if (featured != null) addFeaturedHero(featured)
+
         renderWatchLaterShelf()
 
         // A dedicated paginated entry exposes the complete public Anime catalogue,
