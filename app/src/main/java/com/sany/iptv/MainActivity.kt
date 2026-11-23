@@ -910,17 +910,9 @@ class MainActivity : AppCompatActivity() {
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 14 else 12))
-            // Opaque theme-matched header: no translucent grey tint in either theme.
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                if (isLight) intArrayOf(Color.WHITE, Color.rgb(246, 250, 255))
-                else intArrayOf(Color.rgb(7, 22, 45), Color.rgb(10, 28, 55))
-            ).apply {
-                // Square-corner branded header; keep it visually separate from the page.
-                cornerRadius = 0f
-                setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
-            }
-            // Keep the header flat so its square geometry remains crisp.
+            // Liquid Glass brand surface: translucent layered material with a fine rim.
+            background = glass(0)
+            // Preserve the full-width square brand-header geometry.
             cameraDistance = 11000f * resources.displayMetrics.density
             rotationX = 0f
             translationZ = dp(10).toFloat()
@@ -1016,10 +1008,10 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(2), dp(5), dp(2))
-            // Solid bottom dock keeps the gesture/navigation area visually consistent.
-            // Full-width independent navigation surface: pure white in Day mode,
-            // pure black in Night mode. No rounded corners or gradient tint.
-            setBackgroundColor(if (isLight) Color.WHITE else Color.BLACK)
+            // Full-width Liquid Glass navigation dock; translucent in both themes.
+            background = glass(0)
+            elevation = dp(18).toFloat()
+            translationZ = dp(8).toFloat()
         }
         home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
         renderSection()
@@ -1944,7 +1936,7 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(16), dp(10), dp(15), dp(10))
-                background = if (isLight) rounded(Color.WHITE, 10, Color.BLACK, 2) else glass(10)
+                background = glass(10)
                 elevation = dp(2).toFloat()
                 isFocusable = true
                 applyTvFocusStyle(this)
@@ -2089,7 +2081,7 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(9), dp(10), dp(9))
-                background = if (isLight) rounded(Color.WHITE, 12, Color.BLACK, 2) else glass(12)
+                background = glass(12)
                 applyTvFocusStyle(this)
             }
             val number = text((index + 1).toString().padStart(2, '0'), 12, accent, true).apply {
@@ -2119,7 +2111,7 @@ class MainActivity : AppCompatActivity() {
             }
             val logo = ImageView(this).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                background = if (isLight) rounded(Color.WHITE, 10, Color.rgb(25, 31, 42), 1) else glass(10)
+                background = glass(10)
                 setPadding(dp(4), dp(4), dp(4), dp(4))
                 contentDescription = "${channel.name} logo"
             }
@@ -2225,7 +2217,7 @@ class MainActivity : AppCompatActivity() {
                     ).apply {
                         cornerRadius = dp(16).toFloat()
                         setStroke(dp(3), 0xFF35B8FF.toInt())
-                    } else if (isLight) rounded(Color.WHITE, 16, Color.BLACK, 2) else glass(16)
+                    } else glass(16)
                     if (isPlayingChannel) {
                         elevation = dp(10).toFloat()
                         foreground = GradientDrawable().apply {
@@ -5137,7 +5129,7 @@ class MainActivity : AppCompatActivity() {
                 ).apply {
                     cornerRadius = dp(13).toFloat()
                     setStroke(dp(2), 0xFF35B8FF.toInt())
-                } else if (isLight) rounded(Color.WHITE, 12, Color.BLACK, 1) else glass(12)
+                } else glass(12)
                 if (isPlaying) elevation = dp(7).toFloat()
                 applyTvFocusStyle(this)
                 setOnClickListener { play(channel) }
@@ -5798,23 +5790,26 @@ class MainActivity : AppCompatActivity() {
     // Shared translucent glass surface used by menu cards, controls, pills and icon buttons.
     // Native Android View backgrounds cannot blur arbitrary sibling content on every API level,
     // so use layered alpha gradients, a bright top edge and a soft tinted outline for a consistent glass look.
+    // iOS-inspired Liquid Glass material. Android's classic View system has no
+    // true per-view backdrop blur on every supported API, so use layered translucency,
+    // a luminous top rim and a subtle tinted lower edge without blurring video/content.
     private fun glass(radius: Int) = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
         if (isLight) intArrayOf(
-            Color.argb(205, 255, 255, 255),
-            Color.argb(168, 232, 242, 255),
-            Color.argb(188, 255, 255, 255)
+            Color.argb(224, 255, 255, 255),
+            Color.argb(188, 226, 239, 255),
+            Color.argb(205, 248, 252, 255)
         ) else intArrayOf(
-            Color.argb(178, 35, 58, 88),
-            Color.argb(148, 12, 25, 46),
-            Color.argb(172, 32, 43, 75)
+            Color.argb(166, 100, 145, 205),
+            Color.argb(132, 20, 38, 68),
+            Color.argb(158, 30, 48, 82)
         )
     ).apply {
         cornerRadius = dp(radius).toFloat()
         setStroke(
             dp(1),
-            if (isLight) Color.argb(210, 255, 255, 255)
-            else Color.argb(185, 145, 195, 255)
+            if (isLight) Color.argb(230, 255, 255, 255)
+            else Color.argb(205, 174, 211, 255)
         )
     }
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
