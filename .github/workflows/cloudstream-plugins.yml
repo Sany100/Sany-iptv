@@ -1,4 +1,4 @@
-name: Build AniLight CloudStream Plugin
+name: Build First-Stage CloudStream Anime Plugins
 
 on:
   workflow_dispatch:
@@ -77,11 +77,20 @@ jobs:
           sed -i 's/val apk by configurations/val cloudstream by configurations/; s/apk("com.lagradost:cloudstream3:pre-release")/cloudstream("com.lagradost:cloudstream3:pre-release")/' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
           # Use CloudStream-compatible NiceHttp and Jackson versions for the AniLight API client.
           sed -i 's/implementation("com.github.Blatzar:NiceHttp:0.3.2")/implementation("com.github.Blatzar:NiceHttp:0.4.18")/; /implementation("org.jsoup:jsoup:1.13.1")/a\\        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")' "$RUNNER_TEMP/cloudstream-build/build.gradle.kts"
+          # Pin the external provider source repository; do not build from a moving branch.
+          git clone https://github.com/yonkou0/CloudStreamRepo.git "$RUNNER_TEMP/provider-sources"
+          git -C "$RUNNER_TEMP/provider-sources" checkout --detach 62725f3b2eb2eae5eb30538f1dad84b0057a0c19
           cp -a "$GITHUB_WORKSPACE/source/cloudstream-original/AniLight" "$RUNNER_TEMP/cloudstream-build/AniLight"
-          # AGP 8 requires an explicit Android namespace for library modules.
+          for provider in AniChan Anidap AniSuge; do
+            cp -a "$RUNNER_TEMP/provider-sources/$provider" "$RUNNER_TEMP/cloudstream-build/$provider"
+          done
+          # AGP 8 requires explicit namespaces for the provider modules.
           printf '\nandroid {\n    namespace = "com.anilight"\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_11\n        targetCompatibility = JavaVersion.VERSION_11\n    }\n}\n' >> "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
-          test -f "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
+          printf '\nandroid {\n    namespace = "com.csksy.anichan"\n}\n' >> "$RUNNER_TEMP/cloudstream-build/AniChan/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt"
+          test -f "$RUNNER_TEMP/cloudstream-build/AniChan/src/main/kotlin/com/csksy/anichan/AniChanPlugin.kt"
+          test -f "$RUNNER_TEMP/cloudstream-build/Anidap/src/main/kotlin/com/laddu100/AnidapPlugin.kt"
+          test -f "$RUNNER_TEMP/cloudstream-build/AniSuge/src/main/kotlin/com/laddu100/AniSugePlugin.kt"
 
       - name: Build AniLight plugin and repository index
         working-directory: ${{ runner.temp }}/cloudstream-build
@@ -89,84 +98,65 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon AniLight:make makePluginsJson
+          ./gradlew --no-daemon AniLight:make AniChan:make Anidap:make AniSuge:make makePluginsJson
           mkdir -p "$GITHUB_WORKSPACE/plugin-output"
           find AniLight/build -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \;
           test -s build/plugins.json
-          # Import every active Anime/AnimeMovie/OVA provider supported by this
-          # CloudStream plugin API. The weekly workflow follows the upstream builds
-          # index so newly published provider versions are picked up automatically.
-          # Each .cs3 is checked and pinned by SHA-256 before SANY publishes it.
+          # Publish only the four explicitly approved first-stage providers.
+          # Miruro and AniKotoAnime are intentionally deferred until this stage passes.
           python3 - "$GITHUB_WORKSPACE/plugin-output" build/plugins.json <<'PY'
-          import hashlib, io, json, pathlib, sys, urllib.parse, urllib.request, zipfile
+          import hashlib, io, json, pathlib, sys, zipfile
           out = pathlib.Path(sys.argv[1])
-          own_index_path = pathlib.Path(sys.argv[2])
-          upstream = "https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/builds"
-          upstream_index = json.load(urllib.request.urlopen(upstream + "/plugins.json", timeout=30))
-          anime_types = {"anime", "animemovie", "ova"}
-          selected = [
-              item for item in upstream_index
-              if item.get("status") == 1
-              and item.get("apiVersion", 1) <= 1
-              and anime_types.intersection(str(x).lower() for x in item.get("tvTypes", []))
-          ]
+          built_index = pathlib.Path(sys.argv[2])
+          wanted = {"AniLight", "AniChan", "Anidap", "AniSuge"}
+          records = json.loads(built_index.read_text())
+          by_name = {item.get("internalName"): item for item in records}
+          missing = sorted(wanted - by_name.keys())
+          if missing:
+              raise SystemExit("Missing first-stage provider metadata: " + ", ".join(missing))
           imported = []
-          for item in sorted(selected, key=lambda x: x.get("internalName", "")):
-              name = item.get("internalName", "")
-              if not name or not name.replace("_", "").replace("-", "").replace(".", "").isalnum():
-                  print(f"Skip invalid provider name: {name!r}")
-                  continue
+          for name in sorted(wanted):
               filename = name + ".cs3"
-              source_url = item.get("url", "")
-              expected_url = upstream + "/" + filename
-              if source_url != expected_url:
-                  print(f"Skip {name}: unexpected upstream package URL {source_url}")
-                  continue
-              data = urllib.request.urlopen(source_url, timeout=60).read()
-              if not data or len(data) > 80 * 1024 * 1024:
-                  raise SystemExit(f"{name}: invalid package size")
-              expected_size = item.get("fileSize")
-              if expected_size and len(data) != expected_size:
-                  print(f"Refresh stale size metadata for {name}: index={expected_size}, actual={len(data)}")
+              package = out / filename
+              if not package.is_file() or package.stat().st_size == 0:
+                  raise SystemExit(f"{name}: build did not produce {filename}")
+              data = package.read_bytes()
+              if len(data) > 80 * 1024 * 1024:
+                  raise SystemExit(f"{name}: package exceeds 80 MiB")
               with zipfile.ZipFile(io.BytesIO(data)) as archive:
-                  if "classes.dex" not in archive.namelist() or "manifest.json" not in archive.namelist():
-                      raise SystemExit(f"{name}: missing classes.dex or manifest.json")
+                  names = set(archive.namelist())
+                  if not {"classes.dex", "manifest.json"}.issubset(names):
+                      raise SystemExit(f"{name}: package missing classes.dex or manifest.json")
                   manifest = json.loads(archive.read("manifest.json"))
+              item = dict(by_name[name])
               if manifest.get("version") != item.get("version"):
-                  raise SystemExit(f"{name}: manifest version differs from upstream index")
+                  raise SystemExit(f"{name}: manifest/index version mismatch")
               if not manifest.get("pluginClassName"):
-                  raise SystemExit(f"{name}: missing pluginClassName")
-              digest = hashlib.sha256(data).hexdigest()
-              (out / filename).write_bytes(data)
-              record = dict(item)
-              record["fileSize"] = len(data)
-              record["fileHash"] = "sha256-" + digest
-              record["url"] = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/" + filename
-              imported.append(record)
-              print(f"Imported {name} v{item['version']} ({len(data)} bytes, sha256 {digest})")
-          if not imported:
-              raise SystemExit("No active compatible Anime providers were found upstream")
-          own_index = json.loads(own_index_path.read_text())
-          by_name = {x.get("internalName"): x for x in own_index}
-          for item in imported:
-              by_name[item["internalName"]] = item
-          combined = list(by_name.values())
-          combined.sort(key=lambda x: (x.get("internalName") != "AniLight", x.get("name", "")))
-          (out / "plugins.json").write_text(json.dumps(combined, indent=2))
-          print(f"Published candidate Anime providers: {len(imported)}")
+                  raise SystemExit(f"{name}: manifest has no pluginClassName")
+              item["fileSize"] = len(data)
+              item["fileHash"] = "sha256-" + hashlib.sha256(data).hexdigest()
+              item["url"] = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/" + filename
+              imported.append(item)
+              print(f"Validated {name} v{item['version']} ({len(data)} bytes)")
+          imported.sort(key=lambda x: x["internalName"].lower())
+          (out / "plugins.json").write_text(json.dumps(imported, indent=2))
+          print("First-stage provider set: " + ", ".join(x["internalName"] for x in imported))
           PY
+          test -s "$GITHUB_WORKSPACE/plugin-output/plugins.json"
+          test "$(find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' | wc -l)" -eq 4
+
           test -s "$GITHUB_WORKSPACE/plugin-output/plugins.json"
           test "$(find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' | wc -l)" -ge 4
 
-      - name: Upload AniLight plugin build
+      - name: Upload first-stage Anime plugin build
         uses: actions/upload-artifact@v4
         with:
-          name: anilight-cloudstream-plugin
+          name: sany-first-stage-anime-cloudstream-plugins
           path: plugin-output/*
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish CloudStream repository
+      - name: Publish SANY first-stage CloudStream repository
         uses: actions/checkout@v4
         with:
           ref: builds
@@ -187,6 +177,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No repository changes to publish"
           else
-            git commit -m "Publish updated CloudStream Anime providers"
+            git commit -m "Publish first-stage Anime providers (AniLight AniChan Anidap AniSuge)"
             git push origin builds
           fi
