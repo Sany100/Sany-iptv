@@ -105,25 +105,17 @@ jobs:
           ./gradlew --no-daemon AniLight:make AniChan:make Anidap:make AniSuge:make makePluginsJson
           mkdir -p "$GITHUB_WORKSPACE/plugin-output"
           find AniLight/build -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \;
-          test -s build/plugins.json
-          # Publish only the four explicitly approved first-stage providers.
-          # Miruro and AniKotoAnime are intentionally deferred until this stage passes.
-          python3 - "$GITHUB_WORKSPACE/plugin-output" build/plugins.json <<'PY'
+          # Build the trusted index from each verified package manifest.
+          # The upstream makePluginsJson task may omit modules imported from another repository.
+          python3 - "$GITHUB_WORKSPACE/plugin-output" <<'PY'
           import hashlib, io, json, pathlib, sys, zipfile
           out = pathlib.Path(sys.argv[1])
-          built_index = pathlib.Path(sys.argv[2])
-          wanted = {"AniLight", "AniChan", "Anidap", "AniSuge"}
-          records = json.loads(built_index.read_text())
-          by_name = {item.get("internalName"): item for item in records}
-          missing = sorted(wanted - by_name.keys())
-          if missing:
-              raise SystemExit("Missing first-stage provider metadata: " + ", ".join(missing))
+          wanted = ["AniLight", "AniChan", "Anidap", "AniSuge"]
           imported = []
-          for name in sorted(wanted):
-              filename = name + ".cs3"
-              package = out / filename
+          for name in wanted:
+              package = out / (name + ".cs3")
               if not package.is_file() or package.stat().st_size == 0:
-                  raise SystemExit(f"{name}: build did not produce {filename}")
+                  raise SystemExit(f"{name}: build did not produce {package.name}")
               data = package.read_bytes()
               if len(data) > 80 * 1024 * 1024:
                   raise SystemExit(f"{name}: package exceeds 80 MiB")
@@ -132,17 +124,29 @@ jobs:
                   if not {"classes.dex", "manifest.json"}.issubset(names):
                       raise SystemExit(f"{name}: package missing classes.dex or manifest.json")
                   manifest = json.loads(archive.read("manifest.json"))
-              item = dict(by_name[name])
-              if manifest.get("version") != item.get("version"):
-                  raise SystemExit(f"{name}: manifest/index version mismatch")
-              if not manifest.get("pluginClassName"):
+              plugin_class = manifest.get("pluginClassName")
+              version = manifest.get("version")
+              if not isinstance(plugin_class, str) or not plugin_class:
                   raise SystemExit(f"{name}: manifest has no pluginClassName")
-              item["fileSize"] = len(data)
-              item["fileHash"] = "sha256-" + hashlib.sha256(data).hexdigest()
-              item["url"] = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/" + filename
+              if not isinstance(version, int) or version < 1:
+                  raise SystemExit(f"{name}: manifest version is invalid")
+              display_name = manifest.get("name") or name
+              item = {
+                  "name": display_name,
+                  "internalName": name,
+                  "version": version,
+                  "apiVersion": 1,
+                  "status": 1,
+                  "description": f"{display_name} CloudStream Anime provider",
+                  "authors": [],
+                  "language": "en",
+                  "tvTypes": ["Anime"],
+                  "fileSize": len(data),
+                  "fileHash": "sha256-" + hashlib.sha256(data).hexdigest(),
+                  "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/" + name + ".cs3"
+              }
               imported.append(item)
-              print(f"Validated {name} v{item['version']} ({len(data)} bytes)")
-          imported.sort(key=lambda x: x["internalName"].lower())
+              print(f"Validated {name} v{version} ({len(data)} bytes), plugin={plugin_class}")
           (out / "plugins.json").write_text(json.dumps(imported, indent=2))
           print("First-stage provider set: " + ", ".join(x["internalName"] for x in imported))
           PY
