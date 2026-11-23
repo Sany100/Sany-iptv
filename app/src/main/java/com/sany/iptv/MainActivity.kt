@@ -134,6 +134,7 @@ class MainActivity : AppCompatActivity() {
     private var aniLightWebView: WebView? = null
     private var aniLightSiteLoaded = false
     private var aniLightNativeScreen: AniLightNativeScreen? = null
+    private var cloudStreamProviderScreen: CloudStreamProviderHomeScreen? = null
     private var currentChannel: Channel? = null
     private var playbackReturnScrollY = 0
     // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
@@ -1298,7 +1299,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCloudStreamProviderBrowser() {
-        // Retry sync/load for the complete built-in Anime provider set.
+        // Re-sync the allowlisted packages, then show a real provider directory.
         val progress = AlertDialog.Builder(this@MainActivity)
             .setTitle("Anime Providers")
             .setMessage("GitHub থেকে Anime Providers যাচাই ও Load করা হচ্ছে…")
@@ -1327,12 +1328,23 @@ class MainActivity : AppCompatActivity() {
                 }
                 progress.dismiss()
                 result.onSuccess { providers ->
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("CloudStream Provider নির্বাচন")
-                        .setItems(providers.map { it.name }.toTypedArray()) { _, index ->
-                            showCloudStreamSearch(providers[index].name)
+                    cloudStreamProviderScreen = CloudStreamProviderHomeScreen(
+                        context = this@MainActivity,
+                        providers = providers,
+                        backgroundColor = bg,
+                        foregroundColor = white,
+                        accentColor = accent,
+                        onSearch = { providerName, _ -> showCloudStreamSearch(providerName) },
+                        onBackToAnime = {
+                            cloudStreamProviderScreen = null
+                            renderAniLightNative()
                         }
-                        .setNegativeButton("বন্ধ", null).show()
+                    )
+                    contentArea.removeAllViews()
+                    contentArea.addView(
+                        cloudStreamProviderScreen!!.create(),
+                        LinearLayout.LayoutParams(-1, -1)
+                    )
                 }.onFailure { error ->
                     android.util.Log.e("SANY-CS", "Anime provider sync/load failed from provider browser", error)
                     AlertDialog.Builder(this@MainActivity)
@@ -1344,8 +1356,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showCloudStreamSearch(providerName: String) {
-        val input = EditText(this).apply { hint = "Anime title লিখুন"; setSingleLine(true); setPadding(dp(18), dp(12), dp(18), dp(12)) }
+    private fun showCloudStreamSearch(providerName: String, initialQuery: String? = null) {
+        val input = EditText(this).apply { hint = "Anime title লিখুন"; initialQuery?.let(::setText); setSingleLine(true); setPadding(dp(18), dp(12), dp(18), dp(12)) }
         val dialog = AlertDialog.Builder(this@MainActivity).setTitle("$providerName Search").setView(input)
             .setPositiveButton("SEARCH", null).setNegativeButton("CANCEL", null).create()
         dialog.setOnShowListener {
@@ -5549,6 +5561,16 @@ class MainActivity : AppCompatActivity() {
         // AniLight owns its own catalogue/detail navigation. Keep Back inside
         // Anime Series until its home screen is reached; only then switch to Live TV.
         if (section == "Series") {
+            if (cloudStreamProviderScreen?.handleBack() == true) {
+                lastBackPressedAt = 0L
+                return
+            }
+            if (cloudStreamProviderScreen != null) {
+                cloudStreamProviderScreen = null
+                renderAniLightNative()
+                lastBackPressedAt = 0L
+                return
+            }
             if (aniLightNativeScreen?.handleBack() == true) {
                 lastBackPressedAt = 0L
                 return
