@@ -1,3 +1,4 @@
+# CI workflow for the pinned CloudStream runtime migration.
 name: CloudStream toolchain migration validation
 
 on:
