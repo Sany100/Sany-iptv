@@ -84,6 +84,13 @@ class AniLightNativeScreen(
     private var animeSearchResultsHost: LinearLayout? = null
     private var animeSearchRequestVersion = 0
 
+    private data class UnifiedAnimeSource(
+        val providerName: String,
+        val url: String,
+        val title: String,
+        val nativeItem: JSONObject? = null
+    )
+
     @Volatile private var session: String? = null
     @Volatile private var sessionExpiry = 0L
 
@@ -552,23 +559,36 @@ class AniLightNativeScreen(
                 ?: data?.optJSONObject("data")?.optJSONArray("results")
                 ?: data?.optJSONArray("data")
             val nativeResults = items(arr).filterNot { it.optBoolean("isAdult", false) }
-            showCards("AniLight", nativeResults)
-            searchLoadedCloudStreamProviders(query.trim(), version)
+            searchLoadedCloudStreamProviders(query.trim(), version, nativeResults)
         }
     }
 
     /**
-     * Search every loaded CloudStream Anime MainAPI in the same search view.
-     * Provider calls run off the UI thread and stale query responses are discarded.
+     * Search AniLight's native catalogue and every loaded CloudStream Anime MainAPI,
+     * then render one grouped result list with provider-specific source actions.
      */
-    /**
-     * Search every loaded CloudStream Anime MainAPI, then group equivalent titles.
-     * Each grouped card retains its provider-specific URL so Details/Episodes are
-     * always loaded by the provider that produced that result.
-     */
-    private fun searchLoadedCloudStreamProviders(query: String, requestVersion: Int) {
+    private fun searchLoadedCloudStreamProviders(
+        query: String,
+        requestVersion: Int,
+        nativeResults: List<JSONObject>
+    ) {
         thread(name = "SANY-Anime-UnifiedSearch") {
-            val results = mutableListOf<Pair<com.lagradost.cloudstream3.MainAPI, List<com.lagradost.cloudstream3.SearchResponse>>>()
+            val normalized = Regex("[^\\p{L}\\p{N}]")
+            val grouped = linkedMapOf<String, MutableList<UnifiedAnimeSource>>()
+            nativeResults.forEach { item ->
+                val titleObj = item.optJSONObject("title")
+                val title = titleObj?.optString("english").orEmpty()
+                    .ifBlank { titleObj?.optString("romaji").orEmpty() }
+                    .ifBlank { item.optString("name") }
+                val slugValue = item.optString("slug")
+                val key = normalized.replace(title.trim().lowercase(java.util.Locale.ROOT), "")
+                if (key.isNotBlank() && slugValue.isNotBlank()) {
+                    grouped.getOrPut(key) { mutableListOf() }.add(
+                        UnifiedAnimeSource("AniLight", slugValue, title, item)
+                    )
+                }
+            }
+
             runCatching {
                 kotlinx.coroutines.runBlocking {
                     SanyCloudStreamPluginRuntime.providers().forEach { provider ->
@@ -578,52 +598,53 @@ class AniLightNativeScreen(
                             android.util.Log.w("SANY-AnimeSearch", "${provider.name}: ${error.message}")
                             emptyList<com.lagradost.cloudstream3.SearchResponse>()
                         }
-                        if (entries.isNotEmpty()) results.add(provider to entries)
+                        entries.forEach { entry ->
+                            val title = entry.name.trim()
+                            if (title.isBlank()) return@forEach
+                            val key = normalized.replace(title.lowercase(java.util.Locale.ROOT), "")
+                            if (key.isBlank()) return@forEach
+                            val sources = grouped.getOrPut(key) { mutableListOf() }
+                            if (sources.none { it.providerName.equals(provider.name, true) && it.url == entry.url }) {
+                                sources.add(UnifiedAnimeSource(provider.name, entry.url, title))
+                            }
+                        }
                     }
                 }
             }.onFailure {
                 android.util.Log.w("SANY-AnimeSearch", "CloudStream provider search unavailable", it)
             }
-            val normalized = Regex("[^\\p{L}\\p{N}]")
-            val grouped = linkedMapOf<String, MutableList<Triple<String, String, String>>>()
-            results.forEach { (provider, entries) ->
-                entries.forEach { entry ->
-                    val title = entry.name.trim()
-                    if (title.isBlank()) return@forEach
-                    val key = normalized.replace(title.lowercase(java.util.Locale.ROOT), "")
-                    if (key.isBlank()) return@forEach
-                    val sources = grouped.getOrPut(key) { mutableListOf() }
-                    if (sources.none { it.first.equals(provider.name, true) && it.second == entry.url }) {
-                        sources.add(Triple(provider.name, entry.url, title))
-                    }
-                }
-            }
+
             ui.post {
                 if (!isAnimeSearchPage || requestVersion != animeSearchRequestVersion) return@post
                 val host = animeSearchResultsHost ?: return@post
-                host.addView(label("ALL PROVIDERS • ${grouped.size} TITLES", 13, accent, true).apply {
-                    setPadding(0, dp(18), 0, dp(8))
+                host.removeAllViews()
+                val titleCount = grouped.size
+                host.addView(label("ALL 6 PROVIDERS • $titleCount TITLES", 13, accent, true).apply {
+                    setPadding(0, dp(14), 0, dp(8))
                 })
                 if (grouped.isEmpty()) {
-                    host.addView(label("অন্য Anime Provider-এ কোনো ফলাফল পাওয়া যায়নি।", 12, muted, false))
+                    host.addView(label("কোনো Provider-এ Anime পাওয়া যায়নি।", 12, muted, false))
                     return@post
                 }
                 grouped.values.forEach { sources ->
-                    val displayTitle = sources.first().third
+                    val displayTitle = sources.first().title
                     val card = LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         setPadding(dp(12), dp(10), dp(12), dp(10))
                         background = rounded(surface, 10)
                     }
                     card.addView(label(displayTitle, 14, fg, true), bottom(6))
-                    card.addView(label("${sources.size}টি Provider Source", 11, muted, false), bottom(6))
+                    val providerNames = sources.map { it.providerName }.distinct()
+                    card.addView(label("${providerNames.size}টি Provider Source", 11, muted, false), bottom(6))
                     val sourceRow = LinearLayout(context).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                     }
-                    sources.forEach { (providerName, sourceUrl, sourceTitle) ->
-                        sourceRow.addView(button(providerName) {
-                            onCloudStreamResult(providerName, sourceUrl, sourceTitle)
+                    sources.forEach { source ->
+                        sourceRow.addView(button(source.providerName) {
+                            val nativeItem = source.nativeItem
+                            if (nativeItem != null) openAnime(nativeItem)
+                            else onCloudStreamResult(source.providerName, source.url, source.title)
                         }, LinearLayout.LayoutParams(0, dp(38), 1f).apply {
                             rightMargin = dp(5)
                         })
