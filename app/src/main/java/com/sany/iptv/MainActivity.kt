@@ -124,6 +124,9 @@ class MainActivity : AppCompatActivity() {
     private var activeProviderQualityHint: String? = null
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
     private var playbackRetryCount = 0
+    // Ordered CloudStream sources for automatic fallback after a real Media3 playback error.
+    private var animeFallbackRequests: List<SanyPlaybackRequest> = emptyList()
+    private var animeFallbackIndex = -1
     private var animeAutoNextInProgress = false
     private var playerView: PlayerView? = null
     private var moviesWebView: WebView? = null
@@ -1265,7 +1268,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun playSanyPlaybackRequest(request: SanyPlaybackRequest) {
+    private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
+        if (!preserveFallbackQueue) {
+            animeFallbackRequests = emptyList()
+            animeFallbackIndex = -1
+        }
         val title = request.title.ifBlank { "AniLight" }
         val provider = request.provider.ifBlank { "Extension" }
         val parsedUrl = runCatching { Uri.parse(request.url.trim()) }.getOrNull()
@@ -1448,6 +1455,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Starts with the user's selected source, then tries the remaining resolved
+     * links in order only if Media3 reports a playback error.
+     */
+    private fun startAnimeSourceFallback(
+        requests: List<SanyPlaybackRequest>,
+        selectedIndex: Int
+    ) {
+        if (requests.isEmpty() || selectedIndex !in requests.indices) return
+        val ordered = listOf(requests[selectedIndex]) + requests.filterIndexed { index, _ -> index != selectedIndex }
+        animeFallbackRequests = ordered
+        animeFallbackIndex = 0
+        toast("Source 1/${ordered.size}: ${ordered.first().provider}")
+        playSanyPlaybackRequest(ordered.first(), preserveFallbackQueue = true)
+    }
+
+    private fun tryNextAnimeFallback(): Boolean {
+        val nextIndex = animeFallbackIndex + 1
+        if (nextIndex !in animeFallbackRequests.indices) {
+            animeFallbackRequests = emptyList()
+            animeFallbackIndex = -1
+            return false
+        }
+        animeFallbackIndex = nextIndex
+        val next = animeFallbackRequests[nextIndex]
+        android.util.Log.w("SANY-PLAYER", "Trying fallback source ${nextIndex + 1}/${animeFallbackRequests.size}: ${next.provider}")
+        toast("আগের Source কাজ করেনি। Source ${nextIndex + 1}/${animeFallbackRequests.size} চেষ্টা হচ্ছে…")
+        playSanyPlaybackRequest(next, preserveFallbackQueue = true)
+        return true
+    }
+
     private fun resolveCloudStreamEpisode(providerName: String, title: String, episodeData: String) {
         toast("Extracting video links…")
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
@@ -1458,7 +1496,9 @@ class MainActivity : AppCompatActivity() {
                     if (links.isEmpty()) toast("কোনো video source পাওয়া যায়নি")
                     else {
                         val labels = links.map { req -> listOfNotNull(req.quality, req.streamMimeType?.substringAfterLast('/'), req.provider).joinToString(" • ").ifBlank { req.url.substringBefore('?').takeLast(48) } }.toTypedArray()
-                        AlertDialog.Builder(this@MainActivity).setTitle("$title — Sources").setItems(labels) { _, i -> playSanyPlaybackRequest(links[i]) }.setNegativeButton("বন্ধ", null).show()
+                        AlertDialog.Builder(this@MainActivity).setTitle("$title — Sources").setItems(labels) { _, i ->
+                            startAnimeSourceFallback(links, i)
+                        }.setNegativeButton("বন্ধ", null).show()
                     }
                 }.onFailure { toast("Extractor error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Extractor failed", it) }
             }
@@ -4176,6 +4216,9 @@ class MainActivity : AppCompatActivity() {
                         }
                         runOnUiThread {
                             if (section == "Series") showAnimePlaybackLoading("", false)
+                            if (section == "Series" && tryNextAnimeFallback()) {
+                                return@runOnUiThread
+                            }
                             if (httpStatus != null) {
                                 toast("সার্ভার HTTP $httpStatus দিয়েছে — অন্য stream link চেষ্টা করুন")
                             } else if (currentChannel?.url?.startsWith("ftp://", true) == true) {
