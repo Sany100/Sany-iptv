@@ -110,7 +110,7 @@ class MainActivity : AppCompatActivity() {
     private var checkerListAdapter: android.widget.BaseAdapter? = null
     private val checkerUiHandler = Handler(Looper.getMainLooper())
     private val checkerUiRefreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val permanentPlaylistUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
+    private val permanentPlaylistUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/migration/cloudstream-runtime-toolchain/playlist.m3u"
     private val playlistUrls = mutableListOf<String>()
     private var selectedGroup = "All"
     private var liveTvSelectedGroup = "Select category"
