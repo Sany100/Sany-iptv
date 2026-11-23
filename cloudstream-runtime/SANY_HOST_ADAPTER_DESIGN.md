@@ -142,3 +142,29 @@ in Gate 1.
 - No CloudStream plugin DEX loader or lifecycle host is integrated.
 - No CloudStream `ExtractorLink` to Media3 adapter is integrated.
 - Live AniLight movie source resolution and on-device playback are not verified.
+
+
+## 2026-11-23 Gate 2 bridge implementation started
+
+Added `cloudstream-original/AniLight/src/main/kotlin/com/anilight/SanyAniLightHostBridge.kt`.
+It is compiled in the exact pinned upstream CloudStream app/library classpath and
+exposes SANY-neutral DTOs for:
+
+- AniLight search cards and selected homepage sections;
+- anime/movie detail metadata and ordered SUB/DUB episode rows;
+- resolved stream URLs, stream type, quality, request headers and subtitles.
+
+The bridge calls the real `AniLightProvider` methods and receives their actual
+CloudStream `SearchResponse`, `LoadResponse`, `ExtractorLink` and
+`SubtitleFile` values. It does not introduce local CloudStream ABI stubs.
+
+**Boundary:** this source currently lives in the AniLight provider source tree
+and is compiled only in the pinned upstream host validation workflow. It is
+not packaged into the SANY APK and does not yet establish a cross-classloader
+IPC/adapter connection. The new workflow run is
+https://github.com/Sany100/Sany-iptv/actions/runs/45095989939; its compile result
+must pass before this bridge is treated as build-verified.
+
+Gate 2 remains open until the bridge is exercised with homepage, search, detail,
+episode and source-resolution tests (including a real API response). Gate 3
+DEX execution remains disabled.
