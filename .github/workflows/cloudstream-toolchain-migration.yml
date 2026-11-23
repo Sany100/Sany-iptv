@@ -87,7 +87,7 @@ jobs:
             if [ -f "$BACKUP" ]; then mv "$BACKUP" "$PLUGIN"; fi
           }
           trap restore_plugin EXIT
-          gradle --no-daemon --stacktrace :cloudstream-anilight-abi:assembleDebug
+          gradle --stacktrace :cloudstream-anilight-abi:assembleDebug
       - name: Compile AniLight Plugin host and build SANY debug APK
         shell: bash
         run: |
@@ -101,7 +101,7 @@ jobs:
             if [ -d "$DONATION_BACKUP" ]; then mv "$DONATION_BACKUP" "$DONATION_DIR"; fi
           }
           trap restore_donation EXIT
-          gradle --no-daemon --stacktrace :app:compileDebugKotlin :app:assembleDebug
+          gradle --stacktrace :app:compileDebugKotlin :app:assembleDebug
       - name: Upload migration APK
         uses: actions/upload-artifact@v4
         with:
@@ -161,7 +161,7 @@ jobs:
           mv "$PLUGIN" "$BACKUP"
           restore_plugin() { if [ -f "$BACKUP" ]; then mv "$BACKUP" "$PLUGIN"; fi; }
           trap restore_plugin EXIT
-          gradle --no-daemon --stacktrace :cloudstream-anilight-abi:assembleDebug
+          gradle --stacktrace :cloudstream-anilight-abi:assembleDebug
       - name: Decode release signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.SANY_RELEASE_KEYSTORE_BASE64 }}
@@ -189,7 +189,7 @@ jobs:
           VERSION="1.2.452"
           VERSION_CODE="452"
           echo "Building requested SANY IPTV release $VERSION"
-          gradle --no-daemon --stacktrace :app:compileReleaseKotlin :app:assembleRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
+          gradle --stacktrace :app:compileReleaseKotlin :app:assembleRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
       - name: Upload signed migration release APK (no public release)
