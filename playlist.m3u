@@ -1,15 +1,15 @@
 #EXTM3U
 
-#EXTINF:-1 tvg-id="" tvg-logo="https://www.jagobd.com/wp-content/uploads/2024/08/jagonews.jpg" group-title="BANGLADESH",Jago News 24
+#EXTINF:-1 tvg-id="" tvg-logo="https://www.jagobd.com/wp-content/uploads/2024/08/jagonews.jpg" group-title="Bangla",Jago News 24
 https://app.ncare.live/live-orgin/jagonews24.stream/playlist.m3u8#skym3u.dev
 
-#EXTINF:-1 tvg-id="" tvg-logo="https://www.metvbd.com/media/common/logo-fb.png" group-title="BANGLADESH",ME TV
+#EXTINF:-1 tvg-id="" tvg-logo="https://www.metvbd.com/media/common/logo-fb.png" group-title="Bangla",ME TV
 https://iptvbd.live/metv1080/1080.m3u8#skym3u.dev
 
-#EXTINF:-1 tvg-logo="https://otapp.store/uploads/tv_image/sm/nagorik-tv.png" group-title="BANGLADESH",Nagorik TV
+#EXTINF:-1 tvg-logo="https://otapp.store/uploads/tv_image/sm/nagorik-tv.png" group-title="Bangla",Nagorik TV
 https://box.bbaria.net/Nagorik_TV/tracks-v1a1/mono.m3u8#skym3u.dev
 
-#EXTINF:-1 tvg-id="" tvg-logo="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQzayWMQexbfPV-jTx3ZNoq-XOmlHKSX1SCjg&s" group-title="BANGLADESH",Probashi TV
+#EXTINF:-1 tvg-id="" tvg-logo="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQzayWMQexbfPV-jTx3ZNoq-XOmlHKSX1SCjg&s" group-title="Bangla",Probashi TV
 http://158.69.24.53:8080/probashi_tv/index.m3u8#skym3u.dev
 
 #EXTINF:-1 tvg-logo="https://i.postimg.cc/3w6F5VZ5/20240822-231514.png" group-title="INDIAN BANGLA",Colors Bangla
@@ -42,7 +42,7 @@ http://210.4.72.204/hls-live/livepkgr/_definst_/liveevent/livestream3.m3u8
 #EXTINF:-1 tvg-logo="https://upload.wikimedia.org/wikipedia/en/3/31/Deepto_TV_logo.png" group-title="Bangla",Deepto TV
 https://byphdgllyk.gpcdn.net/hls/deeptotv/0_1/index.m3u8
 
-#EXTINF:-1 tvg-logo="https://pbs.twimg.com/profile_images/739539785304281088/zMwNO936_400x400.jpg" group-title="BANGLA",Deshe Bideshe
+#EXTINF:-1 tvg-logo="https://pbs.twimg.com/profile_images/739539785304281088/zMwNO936_400x400.jpg" group-title="Bangla",Deshe Bideshe
 https://dbcanada.sonarbanglatv.com/deshebideshe/dbtv/index.m3u8
 
 #EXTINF:-1 tvg-logo="https://seeklogo.com/images/B/bbc-news-logo-8648ABD044-seeklogo.com.png" group-title="Bangla",BBC News
@@ -970,43 +970,43 @@ https://ekusheyserver.com/etvlivesn.m3u8
 #EXTINF:-1 tvg-name="Sananda TV" group-title="Indian Bangla",Sananda TV
 http://27.124.71.27/Zee_Bangla/tracks-v1a1/mono.m3u8
 
-#EXTINF:-1 tvg-name="Ananda TV" group-title="Bangladesh",Ananda TV
+#EXTINF:-1 tvg-name="Ananda TV" group-title="Bangla",Ananda TV
 https://tvsen6.aynaott.com/LeUAm4F1iixYns3s3Non/index.m3u8
 
 #EXTINF:-1 tvg-name="Bein Sports Extra 2" group-title="Sports",Bein Sports Extra 2
 https://bein-esp-xumo.amagi.tv/playlistR1080p.m3u8
 
-#EXTINF:-1 tvg-name="ATN News" group-title="Bangladesh",ATN News
+#EXTINF:-1 tvg-name="ATN News" group-title="Bangla",ATN News
 https://tvsen6.aynaott.com/da6WMXAk/index.m3u8
 
-#EXTINF:-1 tvg-name="Boishakhi TV" group-title="Bangladesh",Boishakhi TV
+#EXTINF:-1 tvg-name="Boishakhi TV" group-title="Bangla",Boishakhi TV
 https://tvsen6.aynaott.com/1d3uG9VCgrR9DRtWZM57/index.m3u8
 
-#EXTINF:-1 tvg-name="BTV Chattogram" group-title="Bangladesh",BTV Chattogram
+#EXTINF:-1 tvg-name="BTV Chattogram" group-title="Bangla",BTV Chattogram
 https://tvsen6.aynaott.com/TjGR1GcxKetHNVcMVxbq/index.m3u8
 
-#EXTINF:-1 tvg-name="Channel I" group-title="Bangladesh",Channel I
+#EXTINF:-1 tvg-name="Channel I" group-title="Bangla",Channel I
 https://tvsen6.aynaott.com/FNHpYvGZ7FkCE10PwTHm/index.m3u8
 
-#EXTINF:-1 tvg-name="Ekattor TV" group-title="Bangladesh",Ekattor TV
+#EXTINF:-1 tvg-name="Ekattor TV" group-title="Bangla",Ekattor TV
 https://tvsen6.aynaott.com/EWDrV5QskgarZEUBb3pU/index.m3u8
 
 #EXTINF:-1 tvg-name="MTRSPT" group-title="Sports",MTRSPT
 https://amg02873-kravemedia-mtrspt1-sportstribal-ajosc.amagi.tv/playlist/amg02873-kravemedia-mtrspt1-sportstribal/playlist.m3u8
 
-#EXTINF:-1 tvg-name="Ekhon TV" group-title="Bangladesh",Ekhon TV
+#EXTINF:-1 tvg-name="Ekhon TV" group-title="Bangla",Ekhon TV
 https://tvsen6.aynaott.com/fbgZV3X17hwWcyfZ4pdb/index.m3u8
 
-#EXTINF:-1 tvg-name="Desh TV" group-title="Bangladesh",Desh TV
+#EXTINF:-1 tvg-name="Desh TV" group-title="Bangla",Desh TV
 https://tvsen6.aynaott.com/ryFkXfd1a4CQ7mMdc820/index.m3u8
 
 #EXTINF:-1 tvg-name="Pardesi TV" group-title="India",Pardesi TV
 http://stream.pardesitv.online/pardesi/tracks-v1a1/mono.m3u8
 
-#EXTINF:-1 tvg-name="Ekushe ETV" group-title="Bangladesh",Ekushe ETV
+#EXTINF:-1 tvg-name="Ekushe ETV" group-title="Bangla",Ekushe ETV
 https://tvsen6.aynaott.com/y4mEVZNAbeNWTbd6Z2Pw/index.m3u8
 
-#EXTINF:-1 tvg-name="Global TV" group-title="Bangladesh",Global TV
+#EXTINF:-1 tvg-name="Global TV" group-title="Bangla",Global TV
 https://tvsen6.aynaott.com/y0q9eFAuquAtvTxRzUHq/index.m3u8
 
 #EXTINF:-1 tvg-name="Trace Sport" group-title="Sports",Trace Sport
@@ -1018,7 +1018,7 @@ http://premimum.online:80/live/jen12345/jen54321/98854.ts
 #EXTINF:-1 tvg-name="Horse & Country" group-title="Sports",Horse & Country
 https://hncfree-samsungau.amagi.tv/playlist.m3u8
 
-#EXTINF:-1 tvg-name="NTV" group-title="Bangladesh",NTV
+#EXTINF:-1 tvg-name="NTV" group-title="Bangla",NTV
 https://tvsen5.aynaott.com/xV4jEKf3D9zc/tracks-v1a1/mono.ts.m3u8
 
 #EXTINF:-1 tvg-name="Willow Extra" group-title="Sports",Willow Extra
@@ -1027,7 +1027,7 @@ http://27.124.71.27/Willow_Extra/index.m3u8
 #EXTINF:-1 tvg-name="Shemaroo Bollywood" group-title="India",Shemaroo Bollywood
 https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg00864-shemarooenterta-shemabollywood-ono/playlist.m3u8
 
-#EXTINF:-1 tvg-name="My TV" group-title="Bangladesh",My TV
+#EXTINF:-1 tvg-name="My TV" group-title="Bangla",My TV
 https://tvsen6.aynaott.com/XMpHaEf0ANBhv8w6NWR7/index.m3u8
 
 #EXTINF:-1 tvg-name="Hindi Hits HD" group-title="Music",Hindi Hits HD
@@ -1039,7 +1039,7 @@ https://live-bhojpuri.akamaized.net/liveabr/playlist.m3u8
 #EXTINF:-1 tvg-name="Music TV" group-title="Music",Music TV
 http://bitcdn-kronehit.bitmovin.com/v2/hls/chunklist_b3128000.m3u8
 
-#EXTINF:-1 tvg-name="SA TV" group-title="Bangladesh",SA TV
+#EXTINF:-1 tvg-name="SA TV" group-title="Bangla",SA TV
 https://tvsen6.aynaott.com/rELXiuUXqbgzPb06Npom/index.m3u8
 
 #EXTINF:-1 tvg-name="30A Music" group-title="Music",30A Music
