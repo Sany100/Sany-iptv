@@ -1321,7 +1321,8 @@ class AniLightNativeScreen(
                     val language: String,
                     val quality: String,
                     val url: String,
-                    val mimeType: String?
+                    val mimeType: String?,
+                    val server: String
                 )
                 val sources = mutableListOf<ResolvedSource>()
                 val subtitlesByLanguage = linkedMapOf<String, LinkedHashSet<String>>()
@@ -1358,7 +1359,8 @@ class AniLightNativeScreen(
                                     languageCode,
                                     quality,
                                     resolved,
-                                    if (hls) "application/x-mpegURL" else null
+                                    if (hls) "application/x-mpegURL" else null,
+                                    if (checkHls) "Backup" else "Main"
                                 )
                             )
                         }
@@ -1422,8 +1424,7 @@ class AniLightNativeScreen(
                             "sub" -> "SUB"
                             else -> source.language.uppercase()
                         }
-                        val serverLabel = if (index < 2) "Main" else "Backup"
-                        "$languageLabel • ${source.quality} • $serverLabel"
+                        "$languageLabel • ${source.quality} • ${source.server}"
                     }.toTypedArray()
                     var selectedIndex = -1
                     lateinit var dialog: AlertDialog
