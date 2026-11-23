@@ -29,7 +29,8 @@ class NativeMoviesScreen(
     private val seriesMode: Boolean,
     private val light: Boolean,
     private val accent: Int,
-    private val onPlay: (String, String) -> Unit
+    private val onPlay: (String, String) -> Unit,
+    private val onManageExtensions: () -> Unit = {}
 ) {
     private data class Movie(val title: String, val url: String, val category: String, val poster: String)
     private val prefs = context.getSharedPreferences("sany_iptv", Context.MODE_PRIVATE)
@@ -86,7 +87,10 @@ class NativeMoviesScreen(
         val movies = readMovies()
         val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(label("MY MOVIES", 23, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(button("+ ADD") { showAddMovieDialog() }, LinearLayout.LayoutParams(dp(94), dp(40)))
+        top.addView(button("EXTENSIONS") { onManageExtensions() }, LinearLayout.LayoutParams(dp(104), dp(40)).apply {
+            rightMargin = dp(8)
+        })
+        top.addView(button("+ ADD") { showAddMovieDialog() }, LinearLayout.LayoutParams(dp(82), dp(40)))
         body.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
 
         val lastUrl = prefs.getString("movies_continue_url", null)
