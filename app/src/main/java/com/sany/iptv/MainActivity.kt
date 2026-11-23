@@ -1244,19 +1244,19 @@ class MainActivity : AppCompatActivity() {
     private fun showCloudStreamProviderBrowser() {
         val providers = SanyCloudStreamPluginRuntime.providers()
         if (providers.isEmpty()) {
-            AlertDialog.Builder(this).setTitle("CloudStream DEX")
+            AlertDialog.Builder(this@MainActivity).setTitle("CloudStream DEX")
                 .setMessage("কোনো .cs3 provider এখনো LOAD হয়নি। Extension Manager থেকে trusted package load করুন।")
                 .setPositiveButton("OK", null).show()
             return
         }
-        AlertDialog.Builder(this).setTitle("CloudStream Provider নির্বাচন")
+        AlertDialog.Builder(this@MainActivity).setTitle("CloudStream Provider নির্বাচন")
             .setItems(providers.map { it.name }.toTypedArray()) { _, index -> showCloudStreamSearch(providers[index].name) }
             .setNegativeButton("বন্ধ", null).show()
     }
 
     private fun showCloudStreamSearch(providerName: String) {
         val input = EditText(this).apply { hint = "Anime title লিখুন"; setSingleLine(true); setPadding(dp(18), dp(12), dp(18), dp(12)) }
-        val dialog = AlertDialog.Builder(this).setTitle("$providerName Search").setView(input)
+        val dialog = AlertDialog.Builder(this@MainActivity).setTitle("$providerName Search").setView(input)
             .setPositiveButton("SEARCH", null).setNegativeButton("CANCEL", null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -1269,7 +1269,7 @@ class MainActivity : AppCompatActivity() {
                         if (isFinishing || isDestroyed) return@runOnUiThread
                         result.onSuccess { items ->
                             if (items.isEmpty()) toast("কোনো ফলাফল পাওয়া যায়নি")
-                            else AlertDialog.Builder(this).setTitle("Search Results (${items.size})")
+                            else AlertDialog.Builder(this@MainActivity).setTitle("Search Results (${items.size})")
                                 .setItems(items.map { it.name }.toTypedArray()) { _, i -> showCloudStreamDetails(providerName, items[i].url, items[i].name) }
                                 .setNegativeButton("বন্ধ", null).show()
                         }.onFailure { toast("Search error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Search failed", it) }
@@ -1291,7 +1291,7 @@ class MainActivity : AppCompatActivity() {
                     val episodes = (response as? com.lagradost.cloudstream3.AnimeLoadResponse)?.episodes?.values?.flatten().orEmpty()
                     if (episodes.isEmpty()) { toast("এই title-এ playable episode নেই"); return@onSuccess }
                     val labels = episodes.map { ep -> buildString { ep.episode?.let { append("Episode $it") }; ep.name?.takeIf { it.isNotBlank() }?.let { if (isNotEmpty()) append(" • "); append(it) } }.ifBlank { "Episode" } }.toTypedArray()
-                    AlertDialog.Builder(this).setTitle(response.name).setItems(labels) { _, i -> resolveCloudStreamEpisode(providerName, response.name, episodes[i].data) }.setNegativeButton("বন্ধ", null).show()
+                    AlertDialog.Builder(this@MainActivity).setTitle(response.name).setItems(labels) { _, i -> resolveCloudStreamEpisode(providerName, response.name, episodes[i].data) }.setNegativeButton("বন্ধ", null).show()
                 }.onFailure { toast("Details error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Load failed", it) }
             }
         }
@@ -1307,7 +1307,7 @@ class MainActivity : AppCompatActivity() {
                     if (links.isEmpty()) toast("কোনো video source পাওয়া যায়নি")
                     else {
                         val labels = links.map { req -> listOfNotNull(req.quality, req.streamMimeType?.substringAfterLast('/'), req.provider).joinToString(" • ").ifBlank { req.url.substringBefore('?').takeLast(48) } }.toTypedArray()
-                        AlertDialog.Builder(this).setTitle("$title — Sources").setItems(labels) { _, i -> playSanyPlaybackRequest(links[i]) }.setNegativeButton("বন্ধ", null).show()
+                        AlertDialog.Builder(this@MainActivity).setTitle("$title — Sources").setItems(labels) { _, i -> playSanyPlaybackRequest(links[i]) }.setNegativeButton("বন্ধ", null).show()
                     }
                 }.onFailure { toast("Extractor error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Extractor failed", it) }
             }
