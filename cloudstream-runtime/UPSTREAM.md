@@ -23,6 +23,8 @@ Required pieces include, at minimum:
 6. A SANY adapter from CloudStream provider responses to the existing Anime UI and Media3 player.
 7. Tests using the AniLight Anime-only provider: load, register, search, details, episodes, source extraction and unload.
 
+See [PORTING_MATRIX.md](PORTING_MATRIX.md) for the source audit, compatibility blockers and acceptance criteria.
+
 ## Compatibility and safety notes
 
 - The current SANY `SanyExtensionRepositories` code downloads and validates `.cs3` files; it does not execute them.
