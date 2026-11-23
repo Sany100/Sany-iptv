@@ -86,6 +86,15 @@ jobs:
           done
           # AGP 8 requires explicit namespaces for the provider modules.
           printf '\nandroid {\n    namespace = "com.anilight"\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_11\n        targetCompatibility = JavaVersion.VERSION_11\n    }\n}\n' >> "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
+          # AniKotoAnime directly uses Gson JsonParser; declare it explicitly.
+          # JSpecify annotations are required by the current Jsoup API on Kotlin 2.4.
+          cat >> "$RUNNER_TEMP/cloudstream-build/AniKotoAnime/build.gradle.kts" <<'GRADLE'
+
+dependencies {
+    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("org.jspecify:jspecify:1.0.0")
+}
+GRADLE
           for spec in "AniChan:com.csksy.anichan" "Anidap:com.laddu100.anidap" "AniSuge:com.laddu100.anisuge" "Miruro:com.laddu100.miruro" "AniKotoAnime:com.anikoto"; do
             module="${spec%%:*}"
             namespace="${spec#*:}"
