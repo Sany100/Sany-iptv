@@ -1335,6 +1335,7 @@ class MainActivity : AppCompatActivity() {
                         foregroundColor = white,
                         accentColor = accent,
                         onSearch = { providerName, query -> showCloudStreamSearch(providerName, query) },
+                        onOpenItem = { providerName, url, title -> showCloudStreamDetails(providerName, url, title) },
                         onBackToAnime = {
                             cloudStreamProviderScreen = null
                             contentArea.removeAllViews()
