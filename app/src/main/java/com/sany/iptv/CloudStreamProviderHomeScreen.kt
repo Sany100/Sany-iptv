@@ -191,7 +191,7 @@ class CloudStreamProviderHomeScreen(
     private fun header(title: String, subtitle: String) = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(18), dp(16), dp(18), dp(16))
-        setBackgroundColor(if (backgroundColor == Color.BLACK) 0xFF101C2D.toInt() else Color.WHITE)
+        background = glassSurface(0)
         addView(label(title, 20, true))
         addView(label(subtitle, 12), topMargin(4))
     }
@@ -223,10 +223,16 @@ class CloudStreamProviderHomeScreen(
             setPadding(dp(16), dp(16), dp(16), dp(16))
         }
 
-    private fun surface() = GradientDrawable().apply {
-        setColor(if (backgroundColor == Color.BLACK) 0xFF171D27.toInt() else Color.WHITE)
-        cornerRadius = dp(14).toFloat()
-        setStroke(dp(1), if (backgroundColor == Color.BLACK) 0xFF34445C.toInt() else 0xFFD4DCE8.toInt())
+    private fun surface() = glassSurface(14)
+
+    private fun glassSurface(radius: Int) = GradientDrawable(
+        GradientDrawable.Orientation.TL_BR,
+        if (backgroundColor == Color.BLACK)
+            intArrayOf(0xAA49688F.toInt(), 0xB0121D30.toInt(), 0xAA202F49.toInt())
+        else intArrayOf(0xEFFFFFFF.toInt(), 0xDDE6F1FF.toInt(), 0xF7FFFFFF.toInt())
+    ).apply {
+        cornerRadius = dp(radius).toFloat()
+        setStroke(dp(1), if (backgroundColor == Color.BLACK) 0xBDA9CFFF.toInt() else 0xDFFFFFFF.toInt())
     }
 
     private fun topMargin(value: Int) = LinearLayout.LayoutParams(-1, -2).apply {
