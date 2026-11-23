@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feature/cloudstream-gpl-runtime-port
     paths:
       - "cloudstream-original/AniLight/**"
       - ".github/workflows/cloudstream-plugins.yml"
