@@ -292,20 +292,22 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground && !returningFromBackground)
-        // Automatically fetch the trusted AniLight .cs3 from this project's GitHub builds
-        // branch, verify its published SHA-256, and register its CloudStream provider.
-        // This runs off the UI thread and does not require a manual file import.
-        thread(name = "SANY-AniLight-AutoSync") {
+        // Automatically sync and load every allowlisted Anime provider from the
+        // SANY builds index. Each package is hash-verified and failures are isolated.
+        thread(name = "SANY-Anime-Plugins-AutoSync") {
             runCatching {
-                val packageFile = SanyExtensionRepositories.syncOfficialAniLight(applicationContext)
-                val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
-                if (loadResult.success) {
-                    android.util.Log.i("SANY-CS", "Official AniLight synced and loaded: ${loadResult.providerNames.joinToString()}")
-                } else {
-                    android.util.Log.e("SANY-CS", "Official AniLight package verified but DEX load failed: ${loadResult.error}")
+                val report = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
+                report.packages.forEach { packageFile ->
+                    val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                    if (loadResult.success) {
+                        android.util.Log.i("SANY-CS", "Anime plugin loaded: ${packageFile.name} -> ${loadResult.providerNames.joinToString()}")
+                    } else {
+                        android.util.Log.e("SANY-CS", "Anime plugin DEX load failed: ${packageFile.name}: ${loadResult.error}")
+                    }
                 }
+                report.failures.forEach { android.util.Log.e("SANY-CS", "Anime plugin sync failed: $it") }
             }.onFailure { error ->
-                android.util.Log.e("SANY-CS", "Official AniLight auto-sync failed", error)
+                android.util.Log.e("SANY-CS", "Anime plugin auto-sync failed", error)
             }
         }
         // If the previous playback attempt crashed the Activity, surface the saved
@@ -1251,23 +1253,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCloudStreamProviderBrowser() {
-        // Always wait for the official GitHub sync and DEX registration before
-        // checking providers. Startup auto-sync is asynchronous and may still be running.
+        // Retry sync/load for the complete built-in Anime provider set.
         val progress = AlertDialog.Builder(this@MainActivity)
-            .setTitle("CloudStream DEX")
-            .setMessage("GitHub থেকে AniLight যাচাই ও Load করা হচ্ছে…")
+            .setTitle("Anime Providers")
+            .setMessage("GitHub থেকে Anime Providers যাচাই ও Load করা হচ্ছে…")
             .setCancelable(false)
             .create()
         progress.show()
-        thread(name = "SANY-AniLight-ProviderCheck") {
+        thread(name = "SANY-Anime-ProviderCheck") {
             val result = runCatching {
-                val packageFile = SanyExtensionRepositories.syncOfficialAniLight(applicationContext)
-                val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
-                check(loadResult.success) {
-                    "DEX load failed: ${loadResult.error ?: "Unknown runtime error"}"
+                val report = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
+                report.packages.forEach { packageFile ->
+                    val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                    if (!loadResult.success) {
+                        android.util.Log.e("SANY-CS", "DEX load failed: ${packageFile.name}: ${loadResult.error}")
+                    }
                 }
                 val providers = SanyCloudStreamPluginRuntime.providers()
-                check(providers.isNotEmpty()) { "AniLight loaded but no MainAPI provider was registered" }
+                check(providers.isNotEmpty()) {
+                    report.failures.joinToString("; ").ifBlank { "No Anime MainAPI provider was registered" }
+                }
                 providers
             }
             runOnUiThread {
@@ -1284,9 +1289,9 @@ class MainActivity : AppCompatActivity() {
                         }
                         .setNegativeButton("বন্ধ", null).show()
                 }.onFailure { error ->
-                    android.util.Log.e("SANY-CS", "AniLight sync/load failed from provider browser", error)
+                    android.util.Log.e("SANY-CS", "Anime provider sync/load failed from provider browser", error)
                     AlertDialog.Builder(this@MainActivity)
-                        .setTitle("AniLight Load Error")
+                        .setTitle("Anime Provider Load Error")
                         .setMessage(error.message ?: error.javaClass.simpleName)
                         .setPositiveButton("OK", null).show()
                 }
