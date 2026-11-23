@@ -135,7 +135,7 @@ class NativeMoviesScreen(
 
         if (movies.isEmpty()) {
             if (extensionProviders.isEmpty()) {
-                body.addView(label("এখনো কোনো Movie link বা active Movie extension নেই।\\nEXTENSIONS চাপ দিয়ে Movie provider install করো。",
+                body.addView(label("এখনো কোনো Movie link বা active Movie extension নেই।\nEXTENSIONS চাপ দিয়ে Movie provider install করো।",
                     14, muted, false).apply {
                     gravity = Gravity.CENTER
                     setPadding(dp(12), dp(44), dp(12), dp(44))
