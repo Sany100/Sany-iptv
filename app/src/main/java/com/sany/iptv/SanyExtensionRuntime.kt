@@ -180,6 +180,50 @@ object SanyExtensionRepositories {
     }
 
     /**
+     * Fetches the official SANY AniLight index and installs/updates its .cs3 package.
+     * The index and package are pinned to this repository's builds branch; no file picker
+     * or user-supplied repository is required for the built-in AniLight provider.
+     */
+    fun syncOfficialAniLight(context: Context): File {
+        val indexUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
+        val index = JSONArray(readHttps(indexUrl, MAX_JSON_BYTES))
+        val item = (0 until index.length())
+            .mapNotNull { index.optJSONObject(it) }
+            .firstOrNull { it.optString("internalName") == "AniLight" }
+            ?: error("Official AniLight entry is missing from plugins.json")
+
+        val downloadUrl = item.optString("url")
+        require(downloadUrl == "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AniLight.cs3") {
+            "Official AniLight download URL did not match the trusted GitHub release path"
+        }
+        val authors = item.optJSONArray("authors")
+        val tvTypes = item.optJSONArray("tvTypes")
+        val plugin = CloudStreamPluginInfo(
+            name = item.optString("name").ifBlank { "AniLight" },
+            internalName = "AniLight",
+            version = item.optInt("version", 0),
+            apiVersion = item.optInt("apiVersion", 1),
+            status = item.optInt("status", 1),
+            description = item.optString("description"),
+            authors = authors?.let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } }
+                ?: item.optString("authors"),
+            language = item.optString("language"),
+            tvTypes = tvTypes?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+            fileSize = if (item.has("fileSize") && !item.isNull("fileSize")) item.optLong("fileSize") else null,
+            fileHash = item.optString("fileHash").takeIf { it.isNotBlank() },
+            downloadUrl = downloadUrl
+        )
+        val expectedHash = plugin.fileHash?.removePrefix("sha256-")?.lowercase()
+        val existing = installedPackages(context).firstOrNull { it.name == "AniLight.cs3" }
+        if (existing != null && !expectedHash.isNullOrBlank() &&
+            sha256(existing).equals(expectedHash, ignoreCase = true)) {
+            val manifest = validatePackage(existing)
+            if (manifest.version == plugin.version) return existing
+        }
+        return downloadAndValidate(context, plugin).file
+    }
+
+    /**
      * Downloads and verifies a CloudStream .cs3 ZIP package in app-private storage.
      * DEX execution is a separate, explicit step handled by SanyCloudStreamPluginRuntime
      * after validation; this method itself never executes plugin code.
