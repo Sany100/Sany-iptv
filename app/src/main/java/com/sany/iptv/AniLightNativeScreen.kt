@@ -561,6 +561,11 @@ class AniLightNativeScreen(
      * Search every loaded CloudStream Anime MainAPI in the same search view.
      * Provider calls run off the UI thread and stale query responses are discarded.
      */
+    /**
+     * Search every loaded CloudStream Anime MainAPI, then group equivalent titles.
+     * Each grouped card retains its provider-specific URL so Details/Episodes are
+     * always loaded by the provider that produced that result.
+     */
     private fun searchLoadedCloudStreamProviders(query: String, requestVersion: Int) {
         thread(name = "SANY-Anime-UnifiedSearch") {
             val results = mutableListOf<Pair<com.lagradost.cloudstream3.MainAPI, List<com.lagradost.cloudstream3.SearchResponse>>>()
@@ -579,40 +584,52 @@ class AniLightNativeScreen(
             }.onFailure {
                 android.util.Log.w("SANY-AnimeSearch", "CloudStream provider search unavailable", it)
             }
+            val normalized = Regex("[^\\p{L}\\p{N}]")
+            val grouped = linkedMapOf<String, MutableList<Triple<String, String, String>>>()
+            results.forEach { (provider, entries) ->
+                entries.forEach { entry ->
+                    val title = entry.name.trim()
+                    if (title.isBlank()) return@forEach
+                    val key = normalized.replace(title.lowercase(java.util.Locale.ROOT), "")
+                    if (key.isBlank()) return@forEach
+                    val sources = grouped.getOrPut(key) { mutableListOf() }
+                    if (sources.none { it.first.equals(provider.name, true) && it.second == entry.url }) {
+                        sources.add(Triple(provider.name, entry.url, title))
+                    }
+                }
+            }
             ui.post {
                 if (!isAnimeSearchPage || requestVersion != animeSearchRequestVersion) return@post
                 val host = animeSearchResultsHost ?: return@post
-                host.addView(label("OTHER PROVIDERS", 13, accent, true).apply {
+                host.addView(label("ALL PROVIDERS • ${grouped.size} TITLES", 13, accent, true).apply {
                     setPadding(0, dp(18), 0, dp(8))
                 })
-                var count = 0
-                results.forEach providerLoop@ { result ->
-                    val provider = result.first
-                    val entries = result.second
-                    if (entries.isEmpty()) return@providerLoop
-                    host.addView(label(provider.name.uppercase(), 12, muted, true).apply {
-                        setPadding(0, dp(10), 0, dp(4))
-                    })
-                    entries.take(12).forEach entryLoop@ { entry ->
-                        val title = entry.name.takeIf { it.isNotBlank() } ?: return@entryLoop
-                        val row = TextView(context).apply {
-                            text = "▶  $title"
-                            textSize = 14f
-                            setTextColor(fg)
-                            setPadding(dp(12), dp(12), dp(12), dp(12))
-                            background = rounded(surface, 10)
-                            contentDescription = "${provider.name}: $title"
-                            isFocusable = true
-                            setOnClickListener {
-                                onCloudStreamResult(provider.name, entry.url, title)
-                            }
-                        }
-                        host.addView(row, bottom(6))
-                        count++
-                    }
-                }
-                if (count == 0) {
+                if (grouped.isEmpty()) {
                     host.addView(label("অন্য Anime Provider-এ কোনো ফলাফল পাওয়া যায়নি।", 12, muted, false))
+                    return@post
+                }
+                grouped.values.forEach { sources ->
+                    val displayTitle = sources.first().third
+                    val card = LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        background = rounded(surface, 10)
+                    }
+                    card.addView(label(displayTitle, 14, fg, true), bottom(6))
+                    card.addView(label("${sources.size}টি Provider Source", 11, muted, false), bottom(6))
+                    val sourceRow = LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+                    sources.forEach { (providerName, sourceUrl, sourceTitle) ->
+                        sourceRow.addView(button(providerName) {
+                            onCloudStreamResult(providerName, sourceUrl, sourceTitle)
+                        }, LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                            rightMargin = dp(5)
+                        })
+                    }
+                    card.addView(sourceRow)
+                    host.addView(card, bottom(7))
                 }
             }
         }
