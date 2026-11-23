@@ -1313,7 +1313,8 @@ class AniLightNativeScreen(
 
     private fun resolveEpisode(episode: Int) {
         onPlaybackLoading("$animeTitle • Episode $episode", true)
-        loading("Loading all audio tracks and video sources for Episode $episode…")
+        // Loading is displayed on the video surface by MainActivity; never
+        // replace the Anime page with a separate full-screen loading page.
         thread(name = "AniLight-Resolve") {
             try {
                 data class ResolvedSource(
