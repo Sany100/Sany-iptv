@@ -62,7 +62,7 @@ class AniLightNativeScreen(
         override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
     }
     private val posterRequests = ConcurrentHashMap.newKeySet<String>()
-    private val posterExecutor = Executors.newFixedThreadPool(5)
+    private val posterExecutor = Executors.newFixedThreadPool(6)
     private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
     private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
@@ -313,7 +313,13 @@ class AniLightNativeScreen(
             return
         }
 
-        // Skip the featured hero/banner above Watch Later; show the saved shelf first.
+        // Show a true edge-to-edge landscape Anime banner first. Prefer a real
+        // bannerImage so portrait covers are never stretched into a wide hero.
+        val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
+            .filterNot { it.optBoolean("isAdult", false) }
+        trending.firstOrNull { it.optString("bannerImage").startsWith("http") }
+            ?.let { addFeaturedHero(it) }
+
         renderWatchLaterShelf()
 
         // A dedicated paginated entry exposes the complete public Anime catalogue,
@@ -335,9 +341,6 @@ class AniLightNativeScreen(
             contentDescription = "Search Anime"
         }, LinearLayout.LayoutParams(dp(52), dp(48)))
         contentHost.addView(catalogueActions)
-        val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
-            .filterNot { it.optBoolean("isAdult", false) }
-
         val shelves = listOf(
             Triple("Trending Now", "trending", items(data.optJSONObject("trending")?.optJSONArray("media"))),
             Triple("Most Popular", "popular", items(data.optJSONObject("popular")?.optJSONArray("media"))),
@@ -465,8 +468,10 @@ class AniLightNativeScreen(
         actions.addView(button("ⓘ  Info") { openAnime(item) }, LinearLayout.LayoutParams(0, dp(44), 1f))
         details.addView(actions)
         hero.addView(details, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-        contentHost.addView(hero, LinearLayout.LayoutParams(-1, dp(380)).apply {
-            bottomMargin = dp(24)
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val heroHeight = (screenWidthDp / 1.65f).toInt().coerceIn(dp(190), dp(250))
+        contentHost.addView(hero, LinearLayout.LayoutParams(-1, heroHeight).apply {
+            bottomMargin = dp(18)
         })
     }
 
@@ -1756,9 +1761,11 @@ class AniLightNativeScreen(
                     val temp = File(directory, file.name + ".tmp")
                     try {
                         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                            connectTimeout = 5000
-                            readTimeout = 9000
+                            connectTimeout = 3500
+                            readTimeout = 7000
                             instanceFollowRedirects = true
+                            useCaches = true
+                            setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
                             setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36")
                             setRequestProperty("Referer", "$site/")
                         }
