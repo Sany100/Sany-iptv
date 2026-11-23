@@ -4619,7 +4619,7 @@ class MainActivity : AppCompatActivity() {
         // Anime Series-only actions. Live TV and Movies keep their existing player UI.
         val animeActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
             visibility = if (isAnimeEpisode) View.VISIBLE else View.GONE
         }
         var animeControlsLocked = false
@@ -4660,9 +4660,16 @@ class MainActivity : AppCompatActivity() {
         // Replace Next Episode with Track and Full Screen shortcuts in the Anime action strip.
         // Play/Pause remains available only as the large centre overlay.
         listOf(sourceAction, trackAction, fullscreenAction).forEach { action ->
-            animeActions.addView(action, LinearLayout.LayoutParams(0, dp(32), 1f))
+            animeActions.addView(action, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            })
         }
-        controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
+        // Keep Source, Track and Full/Fit Screen on one baseline and move the
+        // complete three-button row slightly lower beneath the video.
+        controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(38)).apply {
+            topMargin = dp(10)
+            bottomMargin = dp(2)
+        })
 
         val progressBar = SeekBar(this).apply {
             max = 1000
