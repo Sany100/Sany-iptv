@@ -291,6 +291,9 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground && !returningFromBackground)
+        // If the previous playback attempt crashed the Activity, surface the saved
+        // stack trace on the next launch so the failure can be diagnosed precisely.
+        showPreviousCrashReport()
         registerForPushUpdates()
         checkForMandatoryUpdate()
         checkMaintenanceMode()
@@ -1186,13 +1189,29 @@ class MainActivity : AppCompatActivity() {
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest) {
         val title = request.title.ifBlank { "AniLight" }
         val provider = request.provider.ifBlank { "Extension" }
-        play(
-            channel = Channel(title, request.url, provider),
-            startPlayback = true,
-            requestHeaders = request.headers,
-            streamMimeTypeHint = request.streamMimeType,
-            subtitleTracks = request.subtitles
-        )
+        val parsedUrl = runCatching { Uri.parse(request.url.trim()) }.getOrNull()
+        if (parsedUrl?.scheme !in setOf("http", "https")) {
+            toast("AniLight-এর stream link সঠিক নয়")
+            android.util.Log.e("SANY-PLAYER", "Rejected AniLight URL: invalid or unsupported scheme")
+            return
+        }
+        try {
+            android.util.Log.i(
+                "SANY-PLAYER",
+                "Starting provider playback: provider=$provider mime=${request.streamMimeType ?: "auto"} " +
+                    "quality=${request.quality ?: "unknown"} subtitles=${request.subtitles.size}"
+            )
+            play(
+                channel = Channel(title, request.url.trim(), provider),
+                startPlayback = true,
+                requestHeaders = request.headers,
+                streamMimeTypeHint = request.streamMimeType,
+                subtitleTracks = request.subtitles
+            )
+        } catch (error: Exception) {
+            android.util.Log.e("SANY-PLAYER", "Could not initialize provider player", error)
+            toast("Player চালু করা যায়নি: ${error.javaClass.simpleName}")
+        }
     }
 
     private fun renderAniLightNative() {
