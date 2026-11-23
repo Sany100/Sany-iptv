@@ -56,13 +56,15 @@ jobs:
           cache: gradle
           cache-dependency-path: cloudstream-upstream/gradle/libs.versions.toml
 
-      - name: Set up Android SDK
+      - name: Set up Android SDK tools
         uses: android-actions/setup-android@v3
-        with:
-          packages: |-
-            platform-tools
-            platforms;android-37
-            build-tools;36.0.0
+
+      - name: Install required Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
 
       - name: Build the exact upstream library and Android plugin host
         working-directory: cloudstream-upstream
