@@ -230,6 +230,39 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CommonActivity.setActivityInstance(this)
+
+        // Global host policy: suppress third-party donation/support dialogs from
+        // dynamically loaded CloudStream plugins, regardless of the plugin's own
+        // bundled DonationManager implementation or package/classloader.
+        supportFragmentManager.registerFragmentLifecycleCallbacks(
+            object : androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks() {
+                private fun dismissPluginDonation(fragment: androidx.fragment.app.Fragment) {
+                    val className = fragment.javaClass.name.lowercase(java.util.Locale.ROOT)
+                    val isDonationUi = className.contains("donat") ||
+                        className.contains("raghav") ||
+                        className.contains("supportmywork")
+                    if (isDonationUi && fragment is androidx.fragment.app.DialogFragment) {
+                        fragment.dismissAllowingStateLoss()
+                        android.util.Log.i("SANY-PluginPolicy", "Suppressed third-party donation dialog: $className")
+                    }
+                }
+
+                override fun onFragmentStarted(
+                    fm: androidx.fragment.app.FragmentManager,
+                    fragment: androidx.fragment.app.Fragment
+                ) {
+                    dismissPluginDonation(fragment)
+                }
+
+                override fun onFragmentResumed(
+                    fm: androidx.fragment.app.FragmentManager,
+                    fragment: androidx.fragment.app.Fragment
+                ) {
+                    dismissPluginDonation(fragment)
+                }
+            },
+            true
+        )
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
         // Refresh EPG on every fresh app launch, without blocking the first screen.
