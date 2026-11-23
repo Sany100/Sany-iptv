@@ -2379,9 +2379,23 @@ class MainActivity : AppCompatActivity() {
                 applyTvFocusStyle(this)
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                // Keep every tab transparent so the dock remains one solid theme surface.
-                background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
-                setPadding(dp(3), 0, dp(3), 0)
+                // Make the selected destination unmistakable with a filled glass pill,
+                // bright outline and a small top indicator; inactive tabs stay transparent.
+                background = if (active) {
+                    android.graphics.drawable.GradientDrawable(
+                        android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(
+                            Color.argb(82, 45, 145, 255),
+                            Color.argb(38, 35, 105, 220)
+                        )
+                    ).apply {
+                        cornerRadius = dp(14).toFloat()
+                        setStroke(dp(1), Color.argb(190, 75, 165, 255))
+                    }
+                } else {
+                    android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                }
+                setPadding(dp(3), dp(4), dp(3), dp(3))
                 translationY = 0f
                 setOnClickListener {
                     if (section == name) return@setOnClickListener
@@ -2436,8 +2450,22 @@ class MainActivity : AppCompatActivity() {
                 loadingRow.addView(navLabel)
                 item.addView(loadingRow, LinearLayout.LayoutParams(-1, -2))
             } else {
-                item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
-                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name, 12, if (active) accent else muted, active).apply {
+                if (active) {
+                    item.addView(android.view.View(this).apply {
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.OVAL
+                            setColor(Color.rgb(80, 175, 255))
+                        }
+                    }, LinearLayout.LayoutParams(dp(5), dp(5)).apply {
+                        bottomMargin = dp(2)
+                    })
+                } else {
+                    item.addView(android.view.View(this), LinearLayout.LayoutParams(dp(5), dp(5)))
+                }
+                item.addView(text(symbol, 20, if (active) Color.rgb(95, 180, 255) else muted, true).apply {
+                    gravity = Gravity.CENTER
+                })
+                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name, 12, if (active) Color.rgb(115, 190, 255) else muted, active).apply {
                     gravity = Gravity.CENTER
                     setPadding(0, 0, 0, 0)
                 }
