@@ -139,7 +139,7 @@ jobs:
               by_name[item["internalName"]] = item
           combined = list(by_name.values())
           combined.sort(key=lambda x: (x.get("internalName") != "AniLight", x.get("name", "")))
-          (out / "plugins.json").write_text(json.dumps(combined, indent=2) + "\\n")
+          (out / "plugins.json").write_text(json.dumps(combined, indent=2))
           PY
           test -s "$GITHUB_WORKSPACE/plugin-output/plugins.json"
           test "$(find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' | wc -l)" -ge 4
