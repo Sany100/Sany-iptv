@@ -1011,9 +1011,24 @@ class AniLightNativeScreen(
         available.forEach { ep ->
             val number = ep.optInt("number", 1)
             val title = ep.optString("title").ifBlank { "Episode $number" }
+            val isNowPlaying = isCurrentPlayingEpisode(number)
             val card = row().apply {
                 gravity = Gravity.CENTER_VERTICAL
-                background = rounded(surface, 13)
+                background = if (isNowPlaying) GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(0xFF126BDF.toInt(), 0xEE0845A4.toInt(), 0xDD071F52.toInt())
+                ).apply {
+                    cornerRadius = dp(13).toFloat()
+                    setStroke(dp(3), 0xFF35B8FF.toInt())
+                } else rounded(surface, 13)
+                if (isNowPlaying) {
+                    elevation = dp(9).toFloat()
+                    foreground = GradientDrawable().apply {
+                        cornerRadius = dp(13).toFloat()
+                        setStroke(dp(1), 0x99BCEBFF.toInt())
+                    }
+                    contentDescription = "Currently playing Episode $number"
+                }
                 setPadding(dp(9), dp(9), dp(10), dp(9))
                 isFocusable = true
                 setOnClickListener { resolveEpisode(number) }
@@ -1047,8 +1062,11 @@ class AniLightNativeScreen(
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(11), 0, 0, 0)
             }
-            details.addView(label("EPISODE $number", 10, accent, true), bottom(4))
-            details.addView(label(title, 13, fg, true).apply {
+            details.addView(label(
+                if (isNowPlaying) "▶ NOW PLAYING • EPISODE $number" else "EPISODE $number",
+                10, if (isNowPlaying) 0xFF9CDEFF.toInt() else accent, true
+            ), bottom(4))
+            details.addView(label(title, 13, if (isNowPlaying) Color.WHITE else fg, true).apply {
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
             }, bottom(3))
@@ -1081,9 +1099,20 @@ class AniLightNativeScreen(
         items.forEach { ep ->
             val number = ep.optInt("number", 1)
             val title = ep.optString("title").ifBlank { "Episode $number" }
+            val isNowPlaying = isCurrentPlayingEpisode(number)
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                background = rounded(0xFF1B1B1B.toInt(), 10)
+                background = if (isNowPlaying) GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(0xFF126BDF.toInt(), 0xEE0845A4.toInt(), 0xDD071F52.toInt())
+                ).apply {
+                    cornerRadius = dp(10).toFloat()
+                    setStroke(dp(3), 0xFF35B8FF.toInt())
+                } else rounded(0xFF1B1B1B.toInt(), 10)
+                if (isNowPlaying) {
+                    elevation = dp(8).toFloat()
+                    contentDescription = "Currently playing Episode $number"
+                }
                 setPadding(dp(8), dp(8), dp(8), dp(8))
                 isFocusable = true
                 setOnClickListener { resolveEpisode(number) }
@@ -1097,7 +1126,10 @@ class AniLightNativeScreen(
             }
             line.addView(thumb, LinearLayout.LayoutParams(dp(104), dp(62)).apply { rightMargin = dp(8) })
             if (!thumbUrl.isNullOrBlank()) loadImage(thumbUrl, thumb)
-            val titleView = label("$number. $title", 13, fg, true)
+            val titleView = label(
+                if (isNowPlaying) "▶ NOW PLAYING\n$number. $title" else "$number. $title",
+                13, if (isNowPlaying) 0xFFBCEBFF.toInt() else fg, true
+            )
             line.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
             card.addView(line)
             val rating = ep.optString("rating").ifBlank { ep.optString("score") }
@@ -1269,6 +1301,14 @@ class AniLightNativeScreen(
                 ui.post { toast(e.message ?: "Stream resolve failed"); showDetailsAgain() }
             }
         }
+    }
+
+    // Match the persisted currently-playing episode to the active anime slug.
+    // This keeps the selection highlight stable when the details or episode panel is rebuilt.
+    private fun isCurrentPlayingEpisode(episode: Int): Boolean {
+        val key = context.getSharedPreferences("anilight_watch_later", Context.MODE_PRIVATE)
+            .getString("current_playing_key", "").orEmpty()
+        return key.startsWith("$slug|$episode|")
     }
 
     // Highlight the anime whose episode was most recently selected for playback.
