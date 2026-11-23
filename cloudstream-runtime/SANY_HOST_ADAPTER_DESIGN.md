@@ -168,3 +168,28 @@ must pass before this bridge is treated as build-verified.
 Gate 2 remains open until the bridge is exercised with homepage, search, detail,
 episode and source-resolution tests (including a real API response). Gate 3
 DEX execution remains disabled.
+
+
+## 2026-11-23 SANY Media3 DTO adapter added
+
+The SANY app now has provider-neutral `SanyPlaybackRequest` and
+`SanySubtitleTrack` DTOs in `SanyExtensionRuntime.kt`. The native AniLight
+screen routes playback through `MainActivity.playSanyPlaybackRequest()`,
+which maps the DTO to the existing Media3 player entry point.
+
+The player adapter now:
+- carries provider request headers into the shared Media3 HTTP data source;
+- accepts an optional HLS/DASH MIME hint while retaining URL-based detection;
+- accepts multiple HTTP(S) subtitle tracks with language, label and MIME type;
+- infers VTT, TTML/XML and SubRip subtitle MIME types when no explicit type is
+  supplied;
+- preserves the existing single-WebVTT subtitle argument for older callers.
+
+Subtitle requests currently share the stream's request-header map. Per-subtitle
+header isolation is not implemented. The current AniLight native screen still
+supplies its resolved URL and common headers; the CloudStream bridge DTO has
+not yet been connected across a real plugin classloader/IPC boundary.
+
+This is a SANY player adapter improvement, not Gate 3 plugin DEX execution.
+A successful SANY APK build verifies compilation only; real AniLight stream and
+subtitle playback still require on-device testing.
