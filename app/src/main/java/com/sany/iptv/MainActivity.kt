@@ -161,6 +161,7 @@ class MainActivity : AppCompatActivity() {
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
+    private var animeFullscreenActionButton: TextView? = null
     private var playerMinimizeButton: TextView? = null
     private var playerSettingsButton: TextView? = null
     private var playerTopActions: View? = null
@@ -1252,11 +1253,13 @@ class MainActivity : AppCompatActivity() {
     // Anime playback is held until Media3 reports STATE_READY; this prevents
     // audio/video from starting underneath the in-player loading overlay.
     private var animeAutoPlayWhenReady = false
+    private var animeFirstFrameRendered = false
     private var animeFullscreenBufferingOverlay: View? = null
 
     // Anime loading is drawn only inside the fullscreen video surface.
     private fun showAnimePlaybackLoading(title: String, show: Boolean) {
         animePlaybackLoadingRequested = show
+        if (show) animeFirstFrameRendered = false
         runOnUiThread { updateAnimeFullscreenBuffering() }
     }
 
@@ -1265,7 +1268,7 @@ class MainActivity : AppCompatActivity() {
         // PlayerView has the same bounds in FIT and fullscreen, so the spinner
         // never covers the page or appears outside the video.
         val shouldShow = section == "Series" && playerView != null &&
-            (animePlaybackLoadingRequested || player?.isLoading == true ||
+            (animePlaybackLoadingRequested || !animeFirstFrameRendered && player?.playbackState != Player.STATE_IDLE ||
                 player?.playbackState == Player.STATE_BUFFERING)
         animeFullscreenBufferingOverlay?.visibility = if (shouldShow) View.VISIBLE else View.GONE
     }
@@ -4397,11 +4400,11 @@ class MainActivity : AppCompatActivity() {
                         if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
                         if (state == Player.STATE_READY) {
                             if (section == "Series") {
-                                showAnimePlaybackLoading("", false)
+                                // Keep the loading layer visible until Media3 confirms that
+                                // the first decoded video frame has actually reached the surface.
                                 val startAnimePlayback = animeAutoPlayWhenReady
                                 animeAutoPlayWhenReady = false
                                 if (startAnimePlayback) {
-                                    // Start only after the source is prepared and loading UI is dismissed.
                                     this@MainActivity.player?.playWhenReady = true
                                 }
                             }
@@ -4423,6 +4426,15 @@ class MainActivity : AppCompatActivity() {
                     }
                     override fun onIsLoadingChanged(isLoading: Boolean) {
                         if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
+                    }
+                    override fun onRenderedFirstFrame() {
+                        if (section == "Series") {
+                            runOnUiThread {
+                                animeFirstFrameRendered = true
+                                animePlaybackLoadingRequested = false
+                                updateAnimeFullscreenBuffering()
+                            }
+                        }
                     }
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         // Enable PiP auto-entry only while an actual video is playing.
@@ -4639,7 +4651,7 @@ class MainActivity : AppCompatActivity() {
         var onAnimeFullscreenToggle: (() -> Unit)? = null
         val fullscreenAction = animeAction("⛶  Full Screen", "Switch between Full Screen and Fit Screen") {
             onAnimeFullscreenToggle?.invoke() ?: setPlayerFullscreen(!isPlayerFullscreen)
-        }
+        }.also { animeFullscreenActionButton = it }
         // Replace Next Episode with Track and Full Screen shortcuts in the Anime action strip.
         // Play/Pause remains available only as the large centre overlay.
         listOf(sourceAction, trackAction, fullscreenAction).forEach { action ->
@@ -5297,6 +5309,7 @@ class MainActivity : AppCompatActivity() {
         }
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerFullscreenButton?.text = if (enabled) "⤢" else "⛶"
+        animeFullscreenActionButton?.text = if (enabled) "⤢  Fit Screen" else "⛶  Full Screen"
         playerControlsPanel?.let { panel ->
             (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
