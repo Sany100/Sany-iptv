@@ -19,6 +19,9 @@ concurrency:
 jobs:
   upstream-baseline:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Checkout SANY integration source
         uses: actions/checkout@v4
@@ -56,15 +59,16 @@ jobs:
           cache: gradle
           cache-dependency-path: cloudstream-upstream/gradle/libs.versions.toml
 
-      - name: Set up Android SDK tools
-        uses: android-actions/setup-android@v3
-
-      - name: Install required Android SDK packages
+      - name: Install required Android SDK packages from runner SDK
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+          test -d "$ANDROID_HOME/cmdline-tools"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          test -n "$SDKMANAGER"
+          echo "Using SDK manager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
 
       - name: Build the exact upstream library and Android plugin host
         working-directory: cloudstream-upstream
