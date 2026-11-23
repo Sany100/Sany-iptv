@@ -75,7 +75,7 @@ jobs:
           # The pinned upstream catalog requests API 37, which is not yet published
           # in the runner's Google SDK repository. Compile the unchanged Kotlin/API
           # sources against API 36 for this ABI baseline check only.
-          sed -i 's/compileSdk = "37"/compileSdk = "36"/' ../cloudstream-upstream/gradle/libs.versions.toml
+          sed -i 's/compileSdk = "37"/compileSdk = "36"/' cloudstream-upstream/gradle/libs.versions.toml
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Build the exact upstream library and Android plugin host
