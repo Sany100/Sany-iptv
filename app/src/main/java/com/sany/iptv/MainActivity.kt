@@ -1258,16 +1258,47 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCloudStreamProviderBrowser() {
-        val providers = SanyCloudStreamPluginRuntime.providers()
-        if (providers.isEmpty()) {
-            AlertDialog.Builder(this@MainActivity).setTitle("CloudStream DEX")
-                .setMessage("কোনো .cs3 provider এখনো LOAD হয়নি। Extension Manager থেকে trusted package load করুন।")
-                .setPositiveButton("OK", null).show()
-            return
+        // Always wait for the official GitHub sync and DEX registration before
+        // checking providers. Startup auto-sync is asynchronous and may still be running.
+        val progress = AlertDialog.Builder(this@MainActivity)
+            .setTitle("CloudStream DEX")
+            .setMessage("GitHub থেকে AniLight যাচাই ও Load করা হচ্ছে…")
+            .setCancelable(false)
+            .create()
+        progress.show()
+        thread(name = "SANY-AniLight-ProviderCheck") {
+            val result = runCatching {
+                val packageFile = SanyExtensionRepositories.syncOfficialAniLight(applicationContext)
+                val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                check(loadResult.success) {
+                    "DEX load failed: ${loadResult.error ?: "Unknown runtime error"}"
+                }
+                val providers = SanyCloudStreamPluginRuntime.providers()
+                check(providers.isNotEmpty()) { "AniLight loaded but no MainAPI provider was registered" }
+                providers
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    progress.dismiss()
+                    return@runOnUiThread
+                }
+                progress.dismiss()
+                result.onSuccess { providers ->
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("CloudStream Provider নির্বাচন")
+                        .setItems(providers.map { it.name }.toTypedArray()) { _, index ->
+                            showCloudStreamSearch(providers[index].name)
+                        }
+                        .setNegativeButton("বন্ধ", null).show()
+                }.onFailure { error ->
+                    android.util.Log.e("SANY-CS", "AniLight sync/load failed from provider browser", error)
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("AniLight Load Error")
+                        .setMessage(error.message ?: error.javaClass.simpleName)
+                        .setPositiveButton("OK", null).show()
+                }
+            }
         }
-        AlertDialog.Builder(this@MainActivity).setTitle("CloudStream Provider নির্বাচন")
-            .setItems(providers.map { it.name }.toTypedArray()) { _, index -> showCloudStreamSearch(providers[index].name) }
-            .setNegativeButton("বন্ধ", null).show()
     }
 
     private fun showCloudStreamSearch(providerName: String) {
