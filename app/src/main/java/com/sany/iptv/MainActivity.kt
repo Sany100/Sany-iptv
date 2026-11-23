@@ -1270,6 +1270,43 @@ class MainActivity : AppCompatActivity() {
         animeFullscreenBufferingOverlay?.visibility = if (shouldShow) View.VISIBLE else View.GONE
     }
 
+    private fun showAnimeSourcePicker(title: String, requests: List<SanyPlaybackRequest>) {
+        if (requests.isEmpty() || isFinishing || isDestroyed) return
+        val labels = requests.map { request ->
+            listOfNotNull(
+                request.quality?.takeIf { it.isNotBlank() },
+                request.streamMimeType?.substringAfterLast('/')?.takeIf { it.isNotBlank() },
+                request.provider.takeIf { it.isNotBlank() }
+            ).joinToString(" • ").ifBlank { request.url.substringBefore('?').takeLast(48) }
+        }.toTypedArray()
+        var selectedIndex = -1
+        lateinit var dialog: AlertDialog
+        dialog = AlertDialog.Builder(this)
+            .setTitle("$title — Sources")
+            .setSingleChoiceItems(labels, -1) { _, which ->
+                selectedIndex = which
+                if (dialog.isShowing) {
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("PLAY", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val index = selectedIndex
+                if (index !in requests.indices) {
+                    toast("আগে একটি Source নির্বাচন করুন")
+                    return@setOnClickListener
+                }
+                startAnimeSourceFallback(requests, index)
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
         if (!preserveFallbackQueue) {
             animeFallbackRequests = emptyList()
@@ -1277,6 +1314,7 @@ class MainActivity : AppCompatActivity() {
         }
         val title = request.title.ifBlank { "AniLight" }
         val provider = request.provider.ifBlank { "Extension" }
+        showAnimePlaybackLoading(title, true)
         val parsedUrl = runCatching { Uri.parse(request.url.trim()) }.getOrNull()
         if (parsedUrl?.scheme !in setOf("http", "https")) {
             showAnimePlaybackLoading("", false)
@@ -1595,13 +1633,7 @@ class MainActivity : AppCompatActivity() {
                     if (failures.isNotEmpty()) android.util.Log.w("SANY-CS", failures.joinToString("; "))
                 } else {
                     android.util.Log.i("SANY-CS", "Resolved ${distinct.size} sources across providers for $title")
-                    val labels = distinct.map { req ->
-                        listOfNotNull(req.quality, req.streamMimeType?.substringAfterLast('/'), req.provider)
-                            .joinToString(" • ").ifBlank { req.url.substringBefore('?').takeLast(48) }
-                    }.toTypedArray()
-                    AlertDialog.Builder(this@MainActivity).setTitle("$title — All Provider Sources")
-                        .setItems(labels) { _, i -> startAnimeSourceFallback(distinct, i) }
-                        .setNegativeButton("বন্ধ", null).show()
+                    showAnimeSourcePicker("$title — All Provider Sources", distinct)
                 }
             }
         }
@@ -4361,8 +4393,16 @@ class MainActivity : AppCompatActivity() {
                                 toast("Auto retry ${playbackRetryCount}/2…")
                                 playbackRetryHandler.postDelayed({
                                     if (player === this@MainActivity.player && playerView != null) {
-                                        player?.prepare()
-                                        player?.playWhenReady = prefs.getBoolean("auto_play", true)
+                                        if (section == "Series") {
+                                            // Keep Anime paused during every retry too; STATE_READY
+                                            // releases playback only after the loading overlay is dismissed.
+                                            animeAutoPlayWhenReady = prefs.getBoolean("auto_play", true)
+                                            player?.playWhenReady = false
+                                            player?.prepare()
+                                        } else {
+                                            player?.prepare()
+                                            player?.playWhenReady = prefs.getBoolean("auto_play", true)
+                                        }
                                     }
                                 }, 1800L)
                             }
