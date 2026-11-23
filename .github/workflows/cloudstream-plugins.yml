@@ -106,10 +106,9 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon AniLight:make AniChan:make Anidap:make AniSuge:make Miruro:make AniKotoAnime:make makePluginsJson
           mkdir -p "$GITHUB_WORKSPACE/plugin-output"
-          for provider in AniLight AniChan Anidap AniSuge; do
-            find "$provider/build" -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \;
-          done
-          # Build the trusted index from each verified package manifest.
+          for provider in AniLight AniChan Anidap AniSuge Miruro AniKotoAnime; do
+            find "$provider/build" -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \\\;
+          done          # Build the trusted index from each verified package manifest.
           # The upstream makePluginsJson task may omit modules imported from another repository.
           python3 - "$GITHUB_WORKSPACE/plugin-output" <<'PY'
           import hashlib, io, json, pathlib, sys, zipfile
