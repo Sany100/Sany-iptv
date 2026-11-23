@@ -20,5 +20,629 @@
     "description": "Anime with Sub & Dub",
     "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AniLight.cs3",
     "name": "AniLight"
+  },
+  {
+    "iconUrl": "https://cdn.discordapp.com/attachments/1109266606292488297/1200425504432472176/Anichi.png?ex=65eb0c5f&is=65d8975f&hm=974898b22b08774a5caa835b40546a6419280446b68255147dd1febb3abe9119&",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 55347,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 10,
+    "internalName": "Anichi",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Anichi.cs3",
+    "name": "Anichi",
+    "fileHash": "sha256-def67c7c61fb0db4d9453d26f8d3ec2c31b2f6234a410e9f5f8d3a5bf0fb7df2"
+  },
+  {
+    "iconUrl": "https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/master/Anilibria/icon.png",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 14451,
+    "status": 1,
+    "language": "ru",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "OVA",
+      "Anime"
+    ],
+    "version": 3,
+    "internalName": "Anilibria",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Anilibria.cs3",
+    "name": "Anilibria",
+    "fileHash": "sha256-6ca5aa0b7e5ac7e815b618b23d32866eee3712fe4a11054e565f80da52c6cdc5"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=animasu.cc&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 21574,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "OVA",
+      "Anime"
+    ],
+    "version": 9,
+    "internalName": "Animasu",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Animasu.cs3",
+    "name": "Animasu",
+    "fileHash": "sha256-18693f770a660ad8e306694977f771f7e5dfc5284b1be31c0a3b44d35d0303d2"
+  },
+  {
+    "iconUrl": "https://animedekho.com/wp-content/uploads/2023/07/AnimeDekho-Logo-300x-1.pngg",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 13339,
+    "status": 1,
+    "language": "hi",
+    "authors": [
+      "anon"
+    ],
+    "tvTypes": [
+      "TvSeries",
+      "Movie",
+      "Anime",
+      "Cartoon"
+    ],
+    "version": 4,
+    "internalName": "AnimeDekhoProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AnimeDekhoProvider.cs3",
+    "name": "AnimeDekhoProvider",
+    "fileHash": "sha256-bb0a4e55d50d5822660db6ef261c3894c322faa1d158a64efbee48230b1776cc"
+  },
+  {
+    "iconUrl": "https://animeindo.quest/wp-content/uploads/2023/05/favicon-300x300.png",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 14625,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "OVA",
+      "Anime"
+    ],
+    "version": 15,
+    "internalName": "AnimeIndoProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AnimeIndoProvider.cs3",
+    "name": "AnimeIndoProvider",
+    "fileHash": "sha256-8b9f7893cfed437fba384ac50229e192a52c6d3864d202fb437ce39a178d5bdf"
+  },
+  {
+    "iconUrl": "https://aghanim.xyz/wp-content/themes/animesail/assets/images/ico.png",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 15003,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 10,
+    "internalName": "AnimeSailProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AnimeSailProvider.cs3",
+    "name": "AnimeSailProvider",
+    "fileHash": "sha256-aff7c6c620d9f11070fe305cbd61ddc72a53e5cbf4ebc2decb39a7591ad50c6a"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=aniworld.to&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 16736,
+    "status": 1,
+    "language": "de",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 6,
+    "internalName": "Aniworld",
+    "description": "Include: Serienstream",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Aniworld.cs3",
+    "name": "Aniworld",
+    "fileHash": "sha256-479cf351aa35c90a8865735ea06a572cd742949b9245e2b845ab4b85b6ca6ddc"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=www.anroll.net&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 20608,
+    "status": 1,
+    "language": "pt-pt",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "Anime",
+      "AnimeMovie",
+      "OVA"
+    ],
+    "version": 2,
+    "internalName": "Anroll",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Anroll.cs3",
+    "name": "Anroll",
+    "fileHash": "sha256-c9409e7200a603a9482553c44f9aee458017c757d0a36eae308773afac70d45b"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=www.dubbindo.xyz&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 12041,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "TvSeries",
+      "Movie",
+      "Cartoon",
+      "Anime"
+    ],
+    "version": 1,
+    "internalName": "Dubbindo",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Dubbindo.cs3",
+    "name": "Dubbindo",
+    "fileHash": "sha256-425ca7aee1fe0e79ef9a6d1ea1339069881046dd092afafbbba2cee19b58d068"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=gomunime.is&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 14701,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 6,
+    "internalName": "Gomunimeis",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Gomunimeis.cs3",
+    "name": "Gomunimeis",
+    "fileHash": "sha256-8ced84655434dd3d34e55a87fb68f3d192e6536baa4d06094c4e3ec73586f78f"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=rezka.ag&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 24220,
+    "status": 1,
+    "language": "ru",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AsianDrama",
+      "Anime",
+      "TvSeries",
+      "Movie"
+    ],
+    "version": 3,
+    "internalName": "HDrezkaProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/HDrezkaProvider.cs3",
+    "name": "HDrezkaProvider",
+    "fileHash": "sha256-8bed11c26d75c1ef1e6cbfd148f8fdd0b13e491646ba1f35a625de1354c7cc6b"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=kisskh.co&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 18803,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AsianDrama",
+      "TvSeries",
+      "Anime",
+      "Movie"
+    ],
+    "version": 4,
+    "internalName": "KisskhProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/KisskhProvider.cs3",
+    "name": "KisskhProvider",
+    "fileHash": "sha256-8203bc05aa945253a0152745abba6ae7079c44b25da036740d11710abc21b512"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=kuramanime.com&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 29044,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 39,
+    "internalName": "KuramanimeProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/KuramanimeProvider.cs3",
+    "name": "KuramanimeProvider",
+    "fileHash": "sha256-cc65baf2d4b4ec469363563e846de66454587c9597446f47422c2324ee286247"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=45.12.2.2&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 23612,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 20,
+    "internalName": "KuronimeProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/KuronimeProvider.cs3",
+    "name": "KuronimeProvider",
+    "fileHash": "sha256-7b9bb2441acf59587837473a2d4b7d5a752acb2d72b04ed92004756d01eb2064"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=neonime.ink&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 15490,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "Movie",
+      "OVA"
+    ],
+    "version": 8,
+    "internalName": "NeonimeProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/NeonimeProvider.cs3",
+    "name": "NeonimeProvider",
+    "fileHash": "sha256-31dc38048de2ed4ac65bd113fcd56ca1834f703bd2c1744c7eba38193627cf59"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=nimegami.id&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 20496,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 11,
+    "internalName": "Nimegami",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Nimegami.cs3",
+    "name": "Nimegami",
+    "fileHash": "sha256-fbd28af14976958a56914442c78d19c03ae2c5b5a47ee179fdd9edd174e24c40"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=nontonanimeid.org&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 22470,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 21,
+    "internalName": "NontonAnimeIDProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/NontonAnimeIDProvider.cs3",
+    "name": "NontonAnimeIDProvider",
+    "fileHash": "sha256-b5a5a84aecd236ec11397a9ed083411fe0a48cc58295dfedb2299f0f747828c7"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=oploverz.care&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 17849,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 30,
+    "internalName": "OploverzProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/OploverzProvider.cs3",
+    "name": "OploverzProvider",
+    "fileHash": "sha256-8bf8d41cba061275db67b79d0b564147ead6eab7268c87513340091da4529d74"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=otakudesu.watch&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 21133,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 16,
+    "internalName": "OtakudesuProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/OtakudesuProvider.cs3",
+    "name": "OtakudesuProvider",
+    "fileHash": "sha256-71485b50bbf60b6525ed72b2277fafe7ae5b9d31f027a26ac25cb3356a6b6e09"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=xem1080.com",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 21299,
+    "status": 1,
+    "language": "vi",
+    "authors": [
+      "TuaSan"
+    ],
+    "tvTypes": [
+      "AsianDrama",
+      "Anime",
+      "TvSeries",
+      "Movie"
+    ],
+    "version": 3,
+    "internalName": "Phim1080",
+    "description": "Xem Phim Online Ch\u1ea5t L\u01b0\u1ee3ng Cao",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Phim1080.cs3",
+    "name": "Phim1080",
+    "fileHash": "sha256-834ba6e86adde1540e297670e60fb033734ce560bb9c0bd6804ea4e9c14690d0"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=phimmoichillk.net&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 15172,
+    "status": 1,
+    "language": "vi",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AsianDrama",
+      "Anime",
+      "TvSeries",
+      "Movie"
+    ],
+    "version": 7,
+    "internalName": "PhimmoichillProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/PhimmoichillProvider.cs3",
+    "name": "PhimmoichillProvider",
+    "fileHash": "sha256-6317cf0f658b76d61d4d06bade47144ae72d9a24167ea2d7ae0c2348c21585c5"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=179.43.163.54&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 22172,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AsianDrama",
+      "Anime",
+      "TvSeries",
+      "Movie"
+    ],
+    "version": 9,
+    "internalName": "RebahinProvider",
+    "description": "Includes: Cgvindo, Kitanonton",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/RebahinProvider.cs3",
+    "name": "RebahinProvider",
+    "fileHash": "sha256-2ed720a9be4066e72037858a8f82a41dc14f16287edd5cf1c5e04adf33bf70ec"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=https://samehadaku.world&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 16119,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "OVA",
+      "Anime"
+    ],
+    "version": 22,
+    "internalName": "Samehadaku",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Samehadaku.cs3",
+    "name": "Samehadaku",
+    "fileHash": "sha256-4bd3dc9f3c5e17669d4df78e9f04a6ee0597c1721d41287967bae2f5e66d4229"
+  },
+  {
+    "iconUrl": "https://cdn.discordapp.com/attachments/1109266606292488297/1193122096159674448/2-modified.png?ex=65ec2a0a&is=65d9b50a&hm=f1e0b0165e71101e5440b47592d9e15727a6c00cdeb3512108067bfbdbef1af7&",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 275303,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "Hexated",
+      "Sora"
+    ],
+    "tvTypes": [
+      "AsianDrama",
+      "TvSeries",
+      "Anime",
+      "Movie"
+    ],
+    "version": 228,
+    "internalName": "SoraStream",
+    "description": "#1 best extention based on MultiAPI",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/SoraStream.cs3",
+    "name": "SoraStream",
+    "fileHash": "sha256-354adeb69d2ebcca6dd9fbbf259d8cd249dcc695c454084e46297afe07798c06"
+  },
+  {
+    "iconUrl": "https://cdn.discordapp.com/attachments/1109266606292488297/1196694385061003334/icon.png?ex=65efee7e&is=65dd797e&hm=18fa57323826d0cbf3cf5ce7d3f5705de640f2f8d08739d41f95882d2ae0a3e0&",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 73982,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "Blatzar"
+    ],
+    "tvTypes": [
+      "AsianDrama",
+      "Anime",
+      "TvSeries",
+      "Movie"
+    ],
+    "version": 3,
+    "internalName": "Superstream",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Superstream.cs3",
+    "name": "Superstream",
+    "fileHash": "sha256-1ef8263636d4ba63dfe438ffefa2ef40a4bc4e529f2405eabe43389da44d8f78"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=tocanime.co&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 13867,
+    "status": 1,
+    "language": "vi",
+    "authors": [
+      "Hexated, TuaSan"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 2,
+    "internalName": "TocanimeProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/TocanimeProvider.cs3",
+    "name": "TocanimeProvider",
+    "fileHash": "sha256-e69d62e88ed67e6ea82d9796c69b0d1a6d2b1634667835a6fb7fa92bd1b2972c"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=uakino.club&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 16016,
+    "status": 1,
+    "language": "uk",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "Movie"
+    ],
+    "version": 1,
+    "internalName": "UakinoProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/UakinoProvider.cs3",
+    "name": "UakinoProvider",
+    "fileHash": "sha256-91a7ca4f04cf1132242483c9bd88df924131a7182de0726c047df3e16a73a164"
+  },
+  {
+    "iconUrl": "https://www.google.com/s2/favicons?domain=www.wcofun.com&sz=%size%",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 14971,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 2,
+    "internalName": "WcofunProvider",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/WcofunProvider.cs3",
+    "name": "WcofunProvider",
+    "fileHash": "sha256-bbc76c2f7e29c7760651c88e9be5612572ada83f888bfe553d253a0336f541ff"
+  },
+  {
+    "iconUrl": "https://yugenanime.sx/static/img/favicon-32x32.png",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/hexated/cloudstream-extensions-hexated",
+    "fileSize": 19622,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "Hexated"
+    ],
+    "tvTypes": [
+      "AnimeMovie",
+      "Anime",
+      "OVA"
+    ],
+    "version": 7,
+    "internalName": "YugenAnime",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/YugenAnime.cs3",
+    "name": "YugenAnime",
+    "fileHash": "sha256-69c9317b2f5adf18ce8510d5594e14270f11ca458b4dc9ef734173ca2d138182"
   }
 ]
