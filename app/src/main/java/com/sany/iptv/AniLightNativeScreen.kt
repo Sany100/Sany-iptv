@@ -28,6 +28,10 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.io.File
 import android.util.LruCache
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Native AniLight browser backed by the provider's public JSON API. */
 class AniLightNativeScreen(
@@ -119,6 +123,12 @@ class AniLightNativeScreen(
     )
     private val pageHistory = java.util.ArrayDeque<AnimePageSnapshot>()
 
+    private class FastAnimeScrollView(context: Context) : ScrollView(context) {
+        override fun fling(velocityY: Int) {
+            super.fling((velocityY * 1.25f).toInt())
+        }
+    }
+
     private fun pushCurrentPage() {
         if (!::body.isInitialized || body.childCount == 0) return
         val savedContentHost = if (isHomePage && ::contentHost.isInitialized) contentHost else null
@@ -190,7 +200,7 @@ class AniLightNativeScreen(
             clipToPadding = false
             setBackgroundColor(bg)
         }
-        val scroll = ScrollView(context).apply {
+        val scroll = FastAnimeScrollView(context).apply {
             isFillViewport = true
             overScrollMode = View.OVER_SCROLL_NEVER
             addView(body)
@@ -600,10 +610,14 @@ class AniLightNativeScreen(
             runCatching {
                 kotlinx.coroutines.runBlocking {
                     // Search providers concurrently so one slow source does not block the rest.
-                    kotlinx.coroutines.coroutineScope {
+                    coroutineScope {
                         val providerResults = SanyCloudStreamPluginRuntime.providers().map { provider ->
-                            kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
-                                provider to runCatching { SanyCloudStreamPluginRuntime.search(provider.name, query) }
+                            async(kotlinx.coroutines.Dispatchers.IO) {
+                                provider to runCatching {
+                                    withTimeoutOrNull(12_000L) {
+                                        SanyCloudStreamPluginRuntime.search(provider.name, query)
+                                    } ?: emptyList<com.lagradost.cloudstream3.SearchResponse>()
+                                }
                             }
                         }.awaitAll()
                         providerResults.forEach { (provider, result) ->
