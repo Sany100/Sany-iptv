@@ -67,14 +67,10 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           test -n "$SDKMANAGER"
           echo "Using SDK manager: $SDKMANAGER"
-          # sdkmanager exits after accepting licenses; yes may then receive SIGPIPE.
-          # Do not let that harmless upstream-pipe status fail the workflow.
           set +o pipefail
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
           set -o pipefail
-          # The pinned upstream catalog requests API 37, which is not yet published
-          # in the runner's Google SDK repository. Compile the unchanged Kotlin/API
-          # sources against API 36 for this ABI baseline check only.
+          # Use API 36 for this baseline because API 37 is unavailable on the runner.
           sed -i 's/compileSdk = "37"/compileSdk = "36"/' cloudstream-upstream/gradle/libs.versions.toml
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
@@ -84,7 +80,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon --stacktrace :library:assemble :app:compileDebugKotlin
+          ./gradlew --no-daemon --stacktrace :library:assemble :app:compileStableDebugKotlin
 
       - name: Record the scope of this validation
         if: always()
@@ -94,7 +90,7 @@ jobs:
             echo "## CloudStream upstream ABI baseline"
             echo
             echo "- Pinned source: recloudstream/cloudstream@a28e6468f54cfe420feebd205d3d21d08ed0cde8"
-            echo "- This job compiles upstream :library and the upstream Android plugin host."
+            echo "- This job compiles upstream :library and the upstream Android plugin host stable debug variant."
             echo "- This is not yet the AniLight-against-local-source ABI probe and does not enable plugin loading in SANY."
             echo "- SANY APK integration, DEX loading, and playback remain separate acceptance gates."
           } >> "$GITHUB_STEP_SUMMARY"
