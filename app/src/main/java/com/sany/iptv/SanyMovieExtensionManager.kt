@@ -220,11 +220,7 @@ object SanyMovieExtensionManager {
         runCatching { URL(value).protocol.equals("https", true) }.getOrDefault(false)
 
     private fun downloadText(url: String, maxBytes: Int): String {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = false
-            requestMethod = "GET"
+        val connection = openHttpsConnection(url).apply {
             setRequestProperty("Accept", "application/json")
         }
         try {
@@ -248,12 +244,7 @@ object SanyMovieExtensionManager {
     }
 
     private fun downloadToFile(url: String, destination: File, maxBytes: Int) {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = false
-            requestMethod = "GET"
-        }
+        val connection = openHttpsConnection(url)
         try {
             require(connection.responseCode in 200..299) { "Package HTTP ${connection.responseCode}" }
             var total = 0L
@@ -273,6 +264,31 @@ object SanyMovieExtensionManager {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /** Follow a small number of HTTPS-only redirects (e.g. GitHub release assets). */
+    private fun openHttpsConnection(address: String): HttpURLConnection {
+        var current = URL(address)
+        repeat(5) {
+            require(current.protocol.equals("https", true)) { "Only HTTPS redirects are allowed" }
+            val connection = (current.openConnection() as HttpURLConnection).apply {
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                instanceFollowRedirects = false
+                requestMethod = "GET"
+            }
+            val status = connection.responseCode
+            if (status in 300..399) {
+                val location = connection.getHeaderField("Location")
+                connection.disconnect()
+                require(!location.isNullOrBlank()) { "Repository redirect has no Location header" }
+                current = URL(current, location)
+            } else {
+                require(status in 200..299) { "Movie repository HTTP $status" }
+                return connection
+            }
+        }
+        error("Too many Movie repository redirects")
     }
 
     private fun sha256(file: File): String {
