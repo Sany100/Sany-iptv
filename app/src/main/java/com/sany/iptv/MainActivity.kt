@@ -1387,10 +1387,41 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { response ->
                     if (response == null) { toast("Anime details পাওয়া যায়নি"); return@onSuccess }
-                    val episodes = (response as? com.lagradost.cloudstream3.AnimeLoadResponse)?.episodes?.values?.flatten().orEmpty()
-                    if (episodes.isEmpty()) { toast("এই title-এ playable episode নেই"); return@onSuccess }
-                    val labels = episodes.map { ep -> buildString { ep.episode?.let { append("Episode $it") }; ep.name?.takeIf { it.isNotBlank() }?.let { if (isNotEmpty()) append(" • "); append(it) } }.ifBlank { "Episode" } }.toTypedArray()
-                    AlertDialog.Builder(this@MainActivity).setTitle(response.name).setItems(labels) { _, i -> resolveCloudStreamEpisode(providerName, response.name, episodes[i].data) }.setNegativeButton("বন্ধ", null).show()
+                    // CloudStream AnimeLoadResponse stores episodes by dub status;
+                    // MovieLoadResponse instead exposes one serialized dataUrl. Handle
+                    // both shapes so AnimeMovie/Movie providers are not silently dropped.
+                    val episodes = when (response) {
+                        is com.lagradost.cloudstream3.AnimeLoadResponse ->
+                            response.episodes.values.flatten()
+                        is com.lagradost.cloudstream3.MovieLoadResponse ->
+                            listOfNotNull(
+                                response.dataUrl.takeIf { it.isNotBlank() }?.let { data ->
+                                    com.lagradost.cloudstream3.Episode(data = data, name = "Movie")
+                                }
+                            )
+                        else -> emptyList()
+                    }
+                    if (episodes.isEmpty()) {
+                        toast("এই title-এ playable episode/source data নেই")
+                        return@onSuccess
+                    }
+                    val labels = episodes.mapIndexed { index, ep ->
+                        buildString {
+                            ep.episode?.let { append("Episode $it") }
+                            ep.name?.takeIf { it.isNotBlank() }?.let {
+                                if (isNotEmpty()) append(" • ")
+                                append(it)
+                            }
+                            if (isEmpty()) append("Episode ${index + 1}")
+                        }
+                    }.toTypedArray()
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(response.name)
+                        .setItems(labels) { _, i ->
+                            resolveCloudStreamEpisode(providerName, response.name, episodes[i].data)
+                        }
+                        .setNegativeButton("বন্ধ", null)
+                        .show()
                 }.onFailure { toast("Details error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Load failed", it) }
             }
         }
