@@ -87,6 +87,8 @@ jobs:
           # AGP 8 requires explicit namespaces for the provider modules.
           printf '\nandroid {\n    namespace = "com.anilight"\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_11\n        targetCompatibility = JavaVersion.VERSION_11\n    }\n}\n' >> "$RUNNER_TEMP/cloudstream-build/AniLight/build.gradle.kts"
           printf '\nandroid {\n    namespace = "com.csksy.anichan"\n}\n' >> "$RUNNER_TEMP/cloudstream-build/AniChan/build.gradle.kts"
+          printf '\nandroid {\n    namespace = "com.laddu100.anidap"\n}\n' >> "$RUNNER_TEMP/cloudstream-build/Anidap/build.gradle.kts"
+          printf '\nandroid {\n    namespace = "com.laddu100.anisuge"\n}\n' >> "$RUNNER_TEMP/cloudstream-build/AniSuge/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt"
           test -f "$RUNNER_TEMP/cloudstream-build/AniChan/src/main/kotlin/com/csksy/anichan/AniChanPlugin.kt"
           test -f "$RUNNER_TEMP/cloudstream-build/Anidap/src/main/kotlin/com/laddu100/AnidapPlugin.kt"
