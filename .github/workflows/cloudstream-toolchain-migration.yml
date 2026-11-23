@@ -67,6 +67,14 @@ jobs:
           grep -n 'compileSdk = 36' app/build.gradle.kts
           grep -n '1.9.3' app/build.gradle.kts
 
+      - name: Align upstream KMP plugin request with AGP-provided classpath
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="cloudstream-upstream/library/build.gradle.kts"
+          sed -i 's/alias(libs.plugins.kotlin.multiplatform)/id("org.jetbrains.kotlin.multiplatform")/' "$FILE"
+          grep -n 'org.jetbrains.kotlin.multiplatform' "$FILE"
+
       - name: Build SANY debug APK with CloudStream library
         run: gradle --no-daemon --stacktrace assembleDebug
 
