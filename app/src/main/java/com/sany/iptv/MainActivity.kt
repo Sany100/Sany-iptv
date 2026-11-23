@@ -1291,6 +1291,41 @@ class MainActivity : AppCompatActivity() {
             onBrowseCloudStreamProviders = { showCloudStreamProviderBrowser() },
             onCloudStreamResult = { providerName, url, title ->
                 showCloudStreamDetails(providerName, url, title)
+            },
+            onLoadProviderShelves = { onLoaded ->
+                thread(name = "SANY-Provider-Home-Shelves") {
+                    val shelves = runCatching {
+                        kotlinx.coroutines.runBlocking {
+                            kotlinx.coroutines.coroutineScope {
+                                SanyCloudStreamPluginRuntime.providers().map { provider ->
+                                    kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                                        runCatching {
+                                            kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                                                SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
+                                            }.orEmpty().mapNotNull { shelf ->
+                                                val entries = shelf.list.mapNotNull { item ->
+                                                    val title = item.name.trim()
+                                                    val url = item.url.trim()
+                                                    if (title.isBlank() || url.isBlank()) null
+                                                    else SanyProviderItem(title, url, item.posterUrl.orEmpty())
+                                                }
+                                                if (entries.isEmpty()) null
+                                                else SanyProviderShelf(provider.name, shelf.name, entries)
+                                            }
+                                        }.getOrElse { error ->
+                                            android.util.Log.w("SANY-ProviderHome", "${provider.name}: ${error.message}")
+                                            emptyList()
+                                        }
+                                    }
+                                }.map { it.await() }.flatten()
+                            }
+                        }
+                    }.getOrElse { error ->
+                        android.util.Log.w("SANY-ProviderHome", "Could not load provider home shelves", error)
+                        emptyList()
+                    }
+                    runOnUiThread { onLoaded(shelves) }
+                }
             }
         )
         aniLightNativeScreen = screen
