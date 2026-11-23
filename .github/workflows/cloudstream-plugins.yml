@@ -89,10 +89,60 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon AniLight:make makePluginsJson
           mkdir -p "$GITHUB_WORKSPACE/plugin-output"
-          find AniLight/build -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \;
+          find AniLight/build -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \\
           test -s build/plugins.json
-          cp build/plugins.json "$GITHUB_WORKSPACE/plugin-output/plugins.json"
-          test -n "$(find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' -print -quit)"
+          # Import a reviewed set of English Anime providers from a pinned GPL-3.0
+          # upstream build commit. Verify size, ZIP structure, manifest/version,
+          # then pin each imported package with SHA-256 in SANY's plugin index.
+          python3 - "$GITHUB_WORKSPACE/plugin-output" build/plugins.json <<'PY'
+          import hashlib, io, json, pathlib, sys, urllib.request, zipfile
+          out = pathlib.Path(sys.argv[1])
+          own_index_path = pathlib.Path(sys.argv[2])
+          upstream = "https://raw.githubusercontent.com/hexated/cloudstream-extensions-hexated/6da85d924f69ffb6beaa27f56ddf167e47016c1f"
+          upstream_index = json.load(urllib.request.urlopen(upstream + "/plugins.json", timeout=30))
+          selected = {"Anichi", "YugenAnime", "WcofunProvider"}
+          imported = []
+          for name in sorted(selected):
+              item = next((x for x in upstream_index if x.get("internalName") == name), None)
+              if not item:
+                  raise SystemExit(f"Missing upstream index entry: {name}")
+              if item.get("status") != 1 or item.get("apiVersion", 1) > 1:
+                  raise SystemExit(f"{name} is offline or uses unsupported plugin API")
+              if "Anime" not in item.get("tvTypes", []):
+                  raise SystemExit(f"{name} is not indexed as an Anime provider")
+              filename = name + ".cs3"
+              data = urllib.request.urlopen(upstream + "/" + filename, timeout=60).read()
+              if not data or len(data) > 80 * 1024 * 1024:
+                  raise SystemExit(f"{name}: invalid package size")
+              expected_size = item.get("fileSize")
+              if expected_size and len(data) != expected_size:
+                  raise SystemExit(f"{name}: package size differs from pinned index")
+              with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                  if "classes.dex" not in archive.namelist() or "manifest.json" not in archive.namelist():
+                      raise SystemExit(f"{name}: missing classes.dex or manifest.json")
+                  manifest = json.loads(archive.read("manifest.json"))
+              if manifest.get("version") != item.get("version"):
+                  raise SystemExit(f"{name}: manifest version differs from upstream index")
+              if not manifest.get("pluginClassName"):
+                  raise SystemExit(f"{name}: missing pluginClassName")
+              digest = hashlib.sha256(data).hexdigest()
+              (out / filename).write_bytes(data)
+              record = dict(item)
+              record["fileSize"] = len(data)
+              record["fileHash"] = "sha256-" + digest
+              record["url"] = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/" + filename
+              imported.append(record)
+              print(f"Imported {name} v{item['version']} ({len(data)} bytes, sha256 {digest})")
+          own_index = json.loads(own_index_path.read_text())
+          by_name = {x.get("internalName"): x for x in own_index}
+          for item in imported:
+              by_name[item["internalName"]] = item
+          combined = list(by_name.values())
+          combined.sort(key=lambda x: (x.get("internalName") != "AniLight", x.get("name", "")))
+          (out / "plugins.json").write_text(json.dumps(combined, indent=2) + "\\n")
+          PY
+          test -s "$GITHUB_WORKSPACE/plugin-output/plugins.json"
+          test "$(find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' | wc -l)" -ge 4
 
       - name: Upload AniLight plugin build
         uses: actions/upload-artifact@v4
@@ -113,11 +163,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PLUGIN_FILE="$(find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' -printf '%f\n' | head -n 1)"
-          test -n "$PLUGIN_FILE"
-          cp "$GITHUB_WORKSPACE/plugin-output/$PLUGIN_FILE" "$GITHUB_WORKSPACE/publish/$PLUGIN_FILE"
-          PLUGIN_URL="https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/$PLUGIN_FILE"
-          jq --arg url "$PLUGIN_URL" 'map(.url = $url)' "$GITHUB_WORKSPACE/plugin-output/plugins.json" > "$GITHUB_WORKSPACE/publish/plugins.json"
+          find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/publish/" \\
+          cp "$GITHUB_WORKSPACE/plugin-output/plugins.json" "$GITHUB_WORKSPACE/publish/plugins.json"
+          test -s "$GITHUB_WORKSPACE/publish/plugins.json"
           cd "$GITHUB_WORKSPACE/publish"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
