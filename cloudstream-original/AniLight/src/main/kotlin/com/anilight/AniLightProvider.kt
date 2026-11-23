@@ -41,13 +41,13 @@ class AniLightProvider : MainAPI() {
     override var name = "AniLight"
     override var lang = "en"
     override val hasMainPage = true
-    // Anime series only. Movie entries are deliberately excluded from this provider.\noverride val supportedTypes = setOf(TvType.Anime, TvType.OVA)
+    // This provider is intentionally limited to episodic anime formats.
+    override val supportedTypes = setOf(TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
         "home:trending" to "Trending Now",
         "home:popular" to "Most Popular",
         "home:seasonal" to "This Season",
-        "home:movies" to "Popular Movies",
         "sort:SCORE_DESC" to "Top Rated",
         "home:recent" to "Recently Added",
         "home:upcoming" to "Upcoming",
@@ -85,7 +85,6 @@ class AniLightProvider : MainAPI() {
                     "trending" -> home.trending?.media
                     "popular" -> home.popular?.media
                     "seasonal" -> home.seasonal?.media
-                    "movies" -> home.popularMovies?.media
                     "recent" -> home.recentlyAddedEpisodes
                     "upcoming" -> home.upcoming?.media
                     else -> null
@@ -116,6 +115,7 @@ class AniLightProvider : MainAPI() {
     }
 
     private fun AnimeMedia.toSearchResponse(): SearchResponse? {
+        if (format == "MOVIE") return null
         val slug = slug?.takeIf { it.isNotBlank() } ?: return null
         val title = this.title?.display() ?: return null
         return newAnimeSearchResponse(title, "$mainUrl/anime/$slug", tvTypeOf(format)) {
@@ -127,7 +127,6 @@ class AniLightProvider : MainAPI() {
     }
 
     private fun tvTypeOf(format: String?): TvType = when (format) {
-        "MOVIE" -> TvType.AnimeMovie
         "OVA", "ONA", "SPECIAL" -> TvType.OVA
         else -> TvType.Anime
     }
@@ -137,6 +136,7 @@ class AniLightProvider : MainAPI() {
         mainUrl = AniLightApi.site()
         val slug = url.trimEnd('/').substringAfterLast("/").takeIf { it.isNotBlank() } ?: return null
         val anime = AniLightApi.animeDetail(slug) ?: return null
+        if (anime.format == "MOVIE") return null
         val title = anime.title?.display() ?: return null
         val animeId = anime.id ?: return null
 
@@ -145,12 +145,7 @@ class AniLightProvider : MainAPI() {
 
         val hasDub = entries.any { it.dub == true }
         val hasSub = entries.any { it.sub == true }
-
-        // the app hides the sub dub switcher on movie types, so dual audio movies stay regular anime
-        val tvType = when {
-            anime.format == "MOVIE" && hasDub -> TvType.Anime
-            else -> tvTypeOf(anime.format)
-        }
+        val tvType = tvTypeOf(anime.format)
 
         val subEpisodes = if (hasSub) {
             entries.filter { it.sub == true }.map { it.toEpisode(animeId, "sub") }
