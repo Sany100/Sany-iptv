@@ -979,7 +979,7 @@ class MainActivity : AppCompatActivity() {
         ).apply {
             // Add a little breathing room above the full-width brand header,
             // moving the circled header area down from the status bar.
-            topMargin = dp(if (isTvDevice) 10 else 18)
+            topMargin = dp(if (isTvDevice) 10 else 10)
             leftMargin = 0
             rightMargin = 0
         })
