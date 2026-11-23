@@ -287,15 +287,7 @@ class AniLightNativeScreen(
             return
         }
 
-        // Show a real server-provided banner using the featured/trending artwork.
-        // This keeps the catalogue visually integrated without exposing the
-        // internal CloudStream provider manager in the public Anime UI.
-        val featured = items(data.optJSONObject("trending")?.optJSONArray("media"))
-            .firstOrNull { !it.optBoolean("isAdult", false) }
-            ?: items(data.optJSONObject("popular")?.optJSONArray("media"))
-                .firstOrNull { !it.optBoolean("isAdult", false) }
-        if (featured != null) addFeaturedHero(featured)
-
+        // Skip the featured hero/banner above Watch Later; show the saved shelf first.
         renderWatchLaterShelf()
 
         // A dedicated paginated entry exposes the complete public Anime catalogue,
