@@ -44,6 +44,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MergingMediaSource
@@ -4080,12 +4081,27 @@ class MainActivity : AppCompatActivity() {
             .setReadTimeoutMs(if (highSpeedStreaming) 30000 else 15000)
             .setAllowCrossProtocolRedirects(true)
 
+        val subtitleRequestHeaders = buildMap<String, Map<String, String>> {
+            if (!subtitleUrl.isNullOrBlank() && requestHeaders.isNotEmpty()) {
+                put(subtitleUrl, requestHeaders)
+            }
+            subtitleTracks.forEach { subtitle ->
+                if (subtitle.headers.isNotEmpty()) put(subtitle.url, subtitle.headers)
+            }
+        }
         val streamDataSourceFactory: DataSource.Factory = if (isFtpStream) {
             FtpDataSource.Factory(
                 resolvedFtpCredentials?.first ?: "anonymous",
                 resolvedFtpCredentials?.second ?: ""
             )
-        } else httpFactory
+        } else ResolvingDataSource.Factory(httpFactory) { dataSpec ->
+            // Subtitle files can be hosted on a different CDN from the video and may
+            // require their own Referer/Cookie headers. Apply those only to the exact
+            // subtitle URI, leaving the provider's shared headers on all other requests.
+            val specificHeaders = subtitleRequestHeaders[dataSpec.uri.toString()]
+            if (specificHeaders.isNullOrEmpty()) dataSpec
+            else dataSpec.buildUpon().setHttpRequestHeaders(specificHeaders).build()
+        }
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(streamDataSourceFactory)
