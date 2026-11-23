@@ -109,3 +109,34 @@ compileSdk 35 and Java 17. No upstream dependency coordinates have been assumed.
 The next gate is a reproducible dependency map and a small isolated compile
 experiment; do not add the upstream source tree to the app source set until
 its multiplatform dependencies and host APIs are resolved.
+
+
+## Anime-only AniLight scope refinement
+
+Inspection of the actual `AniLightProvider.kt` shows that it implements its
+own `loadLinks()` path: it resolves AniLight's episode tokens and emits
+`ExtractorLink` objects directly. It does not call the global CloudStream
+extractor registry to resolve its own episode URLs. Therefore, for the first
+working Anime-only milestone, a full port of every CloudStream built-in
+extractor implementation is not a prerequisite. The ABI still needs the
+`ExtractorApi` type because upstream `BasePlugin` exposes
+`registerExtractorAPI(ExtractorApi)`, but we should avoid porting the entire
+extractor catalog until a provider actually needs it.
+
+Also corrected AniLight's plugin catalog metadata in
+`cloudstream-original/AniLight/build.gradle.kts`: `tvTypes` now lists only
+`Anime` and `OVA`, matching the provider's runtime filtering and ensuring
+AnimeMovie is not advertised by the repository metadata.
+
+The focused first runtime milestone is now:
+1. CloudStream plugin manifest and Android `Plugin` lifecycle.
+2. `BasePlugin` registration ABI.
+3. The exact provider-facing subset of `MainAPI`, response models and helper
+   methods used by AniLight.
+4. The provider's HTTP/serialization/coroutine dependencies.
+5. `ExtractorLink`/subtitle callback ABI and SANY Media3 adapter.
+6. Actual AniLight .cs3 DEX load, provider registration, episode extraction,
+   playback and unload tests.
+
+This is a scope reduction for the anime-only first milestone, not a claim that
+the full CloudStream runtime or all extractors are already supported.
