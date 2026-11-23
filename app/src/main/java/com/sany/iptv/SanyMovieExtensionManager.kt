@@ -70,9 +70,10 @@ object SanyMovieExtensionManager {
 
     @Synchronized
     fun addRepository(context: Context, indexUrl: String, displayName: String = indexUrl) {
-        require(isHttps(indexUrl)) { "Repository index must use HTTPS" }
-        val current = repositories(context).filterNot { it.url.equals(indexUrl, true) }
-        val updated = current + Repository(indexUrl, displayName)
+        val normalizedUrl = normalizeRepositoryUrl(indexUrl)
+        require(isHttps(normalizedUrl)) { "Repository index must use HTTPS" }
+        val current = repositories(context).filterNot { it.url.equals(normalizedUrl, true) }
+        val updated = current + Repository(normalizedUrl, displayName.takeIf { it != indexUrl } ?: normalizedUrl)
         val array = JSONArray()
         updated.forEach { array.put(JSONObject().put("url", it.url).put("name", it.name)) }
         check(prefs(context).edit().putString(KEY_REPOSITORIES, array.toString()).commit()) {
@@ -112,30 +113,77 @@ object SanyMovieExtensionManager {
             else SanyCloudStreamPluginRuntime.load(context, packageFile)
         }
 
-    /** Fetches and validates the independent Movie-only repository indexes. */
+    /** Reads SANY schema-1 indexes and native CloudStream manifest-v1 repositories. */
     fun catalogue(context: Context): List<Extension> {
         val result = LinkedHashMap<String, Extension>()
         repositories(context).forEach { repository ->
-            val root = JSONObject(downloadText(repository.url, MAX_INDEX_BYTES))
-            require(root.optInt("schema") == 1) { "Unsupported Movie repository schema: ${repository.url}" }
-            val entries = root.optJSONArray("extensions") ?: JSONArray()
-            for (i in 0 until entries.length()) {
-                val item = entries.optJSONObject(i) ?: continue
-                val id = item.optString("id").trim()
-                val name = item.optString("name").trim()
-                val version = item.optString("version").trim()
-                val packageUrl = item.optString("packageUrl").trim()
-                val hash = item.optString("sha256").trim().lowercase()
-                if (!id.matches(Regex("[a-z0-9][a-z0-9._-]{1,63}"))) continue
-                if (name.isBlank() || version.isBlank() || !isHttps(packageUrl)) continue
-                if (!hash.matches(Regex("[a-f0-9]{64}"))) continue
-                result[id] = Extension(
-                    id, name, version, item.optString("description"),
-                    packageUrl, hash, repository.url
-                )
+            val document = downloadText(repository.url, MAX_INDEX_BYTES).trim()
+            if (document.startsWith("[")) {
+                parseCloudStreamPluginList(JSONArray(document), repository.url, result)
+                return@forEach
+            }
+            val root = JSONObject(document)
+            if (root.optInt("schema") == 1) {
+                val entries = root.optJSONArray("extensions") ?: JSONArray()
+                for (i in 0 until entries.length()) {
+                    val item = entries.optJSONObject(i) ?: continue
+                    val id = item.optString("id").trim()
+                    val name = item.optString("name").trim()
+                    val version = item.optString("version").trim()
+                    val packageUrl = item.optString("packageUrl").trim()
+                    val hash = item.optString("sha256").trim().lowercase()
+                    if (!id.matches(Regex("[a-z0-9][a-z0-9._-]{1,63}"))) continue
+                    if (name.isBlank() || version.isBlank() || !isHttps(packageUrl)) continue
+                    if (!hash.matches(Regex("[a-f0-9]{64}"))) continue
+                    result[id] = Extension(id, name, version, item.optString("description"), packageUrl, hash, repository.url)
+                }
+            } else if (root.optInt("manifestVersion") == 1) {
+                val pluginLists = root.optJSONArray("pluginLists") ?: JSONArray()
+                for (i in 0 until pluginLists.length()) {
+                    val listUrl = pluginLists.optString(i).trim()
+                    require(isHttps(listUrl)) { "CloudStream plugin list must use HTTPS: $listUrl" }
+                    parseCloudStreamPluginList(JSONArray(downloadText(listUrl, MAX_INDEX_BYTES)), repository.url, result)
+                }
+            } else {
+                error("Unsupported Movie repository format: ${repository.url}")
             }
         }
         return result.values.toList()
+    }
+
+    private fun parseCloudStreamPluginList(
+        entries: JSONArray,
+        repositoryUrl: String,
+        result: LinkedHashMap<String, Extension>
+    ) {
+        for (i in 0 until entries.length()) {
+            val item = entries.optJSONObject(i) ?: continue
+            if (item.optInt("status", 1) == 0) continue
+            val types = item.optJSONArray("tvTypes") ?: JSONArray()
+            if ((0 until types.length()).none { types.optString(it).equals("Movie", true) }) continue
+            val name = item.optString("name").trim()
+            val internalName = item.optString("internalName").trim().ifBlank { name }
+            val id = internalName.lowercase().replace(Regex("[^a-z0-9._-]"), "-")
+                .trim('-', '.', '_').take(64)
+            val packageUrl = item.optString("url").trim()
+            val version = item.optString("version").trim()
+            val rawHash = item.optString("fileHash").trim().lowercase()
+            val hash = rawHash.removePrefix("sha256-")
+            if (id.length < 2 || name.isBlank() || version.isBlank()) continue
+            if (!isHttps(packageUrl) || !hash.matches(Regex("[a-f0-9]{64}"))) continue
+            result[id] = Extension(
+                id, name, version, item.optString("description"),
+                packageUrl, hash, repositoryUrl
+            )
+        }
+    }
+
+    private fun normalizeRepositoryUrl(value: String): String {
+        val trimmed = value.trim()
+        val normalized = if (trimmed.startsWith("cloudstreamrepo://", true)) {
+            "https://" + trimmed.substringAfter("://")
+        } else trimmed
+        return normalized
     }
 
     /**
