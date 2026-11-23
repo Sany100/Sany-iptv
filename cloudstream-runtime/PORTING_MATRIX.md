@@ -222,3 +222,22 @@ pinned build and compile the unchanged AniLight provider against them.
 No SANY app dependency, DEX execution, or playback behavior is changed by this
 validation workflow. Its result must be checked in GitHub Actions before
 calling the upstream baseline build successful.
+
+
+## AniLight against pinned upstream ABI compile probe (2026-11-23)
+
+Workflow commit: `418cc315896c1ada8a129a8e9dce6c87da72387b`.
+
+The upstream validation workflow now has a second compile gate. After compiling
+the pinned CloudStream `:library` and stable Android app variant, it copies
+the unchanged AniLight Kotlin source tree into the checked-out upstream
+`:app` source tree and compiles that app variant again. This puts the real
+upstream library and Android host classes on the Kotlin compiler classpath,
+including the Android `Plugin` superclass, rather than relying on local
+placeholder ABI declarations.
+
+The workflow is triggered by changes to either `cloudstream-runtime/**` or
+`cloudstream-original/AniLight/**`. Its result must be checked in Actions
+before claiming AniLight source/API compatibility. Even a successful compile
+does not prove that the generated `.cs3` loads in SANY, that AniLight's live
+movie API returns a playable URL, or that SANY Media3 playback succeeds.
