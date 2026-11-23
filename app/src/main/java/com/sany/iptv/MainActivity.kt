@@ -1446,7 +1446,7 @@ class MainActivity : AppCompatActivity() {
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle(response.name)
                         .setItems(labels) { _, i ->
-                            resolveCloudStreamEpisode(providerName, response.name, episodes[i].data, episodes[i].episode, i)
+                            resolveCloudStreamEpisode(providerName, response.name, episodes[i].data, episodes[i].episode, episodes[i].name.orEmpty(), i)
                         }
                         .setNegativeButton("বন্ধ", null)
                         .show()
@@ -1491,6 +1491,7 @@ class MainActivity : AppCompatActivity() {
         title: String,
         episodeData: String,
         episodeNumber: Int?,
+        episodeName: String,
         episodeIndex: Int
     ) {
         toast("এই Episode-এর অন্য Provider Source খোঁজা হচ্ছে…")
@@ -1523,10 +1524,15 @@ class MainActivity : AppCompatActivity() {
                         }
                         else -> emptyList()
                     }
-                    val target = if (episodeNumber != null) {
-                        episodes.firstOrNull { it.episode == episodeNumber }
-                    } else null
-                    val mappedEpisode = target ?: episodes.getOrNull(episodeIndex)
+                    val targetByNumber = episodeNumber?.let { number ->
+                        episodes.firstOrNull { it.episode == number }
+                    }
+                    val targetByName = episodeName.takeIf { it.isNotBlank() }?.let { selectedName ->
+                        episodes.firstOrNull {
+                            it.name?.let(::normalizeAnimeTitle) == normalizeAnimeTitle(selectedName)
+                        }
+                    }
+                    val mappedEpisode = targetByNumber ?: targetByName ?: episodes.getOrNull(episodeIndex)
                     if (mappedEpisode != null) {
                         resolved += SanyCloudStreamPluginRuntime.resolvePlayback(
                             provider.name, response.name, mappedEpisode.data
