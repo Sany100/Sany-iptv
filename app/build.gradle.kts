@@ -36,7 +36,6 @@ android {
         }
     }
     defaultConfig {
-        applicationId = "com.sany.iptv"
         // Android 6.0 (Marshmallow), API 23, is the minimum installable version.
         // Newer Android versions are not capped here; test on actual devices.
         minSdk = 23
@@ -67,6 +66,9 @@ kotlin {
 }
 
 dependencies {
+    // Pinned CloudStream GPL-3.0 API/runtime library; compiled from the submodule commit.
+    implementation(project(":cloudstream-library"))
+
     if (file("google-services.json").exists()) {
         // BoM 34.14.1 maps Firebase Analytics to 23.2.0, avoiding the API 24
         // minimum introduced by Analytics 24.0.0 and retaining Android 6 support.

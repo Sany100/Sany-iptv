@@ -1,8 +1,8 @@
 pluginManagement {
     repositories {
+        gradlePluginPortal()
         google()
         mavenCentral()
-        gradlePluginPortal()
     }
 }
 
@@ -13,7 +13,15 @@ dependencyResolutionManagement {
         mavenCentral()
         maven("https://jitpack.io")
     }
+    // Use the exact dependency/plugin catalog from the pinned CloudStream source.
+    versionCatalogs {
+        create("libs") {
+            from(files("cloudstream-upstream/gradle/libs.versions.toml"))
+        }
+    }
 }
 
 rootProject.name = "SANY IPTV"
 include(":app")
+include(":cloudstream-library")
+project(":cloudstream-library").projectDir = file("cloudstream-upstream/library")

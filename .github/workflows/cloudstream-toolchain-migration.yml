@@ -6,6 +6,8 @@ on:
       - migration/cloudstream-runtime-toolchain
     paths:
       - "app/**"
+      - "cloudstream-upstream"
+      - ".gitmodules"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - "gradle.properties"
@@ -26,8 +28,15 @@ jobs:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
-      - name: Checkout migration branch
+      - name: Checkout migration branch and pinned CloudStream submodule
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify pinned CloudStream revision
+        run: |
+          test "$(git -C cloudstream-upstream rev-parse HEAD)" = "a28e6468f54cfe420feebd205d3d21d08ed0cde8"
+          test -f cloudstream-upstream/library/build.gradle.kts
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -58,12 +67,12 @@ jobs:
           grep -n 'compileSdk = 36' app/build.gradle.kts
           grep -n '1.9.3' app/build.gradle.kts
 
-      - name: Build SANY debug APK
+      - name: Build SANY debug APK with CloudStream library
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Upload migration APK
         uses: actions/upload-artifact@v4
         with:
-          name: sany-cloudstream-toolchain-migration-debug
+          name: sany-cloudstream-library-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
