@@ -1413,7 +1413,10 @@ class MainActivity : AppCompatActivity() {
             accent = accent,
             onPlay = { title, url -> play(Channel(title, url, "Movies")) },
             onManageExtensions = { showMovieExtensionManager() },
-            onOpenExtensionProvider = { providerName -> showMovieExtensionSearch(providerName) }
+            onOpenExtensionProvider = { providerName -> showMovieExtensionSearch(providerName) },
+            onOpenExtensionTitle = { providerName, url, title ->
+                openMovieExtensionTitle(providerName, url, title)
+            }
         )
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
     }
