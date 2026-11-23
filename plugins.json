@@ -62,5 +62,37 @@
     "fileSize": 70745,
     "fileHash": "sha256-6e23d3e6426036fe4c483f99056b26352bdf6b4a57d50d8d0fe2f0111eee3bba",
     "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AniSuge.cs3"
+  },
+  {
+    "name": "Miruro",
+    "internalName": "Miruro",
+    "version": 7,
+    "apiVersion": 1,
+    "status": 1,
+    "description": "Miruro CloudStream Anime provider",
+    "authors": [],
+    "language": "en",
+    "tvTypes": [
+      "Anime"
+    ],
+    "fileSize": 92678,
+    "fileHash": "sha256-26690d31b8cedfdfd424642dde2a9077aad02fac2f3bd1081c7a0dc78ebca2cb",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/Miruro.cs3"
+  },
+  {
+    "name": "AniKotoAnime",
+    "internalName": "AniKotoAnime",
+    "version": 17,
+    "apiVersion": 1,
+    "status": 1,
+    "description": "AniKotoAnime CloudStream Anime provider",
+    "authors": [],
+    "language": "en",
+    "tvTypes": [
+      "Anime"
+    ],
+    "fileSize": 56950,
+    "fileHash": "sha256-8d7a7d218f1461d7af58778fab634c18168bb9a1a5c3298d43cffd2d9161bb5d",
+    "url": "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/AniKotoAnime.cs3"
   }
 ]
