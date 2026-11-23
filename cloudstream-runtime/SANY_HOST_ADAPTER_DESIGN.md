@@ -193,3 +193,24 @@ not yet been connected across a real plugin classloader/IPC boundary.
 This is a SANY player adapter improvement, not Gate 3 plugin DEX execution.
 A successful SANY APK build verifies compilation only; real AniLight stream and
 subtitle playback still require on-device testing.
+
+
+## 2026-11-23 AniLight native-to-Media3 handoff completed
+
+The built-in AniLight native screen now emits a `SanyPlaybackRequest` rather
+than a positional title/URL/single-subtitle callback. The request carries the
+resolved stream URL, AniLight provider headers, selected SUB/DUB language,
+quality label and every subtitle URL collected for that selected language.
+Subtitle entries are marked WebVTT because the current AniLight captions proxy
+is the endpoint already consumed by the previous WebVTT player path.
+
+`MainActivity` forwards that request into the shared Media3 player adapter.
+This connects the built-in AniLight API client to SANY playback and preserves
+the existing SANY player UI. It does not route the upstream CloudStream
+`SanyAniLightHostBridge` through an embedded CloudStream runtime: that bridge
+still compiles only in the pinned upstream CloudStream host validation.
+
+The current subtitle DTO does not yet carry per-track HTTP headers, and the
+player applies the provider's shared request headers to all media/subtitle
+requests. Per-subtitle header isolation, track switching on a live device, and
+actual media decoding still require further implementation/device validation.
