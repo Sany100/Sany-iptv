@@ -4359,10 +4359,18 @@ class MainActivity : AppCompatActivity() {
 
         val controlsHandler = Handler(Looper.getMainLooper())
         val animeControlsAutoHideDelay = 3000L
+        // Anime Series uses one synchronized overlay group: centre Play/Pause,
+        // top title, and the complete lower control dock always show/hide together.
         val hideControls = Runnable {
-            if (controlsPanel.visibility == View.VISIBLE) {
-                controlsPanel.animate().alpha(0f).setDuration(180).withEndAction {
-                    controlsPanel.visibility = View.GONE
+            // Keep the complete control group visible while paused so Resume is accessible.
+            if (isAnimeEpisode && !p.isPlaying) return@Runnable
+            val groupedOverlays = if (isAnimeEpisode)
+                listOfNotNull(controlsPanel, playPauseButton, animePlayerTitleOverlay)
+            else listOf(controlsPanel)
+            groupedOverlays.forEach { overlay ->
+                overlay.animate().cancel()
+                overlay.animate().alpha(0f).setDuration(180).withEndAction {
+                    overlay.visibility = View.GONE
                 }.start()
             }
         }
@@ -4372,13 +4380,31 @@ class MainActivity : AppCompatActivity() {
                 toast("Player controls unlocked")
             }
             controlsHandler.removeCallbacks(hideControls)
-            if (controlsPanel.visibility != View.VISIBLE) {
-                controlsPanel.visibility = View.VISIBLE
-                controlsPanel.animate().alpha(1f).setDuration(140).start()
-            } else controlsPanel.alpha = 1f
-            if (autoHide) controlsHandler.postDelayed(
-                hideControls, if (isAnimeEpisode) animeControlsAutoHideDelay else 2500L
-            )
+            val groupedOverlays = if (isAnimeEpisode)
+                listOfNotNull(controlsPanel, playPauseButton, animePlayerTitleOverlay)
+            else listOf(controlsPanel)
+            groupedOverlays.forEach { overlay ->
+                overlay.animate().cancel()
+                overlay.visibility = View.VISIBLE
+                overlay.alpha = 1f
+            }
+            if (isAnimeEpisode) {
+                playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
+            }
+            if (autoHide && (isAnimeEpisode.not() || p.isPlaying)) {
+                controlsHandler.postDelayed(
+                    hideControls, if (isAnimeEpisode) animeControlsAutoHideDelay else 2500L
+                )
+            }
+        }
+        if (isAnimeEpisode) {
+            // A pause keeps every overlay visible; resuming restarts the shared 3-second timer.
+            p.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    revealControls(autoHide = isPlaying)
+                }
+            })
+            revealControls(autoHide = p.isPlaying)
         }
         progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -4418,45 +4444,18 @@ class MainActivity : AppCompatActivity() {
         }
         controlsHandler.post(progressUpdater)
 
-        // While Anime is playing, a video tap briefly reveals the centre Pause
-        // control; it then fades from the layout without leaving a duplicate dock button.
-        val hideAnimeCenterPause = Runnable {
-            if (isAnimeEpisode && p.isPlaying) {
-                playPauseButton.animate().cancel()
-                playPauseButton.animate().alpha(0f).setDuration(180).withEndAction {
-                    if (p.isPlaying) playPauseButton.visibility = View.GONE
-                }.start()
-            }
-        }
-        // Full Screen / Fit Screen taps reveal both Anime overlays together.
-        // Their independent hide callbacks use the same 3-second deadline.
+        // Full Screen / Fit Screen changes preserve the same synchronized overlay timer.
         onAnimeFullscreenToggle = {
             setPlayerFullscreen(!isPlayerFullscreen)
             revealControls()
-            if (isAnimeEpisode && p.isPlaying) {
-                controlsHandler.removeCallbacks(hideAnimeCenterPause)
-                playPauseButton.animate().cancel()
-                playPauseButton.alpha = 1f
-                playPauseButton.text = "Ⅱ"
-                playPauseButton.visibility = View.VISIBLE
-                controlsHandler.postDelayed(hideAnimeCenterPause, animeControlsAutoHideDelay)
-            }
         }
         val tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             private val swipeThreshold = dp(64)
             private val swipeVelocityThreshold = dp(120)
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                if (isAnimeEpisode && p.isPlaying) {
-                    controlsHandler.removeCallbacks(hideAnimeCenterPause)
-                    playPauseButton.animate().cancel()
-                    playPauseButton.alpha = 1f
-                    playPauseButton.text = "Ⅱ"
-                    playPauseButton.visibility = View.VISIBLE
-                    controlsHandler.postDelayed(hideAnimeCenterPause, animeControlsAutoHideDelay)
-                }
-                // A single tap always reveals the bottom control dock, including
-                // when it is already visible. Apply the same interaction in FIT and fullscreen.
+                // One tap reveals the centre button, title, and bottom dock as a single group.
+                // The group shares one 3-second hide deadline in FIT and fullscreen.
                 revealControls()
                 return true
             }
