@@ -152,3 +152,19 @@ AniLight provider no longer calls into CloudStream's donation dialog or
 replace the upstream plugin ABI, HTTP/JSON services, provider registry, DEX
 loader, lifecycle manager, or SANY Media3 adapter. The provider still cannot
 be loaded from `.cs3` by SANY at this checkpoint.
+
+
+## 2026-11-23 Anime Movie provider enablement
+
+The AniLight provider was updated to include `AnimeMovie` alongside series,
+OVA, and specials. `MOVIE` search results are no longer filtered; movie
+metadata maps to CloudStream's exact `TvType.AnimeMovie` enum. A dedicated
+`home:movies` row consumes AniLight's `popularMovies` section. Movie detail
+pages expose a single Movie item when the watch endpoint returns no episode
+rows, and that item uses the same source-token resolution path as series
+episodes (episode number 1, SUB fallback).
+
+The provider catalog metadata now advertises `AnimeMovie`. The stream route
+is implemented against the API contract visible in the provider source, but
+the actual movie API response shape and playable link have not yet been
+verified live. The CloudStream runtime/Dex loading status is unchanged.
