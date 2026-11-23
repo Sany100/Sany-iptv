@@ -87,6 +87,13 @@ jobs:
           sed -i 's/alias(libs.plugins.kotlin.multiplatform)/id("org.jetbrains.kotlin.multiplatform")/' "$FILE"
           grep -n 'org.jetbrains.kotlin.multiplatform' "$FILE"
 
+      - name: Exclude CloudStream app-only Plugin subclass from ABI compile gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm cloudstream-original/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt
+          test ! -e cloudstream-original/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt
+
       - name: Compile AniLight provider against the exact CloudStream library ABI
         run: gradle --no-daemon --stacktrace :cloudstream-anilight-abi:assembleDebug
 
