@@ -149,11 +149,16 @@ class AniLightProvider : MainAPI() {
         }
 
         val hasDub = entries.any { it.dub == true }
-        val hasSub = entries.any { it.sub == true }
+        // Some movie watch payloads omit explicit SUB/DUB flags; default those
+        // single-item movie rows to SUB rather than hiding the playable item.
+        val hasSub = entries.any { it.sub == true } ||
+            (isMovie && entries.none { it.sub == true || it.dub == true })
         val tvType = tvTypeOf(anime.format)
 
         val subEpisodes = if (hasSub) {
-            entries.filter { it.sub == true }.map {
+            entries.filter {
+                it.sub == true || (isMovie && it.dub != true)
+            }.map {
                 it.toEpisode(animeId, "sub", if (isMovie) "Movie" else null)
             }
         } else {
