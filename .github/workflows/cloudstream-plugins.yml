@@ -89,7 +89,7 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon AniLight:make makePluginsJson
           mkdir -p "$GITHUB_WORKSPACE/plugin-output"
-          find AniLight/build -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \\
+          find AniLight/build -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/plugin-output/" \;
           test -s build/plugins.json
           # Import a reviewed set of English Anime providers from a pinned GPL-3.0
           # upstream build commit. Verify size, ZIP structure, manifest/version,
@@ -163,7 +163,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/publish/" \\
+          find "$GITHUB_WORKSPACE/plugin-output" -maxdepth 1 -type f -name '*.cs3' -exec cp {} "$GITHUB_WORKSPACE/publish/" \;
           cp "$GITHUB_WORKSPACE/plugin-output/plugins.json" "$GITHUB_WORKSPACE/publish/plugins.json"
           test -s "$GITHUB_WORKSPACE/publish/plugins.json"
           cd "$GITHUB_WORKSPACE/publish"
