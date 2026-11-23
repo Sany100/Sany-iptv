@@ -3801,10 +3801,12 @@ class MainActivity : AppCompatActivity() {
                             "high" -> 1500
                             else -> 1000
                         },
-                        if (highSpeedStreaming) 3500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 2000
-                            "high" -> 5000
-                            else -> 3000
+                        // Media3 requires minBufferMs >= bufferForPlaybackAfterRebufferMs.
+                        // Keep the rebuffer threshold below the selected minimum for every mode.
+                        if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                            "low" -> 1000
+                            "high" -> 3000
+                            else -> 2000
                         }
                     )
                     .setPrioritizeTimeOverSizeThresholds(true)
