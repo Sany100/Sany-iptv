@@ -186,21 +186,9 @@ jobs:
           if [ -d "$DONATION_DIR" ]; then mv "$DONATION_DIR" "$DONATION_BACKUP"; fi
           restore_donation() { if [ -d "$DONATION_BACKUP" ]; then mv "$DONATION_BACKUP" "$DONATION_DIR"; fi; }
           trap restore_donation EXIT
-          git fetch --tags --force origin
-          LATEST_TAG="$(git tag --list 'v1.2.*' --sort=-version:refname | head -n 1)"
-          if [[ -z "$LATEST_TAG" ]]; then
-            echo "No existing v1.2.x release tag found; refusing to guess the next version."
-            exit 1
-          fi
-          LATEST_PATCH="${LATEST_TAG##*.}"
-          if ! [[ "$LATEST_PATCH" =~ ^[0-9]+$ ]]; then
-            echo "Latest release tag has an invalid patch version: $LATEST_TAG"
-            exit 1
-          fi
-          NEXT_PATCH="$((LATEST_PATCH + 1))"
-          VERSION="1.2.$NEXT_PATCH"
-          VERSION_CODE="$NEXT_PATCH"
-          echo "Building release $VERSION after $LATEST_TAG"
+          VERSION="1.2.450"
+          VERSION_CODE="450"
+          echo "Building requested SANY IPTV release $VERSION"
           gradle --no-daemon --stacktrace :app:compileReleaseKotlin :app:assembleRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
