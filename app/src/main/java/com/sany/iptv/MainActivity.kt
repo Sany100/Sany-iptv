@@ -1201,15 +1201,10 @@ class MainActivity : AppCompatActivity() {
             context = this,
             light = isLight,
             accent = accent,
-            onPlay = { title, url, _ ->
-                playSanyPlaybackRequest(
-                    SanyPlaybackRequest(
-                        title = title,
-                        url = url,
-                        provider = "AniLight",
-                        headers = screen.playbackHeaders()
-                    )
-                )
+            onPlay = { playbackRequest ->
+                // AniLight resolves the source, request headers, audio language and
+                // all matching subtitle tracks before handing the request to Media3.
+                playSanyPlaybackRequest(playbackRequest)
             }
         )
         aniLightNativeScreen = screen
