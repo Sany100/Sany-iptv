@@ -981,10 +981,13 @@ class MainActivity : AppCompatActivity() {
         }
         top.addView(titleRow)
         homeHeaderContainer = top
-        // Lower the complete branded header card slightly, matching the requested
-        // red-marked area while keeping the content below in normal flow.
-        home.addView(top, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(if (isTvDevice) 24 else 18)
+        // Full-width, edge-to-edge square header; remove the extra top gap.
+        home.addView(top, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = 0
+            leftMargin = 0
+            rightMargin = 0
         })
         updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
