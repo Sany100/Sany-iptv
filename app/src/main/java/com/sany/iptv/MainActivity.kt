@@ -1232,7 +1232,7 @@ class MainActivity : AppCompatActivity() {
                     0 -> loadMovieExtensionCatalogue()
                     1 -> {
                         val field = EditText(this).apply {
-                            hint = "HTTPS Movie repository index URL"
+                            hint = "CloudStream repo URL (HTTPS or cloudstreamrepo://)"
                             setSingleLine(true)
                             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
                         }
