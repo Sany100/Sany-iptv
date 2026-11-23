@@ -1446,7 +1446,7 @@ class MainActivity : AppCompatActivity() {
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle(response.name)
                         .setItems(labels) { _, i ->
-                            resolveCloudStreamEpisode(providerName, response.name, episodes[i].data)
+                            resolveCloudStreamEpisode(providerName, response.name, episodes[i].data, episodes[i].episode, i)
                         }
                         .setNegativeButton("বন্ধ", null)
                         .show()
@@ -1486,21 +1486,76 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
-    private fun resolveCloudStreamEpisode(providerName: String, title: String, episodeData: String) {
-        toast("Extracting video links…")
+    private fun resolveCloudStreamEpisode(
+        providerName: String,
+        title: String,
+        episodeData: String,
+        episodeNumber: Int?,
+        episodeIndex: Int
+    ) {
+        toast("এই Episode-এর অন্য Provider Source খোঁজা হচ্ছে…")
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            val result = runCatching { SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData) }
+            val resolved = mutableListOf<SanyPlaybackRequest>()
+            val failures = mutableListOf<String>()
+            runCatching {
+                resolved += SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
+            }.onFailure { failures += "$providerName: ${it.message ?: it.javaClass.simpleName}" }
+
+            fun normalizeAnimeTitle(value: String): String =
+                value.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+
+            // Search the other loaded providers for the same title, then map the
+            // same numbered episode (or exact episode name/index when numbering is absent).
+            for (provider in SanyCloudStreamPluginRuntime.providers()) {
+                if (provider.name.equals(providerName, ignoreCase = true)) continue
+                runCatching {
+                    val match = SanyCloudStreamPluginRuntime.search(provider.name, title)
+                        .firstOrNull { normalizeAnimeTitle(it.name) == normalizeAnimeTitle(title) }
+                        ?: return@runCatching
+                    val response = SanyCloudStreamPluginRuntime.load(provider.name, match.url)
+                        ?: return@runCatching
+                    val episodes = when (response) {
+                        is com.lagradost.cloudstream3.AnimeLoadResponse -> response.episodes.values.flatten()
+                        is com.lagradost.cloudstream3.MovieLoadResponse -> {
+                            listOfNotNull(response.dataUrl.takeIf { it.isNotBlank() }?.let { data ->
+                                provider.newEpisode(data) { name = "Movie" }
+                            })
+                        }
+                        else -> emptyList()
+                    }
+                    val target = if (episodeNumber != null) {
+                        episodes.firstOrNull { it.episode == episodeNumber }
+                    } else null
+                    val mappedEpisode = target
+                        ?: episodes.firstOrNull {
+                            it.name?.let(::normalizeAnimeTitle) == normalizeAnimeTitle(
+                                SanyCloudStreamPluginRuntime.load(providerName, title)?.name ?: ""
+                            ) && it.episode == episodeNumber
+                        }
+                        ?: episodes.getOrNull(episodeIndex)
+                    if (mappedEpisode != null) {
+                        resolved += SanyCloudStreamPluginRuntime.resolvePlayback(
+                            provider.name, response.name, mappedEpisode.data
+                        )
+                    }
+                }.onFailure { failures += "${provider.name}: ${it.message ?: it.javaClass.simpleName}" }
+            }
+            val distinct = resolved.distinctBy { it.url }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                result.onSuccess { links ->
-                    if (links.isEmpty()) toast("কোনো video source পাওয়া যায়নি")
-                    else {
-                        val labels = links.map { req -> listOfNotNull(req.quality, req.streamMimeType?.substringAfterLast('/'), req.provider).joinToString(" • ").ifBlank { req.url.substringBefore('?').takeLast(48) } }.toTypedArray()
-                        AlertDialog.Builder(this@MainActivity).setTitle("$title — Sources").setItems(labels) { _, i ->
-                            startAnimeSourceFallback(links, i)
-                        }.setNegativeButton("বন্ধ", null).show()
-                    }
-                }.onFailure { toast("Extractor error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Extractor failed", it) }
+                if (distinct.isEmpty()) {
+                    toast("কোনো Provider-এ playable source পাওয়া যায়নি")
+                    if (failures.isNotEmpty()) android.util.Log.w("SANY-CS", failures.joinToString("; "))
+                } else {
+                    android.util.Log.i("SANY-CS", "Resolved ${distinct.size} sources across providers for $title")
+                    val labels = distinct.map { req ->
+                        listOfNotNull(req.quality, req.streamMimeType?.substringAfterLast('/'), req.provider)
+                            .joinToString(" • ").ifBlank { req.url.substringBefore('?').takeLast(48) }
+                    }.toTypedArray()
+                    AlertDialog.Builder(this@MainActivity).setTitle("$title — All Provider Sources")
+                        .setItems(labels) { _, i -> startAnimeSourceFallback(distinct, i) }
+                        .setNegativeButton("বন্ধ", null).show()
+                }
             }
         }
     }
