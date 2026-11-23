@@ -1,0 +1,28 @@
+name: AniLight live API smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: "AniLight search term used to test the live API"
+        required: true
+        default: "one piece"
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout SANY integration source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test AniLight homepage, search, detail, watch and stream resolver
+        env:
+          ANILIGHT_SMOKE_QUERY: ${{ inputs.query }}
+        run: python .github/scripts/anilight_live_smoke.py
