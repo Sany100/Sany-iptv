@@ -147,7 +147,14 @@ object SanyCloudStreamPluginRuntime {
     fun loadedPluginFiles(): List<File> = loaded.values.map { it.file }
 
     fun providers(): List<MainAPI> = APIHolder.allProviders
-        .filter { provider -> loaded.values.any { it.file.absolutePath == provider.sourcePlugin } }
+        .filter { provider ->
+            loaded.values.any { loadedPlugin ->
+                runCatching {
+                    File(loadedPlugin.file.absolutePath).canonicalPath ==
+                        File(provider.sourcePlugin).canonicalPath
+                }.getOrDefault(false)
+            }
+        }
 
     suspend fun search(providerName: String, query: String): List<SearchResponse> {
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
