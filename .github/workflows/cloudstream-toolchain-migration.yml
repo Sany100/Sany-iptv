@@ -6,6 +6,7 @@ on:
       - migration/cloudstream-runtime-toolchain
     paths:
       - "app/**"
+      - "playlist.m3u"
       - "cloudstream-upstream"
       - "cloudstream-original/AniLight/**"
       - "cloudstream-anilight-abi/**"
