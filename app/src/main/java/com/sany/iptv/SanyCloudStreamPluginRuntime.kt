@@ -8,6 +8,8 @@ import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.Plugin
@@ -146,6 +148,21 @@ object SanyCloudStreamPluginRuntime {
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         return provider.search(query).orEmpty()
+    }
+
+    /** Fetches the selected provider's real CloudStream homepage shelves. */
+    suspend fun homePage(providerName: String, page: Int = 1): List<HomePageList> {
+        val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
+            ?: error("CloudStream provider is not loaded: $providerName")
+        require(provider.hasMainPage && provider.mainPage.isNotEmpty()) {
+            "$providerName does not publish a homepage catalogue"
+        }
+        return provider.mainPage.flatMap { data ->
+            provider.getMainPage(
+                page,
+                MainPageRequest(data.name, data.data, data.horizontalImages)
+            )?.items.orEmpty()
+        }.filter { it.list.isNotEmpty() }
     }
 
     suspend fun load(providerName: String, url: String): LoadResponse? {
