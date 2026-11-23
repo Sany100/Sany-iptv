@@ -3670,7 +3670,7 @@ class MainActivity : AppCompatActivity() {
             if (!isFinishing) {
                 updateLiveTvProgress()
                 if (::contentArea.isInitialized && section == "Checker") updateCheckerUi()
-                if (::contentArea.isInitialized && section == "Live TV") {
+                if (::contentArea.isInitialized && (section == "Live TV" || section == "Live Sports")) {
                     val checkedCount = checkerProgressCount.get()
                     val publishLimit = when {
                         !checkerRunning -> Int.MAX_VALUE
@@ -3840,7 +3840,7 @@ class MainActivity : AppCompatActivity() {
         checkerDisplayedLimit = 250
         if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
         if (::contentArea.isInitialized && section == "Checker") renderCheckerSection()
-        if (::contentArea.isInitialized && section == "Live TV") renderListOnly()
+        if (::contentArea.isInitialized && (section == "Live TV" || section == "Live Sports")) renderListOnly()
 
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
@@ -4088,7 +4088,7 @@ class MainActivity : AppCompatActivity() {
                     workers.forEach { it.join() }
                     saveStreamCheckResults()
                     runOnUiThread {
-                        if (!isFinishing && section == "Live TV") renderHome()
+                        if (!isFinishing && (section == "Live TV" || section == "Live Sports")) renderHome()
                         else updateLiveTvProgress()
                     }
                 }
