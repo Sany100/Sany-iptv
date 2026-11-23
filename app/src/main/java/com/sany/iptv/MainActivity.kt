@@ -1349,7 +1349,7 @@ class MainActivity : AppCompatActivity() {
                 val query = field.text.toString().trim()
                 if (query.isBlank()) return@setPositiveButton
                 thread(name = "SANY-Movie-Search") {
-                    val result = runCatching { SanyCloudStreamPluginRuntime.search(providerName, query) }
+                    val result = runCatching { kotlinx.coroutines.runBlocking { SanyCloudStreamPluginRuntime.search(providerName, query) } }
                     runOnUiThread {
                         if (isFinishing || isDestroyed) return@runOnUiThread
                         result.onSuccess { items ->
@@ -1370,7 +1370,7 @@ class MainActivity : AppCompatActivity() {
     private fun openMovieExtensionTitle(providerName: String, url: String, fallbackTitle: String) {
         toast("Loading movie details…")
         thread(name = "SANY-Movie-Details") {
-            val result = runCatching { SanyCloudStreamPluginRuntime.load(providerName, url) }
+            val result = runCatching { kotlinx.coroutines.runBlocking { SanyCloudStreamPluginRuntime.load(providerName, url) } }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { response ->
