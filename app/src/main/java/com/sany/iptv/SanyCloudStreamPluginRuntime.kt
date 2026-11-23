@@ -129,8 +129,12 @@ object SanyCloudStreamPluginRuntime {
     private fun rollback(path: String, instance: BasePlugin?) {
         if (instance != null) runCatching { instance.beforeUnload() }
         APIHolder.apis.filter { it.sourcePlugin == path }.forEach { APIHolder.removePluginMapping(it) }
-        APIHolder.allProviders.withLock { removeAll { it.sourcePlugin == path } }
-        extractorApis.withLock { removeAll { it.sourcePlugin == path } }
+        APIHolder.allProviders.withLock { providers ->
+            providers.removeAll { provider -> provider.sourcePlugin == path }
+        }
+        extractorApis.withLock { extractors ->
+            extractors.removeAll { extractor -> extractor.sourcePlugin == path }
+        }
     }
 
     private data class Manifest(
