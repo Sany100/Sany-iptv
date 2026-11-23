@@ -3922,8 +3922,8 @@ class MainActivity : AppCompatActivity() {
                 if (section == "Series") {
                     selector.setParameters(
                         selector.buildUponParameters()
-                            .setPreferredAudioLanguage("hi")
-                            // Keep text tracks enabled so available subtitles can be selected in the player.
+                            .setPreferredAudioLanguages("bn", "hi", "en")
+                            // Audio preference: Bengali, then Hindi, then English. Subtitles remain off by default.
                             .setMaxVideoSize(1920, 1080)
                             .setMaxVideoBitrate(Int.MAX_VALUE)
                     )
@@ -4598,7 +4598,7 @@ class MainActivity : AppCompatActivity() {
         // Anime captions are disabled by default; other sections keep their normal track behavior.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, section == "Series")
-            .apply { if (section == "Series") setPreferredAudioLanguage("hi") }
+            .apply { if (section == "Series") setPreferredAudioLanguages("bn", "hi", "en") }
             .build()
         val mediaItem = itemBuilder.build()
         val animeResumePosition = if (section == "Series") prefs.getLong(animeResumePreferenceKey(channel), 0L).coerceAtLeast(0L) else 0L
@@ -4680,19 +4680,12 @@ class MainActivity : AppCompatActivity() {
         // Auto mode caps Anime at 720p to reduce sustained decoder/GPU load.
         // Explicit 480p and 1080p selections remain available to the viewer.
         if (section == "Series") {
-            // Hindi remains the preferred audio language, but subtitle tracks stay selectable.
-            builder.setPreferredAudioLanguage("hi")
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            when (quality) {
-                "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_800_000)
-                "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(4_000_000)
-                "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(8_000_000)
-                else -> {
-                    // Auto lets HLS/DASH adaptive selection choose the best supported
-                    // rendition for the current bandwidth and device decoder.
-                    builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
-                }
-            }
+            // Anime always starts in adaptive Auto quality. Audio track preference is Bengali > Hindi > English.
+            // Subtitle tracks remain disabled until the viewer explicitly enables them inside the player.
+            builder.setPreferredAudioLanguages("bn", "hi", "en")
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                .clearVideoSizeConstraints()
+                .setMaxVideoBitrate(Int.MAX_VALUE)
             target.setParameters(builder)
             return
         }
