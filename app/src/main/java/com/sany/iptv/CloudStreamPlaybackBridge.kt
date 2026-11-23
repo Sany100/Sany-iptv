@@ -27,7 +27,8 @@ object CloudStreamPlaybackBridge {
                 url = subtitle.url,
                 language = subtitle.langTag ?: subtitle.lang,
                 mimeType = mime,
-                label = subtitle.lang
+                label = subtitle.lang,
+                headers = subtitle.headers.orEmpty()
             )
         }
         val mime = when (link.type) {
@@ -43,7 +44,17 @@ object CloudStreamPlaybackBridge {
             streamMimeType = mime,
             quality = link.quality.takeIf { it > 0 }?.let { "${it}p" },
             headers = link.getAllHeaders(),
-            subtitles = subtitleTracks
+            subtitles = subtitleTracks,
+            audioTracks = link.audioTracks.mapIndexedNotNull { index, audio ->
+                audio.url.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
+                    ?.let { url ->
+                        SanyAudioTrack(
+                            url = url,
+                            label = "External audio ${index + 1}",
+                            headers = audio.headers.orEmpty()
+                        )
+                    }
+            }
         )
     }
 }
