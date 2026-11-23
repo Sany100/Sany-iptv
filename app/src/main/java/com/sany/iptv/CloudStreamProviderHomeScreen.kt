@@ -12,6 +12,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.HomePageList
+import kotlinx.coroutines.launch
 
 /**
  * Provider directory and provider-specific landing page.
