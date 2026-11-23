@@ -1438,13 +1438,14 @@ class AniLightNativeScreen(
                     // completed links without waiting for the other metadata endpoints.
                     var metadataCompleted = 0
                     var linkCompleted = 0
-                    while (metadataCompleted < requests.size || linkCompleted < linkTaskCount ||
-                        System.nanoTime() < metadataDeadline && metadataCompleted < requests.size) {
+                    while (System.nanoTime() < linkDeadline &&
+                        ((metadataCompleted < requests.size && System.nanoTime() < metadataDeadline) ||
+                            linkCompleted < linkTaskCount)) {
                         val now = System.nanoTime()
                         if (metadataCompleted < requests.size && now < metadataDeadline) {
                             val metadataFuture = sourceCompletions.poll(
                                 minOf(
-                                    java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(60),
+                                    java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(50),
                                     metadataDeadline - now
                                 ).coerceAtLeast(1L),
                                 java.util.concurrent.TimeUnit.NANOSECONDS
@@ -1457,15 +1458,16 @@ class AniLightNativeScreen(
                             }
                         }
 
-                        while (linkCompleted < linkTaskCount) {
-                            val linkFuture = linkCompletions.poll() ?: break
-                            runCatching { linkFuture.get() }.getOrNull()?.let { sources.add(it) }
-                            linkCompleted++
+                        if (linkCompleted < linkTaskCount) {
+                            val linkFuture = linkCompletions.poll(
+                                40L,
+                                java.util.concurrent.TimeUnit.MILLISECONDS
+                            )
+                            if (linkFuture != null) {
+                                runCatching { linkFuture.get() }.getOrNull()?.let { sources.add(it) }
+                                linkCompleted++
+                            }
                         }
-
-                        if (System.nanoTime() >= linkDeadline) break
-                        if (metadataCompleted >= requests.size && linkCompleted >= linkTaskCount) break
-                        if (metadataCompleted >= requests.size && linkCompleted >= linkTaskCount) break
                     }
                 } finally {
                     sourcePool.shutdownNow()
