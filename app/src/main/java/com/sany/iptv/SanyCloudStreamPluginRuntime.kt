@@ -88,14 +88,19 @@ object SanyCloudStreamPluginRuntime {
                     FileOutputStream(temporaryDex).use { output -> input.copyTo(output) }
                 }
             }
-            require(temporaryDex.setReadable(true, true)) { "Unable to set DEX read permission" }
-            require(temporaryDex.setWritable(false, false)) {
-                "Unable to make dynamically loaded DEX read-only"
+            // Use POSIX mode bits as well as File.setWritable: Android's DEX
+            // verifier checks the actual file mode and rejects any writable bit.
+            android.system.Os.chmod(temporaryDex.absolutePath, 0x124) // 0444
+            require((android.system.Os.stat(temporaryDex.absolutePath).st_mode.toInt() and 0x92) == 0) {
+                "Unable to make staged DEX file read-only"
             }
             if (dexFile.exists()) dexFile.delete()
             check(temporaryDex.renameTo(dexFile)) { "Unable to stage read-only DEX file" }
+            android.system.Os.chmod(dexFile.absolutePath, 0x124) // Re-assert after rename.
         }
-        require(dexFile.isFile && !dexFile.canWrite()) {
+        require(dexFile.isFile && !dexFile.canWrite() &&
+            (android.system.Os.stat(dexFile.absolutePath).st_mode.toInt() and 0x92) == 0
+        ) {
             "Android requires the staged DEX file to be read-only"
         }
         val loader = DexClassLoader(dexFile.absolutePath, optimized.absolutePath, null, context.classLoader)
