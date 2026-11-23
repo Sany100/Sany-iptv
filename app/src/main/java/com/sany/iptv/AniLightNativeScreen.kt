@@ -63,7 +63,10 @@ class AniLightNativeScreen(
     }
     private val posterRequests = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var posterCacheLastCleanupAt = 0L
-    private val posterExecutor = Executors.newFixedThreadPool(6)
+    // Limit concurrent poster downloads more aggressively on low-RAM phones.
+    private val posterExecutor = Executors.newFixedThreadPool(
+        if (Runtime.getRuntime().maxMemory() <= 256L * 1024L * 1024L) 2 else 4
+    )
     private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
     private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
