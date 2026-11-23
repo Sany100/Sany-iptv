@@ -1334,9 +1334,10 @@ class MainActivity : AppCompatActivity() {
                         backgroundColor = bg,
                         foregroundColor = white,
                         accentColor = accent,
-                        onSearch = { providerName, _ -> showCloudStreamSearch(providerName) },
+                        onSearch = { providerName, query -> showCloudStreamSearch(providerName, query) },
                         onBackToAnime = {
                             cloudStreamProviderScreen = null
+                            contentArea.removeAllViews()
                             renderAniLightNative()
                         }
                     )
@@ -5567,6 +5568,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (cloudStreamProviderScreen != null) {
                 cloudStreamProviderScreen = null
+                contentArea.removeAllViews()
                 renderAniLightNative()
                 lastBackPressedAt = 0L
                 return
