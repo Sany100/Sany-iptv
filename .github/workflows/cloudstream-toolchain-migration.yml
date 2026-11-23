@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           DONATION_DIR="cloudstream-original/AniLight/src/main/kotlin/com/raghav/donation"
-          DONATION_BACKUP="${DONATION_DIR}.sany-excluded"
+          DONATION_BACKUP="${RUNNER_TEMP}/AniLight-donation-sany-excluded"
           if [ -d "$DONATION_DIR" ]; then
             mv "$DONATION_DIR" "$DONATION_BACKUP"
           fi
