@@ -1214,6 +1214,9 @@ class MainActivity : AppCompatActivity() {
      */
     private var animeLoadingOverlay: View? = null
     private var animePlaybackLoadingRequested = false
+    // Anime playback is held until Media3 reports STATE_READY; this prevents
+    // audio/video from starting underneath the in-player loading overlay.
+    private var animeAutoPlayWhenReady = false
     private var animeFullscreenBufferingOverlay: View? = null
 
     // Anime loading is drawn only inside the fullscreen video surface.
@@ -4305,7 +4308,15 @@ class MainActivity : AppCompatActivity() {
                     override fun onPlaybackStateChanged(state: Int) {
                         if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
                         if (state == Player.STATE_READY) {
-                            if (section == "Series") showAnimePlaybackLoading("", false)
+                            if (section == "Series") {
+                                showAnimePlaybackLoading("", false)
+                                val startAnimePlayback = animeAutoPlayWhenReady
+                                animeAutoPlayWhenReady = false
+                                if (startAnimePlayback) {
+                                    // Start only after the source is prepared and loading UI is dismissed.
+                                    this@MainActivity.player?.playWhenReady = true
+                                }
+                            }
                             updateAnimeFullscreenBuffering()
                             playbackRetryCount = 0
                             animeAutoNextInProgress = false
@@ -4965,8 +4976,14 @@ class MainActivity : AppCompatActivity() {
             else p.setMediaSource(mergedSource)
         }
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
+        if (isAnimeEpisode) {
+            // Keep the decoder paused while buffering/preparing. STATE_READY above
+            // is the only place that releases this pending autoplay request.
+            animeAutoPlayWhenReady = startPlayback
+            p.playWhenReady = false
+        }
         p.prepare()
-        p.playWhenReady = startPlayback
+        if (!isAnimeEpisode) p.playWhenReady = startPlayback
         if (isAnimeEpisode && startPlayback) animeCenterPlayButton?.visibility = View.GONE
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
