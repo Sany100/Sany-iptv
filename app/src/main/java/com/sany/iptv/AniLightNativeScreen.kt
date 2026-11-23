@@ -1433,7 +1433,7 @@ class AniLightNativeScreen(
                             provider = "AniLight",
                             streamMimeType = selected.mimeType,
                             quality = "auto",
-                            audioLanguage = "bn,hi,en",
+                            audioLanguage = "bn,ben,hi,hin,en,eng",
                             headers = playbackHeaders(),
                             subtitles = selectedSubtitles
                         )
