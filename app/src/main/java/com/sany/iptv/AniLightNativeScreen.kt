@@ -1406,39 +1406,79 @@ class AniLightNativeScreen(
                     }
                 )
                 ui.post {
+                    onPlaybackLoading("", false)
                     if (preferred.isEmpty()) {
-                        onPlaybackLoading("", false)
                         toast("কোনো playable source পাওয়া যায়নি। Main server বা backup server-এ এই Episode-এর link নাও থাকতে পারে।")
                         showDetailsAgain()
                         return@post
                     }
-                    currentEpisodeNumber = episode
-                    val selected = preferred.first()
-                    language = selected.language
-                    saveWatchLater(anime ?: JSONObject(), episode, selected.language)
-                    val selectedSubtitles = subtitlesByLanguage[selected.language]
-                        .orEmpty()
-                        .mapIndexed { subtitleIndex, subtitleUrl ->
-                            SanySubtitleTrack(
-                                url = subtitleUrl,
-                                language = selected.language,
-                                mimeType = "text/vtt",
-                                label = "${selected.language.uppercase()} Subtitle ${subtitleIndex + 1}"
-                            )
+
+                    // Preserve the original source-picking flow: resolve every link,
+                    // let the user choose one explicitly, then press PLAY. Never
+                    // silently start the first available source.
+                    val sourceLabels = preferred.mapIndexed { index, source ->
+                        val languageLabel = when (source.language.lowercase()) {
+                            "dub" -> "DUB"
+                            "sub" -> "SUB"
+                            else -> source.language.uppercase()
                         }
-                    onPlay(
-                        SanyPlaybackRequest(
-                            title = "$animeTitle • Episode $episode",
-                            url = selected.url,
-                            provider = "AniLight",
-                            streamMimeType = selected.mimeType,
-                            quality = "auto",
-                            audioLanguage = "bn,ben,hi,hin,en,eng",
-                            headers = playbackHeaders(),
-                            subtitles = selectedSubtitles
-                        )
-                    )
-                    showDetailsAgain()
+                        val serverLabel = if (index < 2) "Main" else "Backup"
+                        "$languageLabel • ${source.quality} • $serverLabel"
+                    }.toTypedArray()
+                    var selectedIndex = -1
+                    val dialog = AlertDialog.Builder(context)
+                        .setTitle("$animeTitle • Episode $episode — Sources")
+                        .setSingleChoiceItems(sourceLabels, -1) { _, which ->
+                            selectedIndex = which
+                        }
+                        .setNegativeButton("Cancel") { _, _ -> showDetailsAgain() }
+                        .setPositiveButton("PLAY", null)
+                        .create()
+                    dialog.setOnShowListener {
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                            val index = selectedIndex
+                            if (index !in preferred.indices) {
+                                toast("আগে একটি Source নির্বাচন করুন")
+                                return@setOnClickListener
+                            }
+                            val selected = preferred[index]
+                            currentEpisodeNumber = episode
+                            language = selected.language
+                            saveWatchLater(anime ?: JSONObject(), episode, selected.language)
+                            val selectedSubtitles = subtitlesByLanguage[selected.language]
+                                .orEmpty()
+                                .mapIndexed { subtitleIndex, subtitleUrl ->
+                                    SanySubtitleTrack(
+                                        url = subtitleUrl,
+                                        language = selected.language,
+                                        mimeType = "text/vtt",
+                                        label = "${selected.language.uppercase()} Subtitle ${subtitleIndex + 1}"
+                                    )
+                                }
+                            onPlaybackLoading("$animeTitle • Episode $episode", true)
+                            onPlay(
+                                SanyPlaybackRequest(
+                                    title = "$animeTitle • Episode $episode",
+                                    url = selected.url,
+                                    provider = "AniLight",
+                                    streamMimeType = selected.mimeType,
+                                    quality = selected.quality,
+                                    audioLanguage = "bn,ben,hi,hin,en,eng",
+                                    headers = playbackHeaders(),
+                                    subtitles = selectedSubtitles
+                                )
+                            )
+                            dialog.dismiss()
+                            showDetailsAgain()
+                        }
+                        dialog.listView.setOnItemClickListener { _, _, which, _ ->
+                            selectedIndex = which
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
+                        }
+                    }
+                    dialog.show()
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
                 }
             } catch (e: Exception) {
                 ui.post {
