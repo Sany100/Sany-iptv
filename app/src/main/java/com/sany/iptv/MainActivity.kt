@@ -1299,7 +1299,8 @@ class MainActivity : AppCompatActivity() {
                 // all matching subtitle tracks before handing the request to Media3.
                 playSanyPlaybackRequest(playbackRequest)
             },
-            onPlaybackLoading = { title, show -> showAnimePlaybackLoading(title, show) }
+            onPlaybackLoading = { title, show -> showAnimePlaybackLoading(title, show) },
+            onBrowseCloudStreamProviders = { showCloudStreamProviderBrowser() }
         )
         aniLightNativeScreen = screen
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
