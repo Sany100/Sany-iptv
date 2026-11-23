@@ -186,8 +186,8 @@ jobs:
           if [ -d "$DONATION_DIR" ]; then mv "$DONATION_DIR" "$DONATION_BACKUP"; fi
           restore_donation() { if [ -d "$DONATION_BACKUP" ]; then mv "$DONATION_BACKUP" "$DONATION_DIR"; fi; }
           trap restore_donation EXIT
-          VERSION="1.2.450"
-          VERSION_CODE="450"
+          VERSION="1.2.451"
+          VERSION_CODE="451"
           echo "Building requested SANY IPTV release $VERSION"
           gradle --no-daemon --stacktrace :app:compileReleaseKotlin :app:assembleRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
