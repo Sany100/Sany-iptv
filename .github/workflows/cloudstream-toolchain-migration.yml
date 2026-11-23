@@ -50,7 +50,7 @@ jobs:
         with:
           gradle-version: "9.4.1"
 
-      - name: Install Android SDK 36
+      - name: Install Android SDK 37
         shell: bash
         run: |
           set -euo pipefail
@@ -59,13 +59,13 @@ jobs:
           set +o pipefail
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
           set -o pipefail
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-37" "build-tools;36.0.0"
 
       - name: Verify toolchain versions
         run: |
           gradle --version
           grep -n '9.1.1' build.gradle.kts
-          grep -n 'compileSdk = 36' app/build.gradle.kts
+          grep -n 'compileSdk = 37' app/build.gradle.kts
           grep -n '1.9.3' app/build.gradle.kts
 
       - name: Align upstream KMP plugin request with AGP-provided classpath
