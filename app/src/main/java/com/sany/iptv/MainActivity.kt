@@ -2441,7 +2441,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderBottomNav() {
         bottomNav.removeAllViews()
-        listOf("Live TV" to "▣", "Live Sports" to "🏆", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
+        listOf("Live TV" to "📺", "Live Sports" to "🏆", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
                 isFocusable = true
@@ -2532,7 +2532,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     item.addView(android.view.View(this), LinearLayout.LayoutParams(dp(5), dp(5)))
                 }
-                item.addView(text(symbol, 20, if (active) Color.rgb(95, 180, 255) else muted, true).apply {
+                item.addView(text(symbol, if (name == "Live TV") 16 else 20, if (active) Color.rgb(95, 180, 255) else muted, true).apply {
                     gravity = Gravity.CENTER
                 })
                 val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name, 12, if (active) Color.rgb(115, 190, 255) else muted, active).apply {
