@@ -1,10 +1,10 @@
 [
   {
     "iconUrl": "https://anilight.live/favicon-96x96.png",
-    "fileHash": "sha256-403bec06e1c243e1409ec4fe68fe167be489dbd6245776830b7543b8b994cac8",
+    "fileHash": "sha256-cc6c1f831fce051653299b9f0fdab1f465ec2df2b52c37b9027d3f0146b870f7",
     "apiVersion": 1,
     "repositoryUrl": "https://github.com/Sany100/Sany-iptv",
-    "fileSize": 80334,
+    "fileSize": 81168,
     "status": 1,
     "language": "en",
     "authors": [
@@ -12,6 +12,7 @@
     ],
     "tvTypes": [
       "Anime",
+      "AnimeMovie",
       "OVA"
     ],
     "version": 2,
