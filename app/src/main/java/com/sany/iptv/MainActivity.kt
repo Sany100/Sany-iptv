@@ -1207,11 +1207,60 @@ class MainActivity : AppCompatActivity() {
      * CloudStream ExtractorLink/SubtitleFile values must be mapped to this DTO
      * by a host bridge; CloudStream classes never enter MainActivity.
      */
+    private var animeLoadingOverlay: View? = null
+
+    private fun showAnimePlaybackLoading(title: String, show: Boolean) {
+        runOnUiThread {
+            if (!show) {
+                (animeLoadingOverlay?.parent as? android.view.ViewGroup)?.removeView(animeLoadingOverlay)
+                animeLoadingOverlay = null
+                return@runOnUiThread
+            }
+            (animeLoadingOverlay?.parent as? android.view.ViewGroup)?.removeView(animeLoadingOverlay)
+            val overlay = FrameLayout(this).apply {
+                setBackgroundColor(Color.BLACK)
+                isClickable = true
+                isFocusable = true
+                elevation = dp(40).toFloat()
+            }
+            val panel = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(28), dp(24), dp(28), dp(24))
+            }
+            panel.addView(android.widget.ProgressBar(this).apply {
+                isIndeterminate = true
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(accent)
+            }, LinearLayout.LayoutParams(dp(54), dp(54)).apply { bottomMargin = dp(22) })
+            panel.addView(TextView(this).apply {
+                text = "LOADING"
+                setTextColor(Color.WHITE)
+                textSize = 18f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+            })
+            panel.addView(TextView(this).apply {
+                text = title
+                setTextColor(0xFFB8C7DD.toInt())
+                textSize = 13f
+                gravity = Gravity.CENTER
+                maxLines = 2
+                setPadding(0, dp(8), 0, 0)
+            })
+            overlay.addView(panel, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+            (window.decorView as? android.view.ViewGroup)?.addView(
+                overlay, android.view.ViewGroup.LayoutParams(-1, -1)
+            )
+            animeLoadingOverlay = overlay
+        }
+    }
+
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest) {
         val title = request.title.ifBlank { "AniLight" }
         val provider = request.provider.ifBlank { "Extension" }
         val parsedUrl = runCatching { Uri.parse(request.url.trim()) }.getOrNull()
         if (parsedUrl?.scheme !in setOf("http", "https")) {
+            showAnimePlaybackLoading("", false)
             toast("AniLight-এর stream link সঠিক নয়")
             android.util.Log.e("SANY-PLAYER", "Rejected AniLight URL: invalid or unsupported scheme")
             return
@@ -1230,6 +1279,7 @@ class MainActivity : AppCompatActivity() {
                 subtitleTracks = request.subtitles
             )
         } catch (error: Exception) {
+            showAnimePlaybackLoading("", false)
             android.util.Log.e("SANY-PLAYER", "Could not initialize provider player", error)
             toast("Player চালু করা যায়নি: ${error.javaClass.simpleName}")
         }
@@ -1248,7 +1298,8 @@ class MainActivity : AppCompatActivity() {
                 // AniLight resolves the source, request headers, audio language and
                 // all matching subtitle tracks before handing the request to Media3.
                 playSanyPlaybackRequest(playbackRequest)
-            }
+            },
+            onPlaybackLoading = { title, show -> showAnimePlaybackLoading(title, show) }
         )
         aniLightNativeScreen = screen
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
@@ -4047,6 +4098,7 @@ class MainActivity : AppCompatActivity() {
                             cause = cause.cause
                         }
                         runOnUiThread {
+                            if (section == "Series") showAnimePlaybackLoading("", false)
                             if (httpStatus != null) {
                                 toast("সার্ভার HTTP $httpStatus দিয়েছে — অন্য stream link চেষ্টা করুন")
                             } else if (currentChannel?.url?.startsWith("ftp://", true) == true) {
@@ -4070,6 +4122,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_READY) {
+                            if (section == "Series") showAnimePlaybackLoading("", false)
                             playbackRetryCount = 0
                             animeAutoNextInProgress = false
                             refreshPictureInPictureParams()
