@@ -115,6 +115,9 @@ class MainActivity : AppCompatActivity() {
     private var liveTvSearchQuery = ""
     private var player: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
+    // Provider-supplied track preferences remain active when the player settings are reapplied.
+    private var activeProviderAudioLanguages: List<String>? = null
+    private var activeProviderQualityHint: String? = null
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
     private var playbackRetryCount = 0
     private var animeAutoNextInProgress = false
@@ -1278,7 +1281,9 @@ class MainActivity : AppCompatActivity() {
                 startPlayback = true,
                 requestHeaders = request.headers,
                 streamMimeTypeHint = request.streamMimeType,
-                subtitleTracks = request.subtitles
+                subtitleTracks = request.subtitles,
+                preferredAudioLanguages = request.audioLanguage?.split(',')?.map(String::trim),
+                qualityHint = request.quality
             )
         } catch (error: Exception) {
             showAnimePlaybackLoading("", false)
@@ -3957,7 +3962,9 @@ class MainActivity : AppCompatActivity() {
         subtitleUrl: String? = null,
         requestHeaders: Map<String, String> = emptyMap(),
         streamMimeTypeHint: String? = null,
-        subtitleTracks: List<SanySubtitleTrack> = emptyList()
+        subtitleTracks: List<SanySubtitleTrack> = emptyList(),
+        preferredAudioLanguages: List<String>? = null,
+        qualityHint: String? = null
     ) {
         if (section != "Live TV" && section != "Movies" && section != "Series") return
         if (channel.url.isBlank()) {
@@ -3965,6 +3972,12 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val streamUrl = channel.url.trim()
+        activeProviderAudioLanguages = preferredAudioLanguages
+            ?.map(String::trim)
+            ?.filter { it.matches(Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]+)*")) }
+            ?.distinct()
+            ?.takeIf { it.isNotEmpty() }
+        activeProviderQualityHint = qualityHint?.trim()?.takeIf { it.isNotBlank() }
         val isFtpStream = streamUrl.startsWith("ftp://", true)
         if (!isFtpStream && !streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
             toast("Unsupported stream type. HTTP, HTTPS and FTP links are supported.")
@@ -4850,10 +4863,15 @@ class MainActivity : AppCompatActivity() {
         if (section == "Series") {
             // Anime always starts in adaptive Auto quality. Audio track preference is Bengali > Hindi > English.
             // Subtitle tracks remain disabled until the viewer explicitly enables them inside the player.
-            builder.setPreferredAudioLanguages("bn", "hi", "en")
+            val audioLanguages = activeProviderAudioLanguages ?: listOf("bn", "hi", "en")
+            builder.setPreferredAudioLanguages(*audioLanguages.toTypedArray())
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                .clearVideoSizeConstraints()
-                .setMaxVideoBitrate(Int.MAX_VALUE)
+            when (activeProviderQualityHint?.lowercase()?.removeSuffix("p")?.toIntOrNull()) {
+                in 1..480 -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
+                in 481..720 -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
+                in 721..1080 -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
+                else -> builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
+            }
             target.setParameters(builder)
             return
         }
