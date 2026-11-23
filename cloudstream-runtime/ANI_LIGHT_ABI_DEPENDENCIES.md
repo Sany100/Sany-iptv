@@ -30,10 +30,10 @@ The provider also uses the following CloudStream API symbols:
 
 `AniLightApi` additionally expects the CloudStream global `app` HTTP client
 and `AppUtils.parseJson`. `FirebaseDomainHelper` uses the same HTTP and JSON
-services. The provider's current `DonationManager.checkAndShow()` is coupled
-to CloudStream's `CommonActivity`, app lifecycle and dialog stack; it must be
-replaced by a SANY-owned optional UI hook or removed from the SANY port, not
-ported with a fake `CommonActivity`.
+services. The upstream AniLight provider previously invoked `DonationManager` from its
+homepage path. That call and import have now been removed from this port: the
+provider has no donation-dialog or `CommonActivity` dependency. This is an
+intentional host decoupling; donation UI is not part of the anime provider ABI.
 
 ## Important extractor finding
 
