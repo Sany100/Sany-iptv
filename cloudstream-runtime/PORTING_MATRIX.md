@@ -199,3 +199,26 @@ Next coding gate is an isolated compile experiment for the exact pinned
 upstream ABI/dependency slice against the unmodified AniLight provider. No
 plugin DEX execution or player changes should be enabled before that gate
 passes. This is an architecture checkpoint, not runtime implementation.
+
+
+## Pinned upstream build gate added (2026-11-23)
+
+Added `.github/workflows/cloudstream-upstream-abi-validation.yml`.
+It checks out the exact pinned upstream commit
+`a28e6468f54cfe420feebd205d3d21d08ed0cde8`, asserts that the real
+`MainAPI`, `BasePlugin`, `ExtractorApi`, Android `Plugin`, and
+`PluginManager` source files are present, then asks the upstream Gradle
+wrapper to compile `:library:assemble` and
+`:app:compileDebugKotlin`.
+
+This is a reproducible upstream baseline build gate, not yet the full Gate 1
+AniLight-against-local-source ABI probe. The Android `Plugin` implementation
+lives in the upstream app module and depends on app-side action APIs, while
+`MainAPI`/ `BasePlugin`/ `ExtractorApi` live in the KMP library. A small
+standalone module cannot safely reproduce that boundary with fake classes.
+The next step is to extract or package the exact host ABI classes from this
+pinned build and compile the unchanged AniLight provider against them.
+
+No SANY app dependency, DEX execution, or playback behavior is changed by this
+validation workflow. Its result must be checked in GitHub Actions before
+calling the upstream baseline build successful.
