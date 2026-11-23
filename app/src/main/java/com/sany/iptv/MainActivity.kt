@@ -1300,7 +1300,10 @@ class MainActivity : AppCompatActivity() {
                 playSanyPlaybackRequest(playbackRequest)
             },
             onPlaybackLoading = { title, show -> showAnimePlaybackLoading(title, show) },
-            onBrowseCloudStreamProviders = { showCloudStreamProviderBrowser() }
+            onBrowseCloudStreamProviders = { showCloudStreamProviderBrowser() },
+            onCloudStreamResult = { providerName, url, title ->
+                showCloudStreamDetails(providerName, url, title)
+            }
         )
         aniLightNativeScreen = screen
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
