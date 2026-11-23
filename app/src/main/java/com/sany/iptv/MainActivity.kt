@@ -292,6 +292,22 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground && !returningFromBackground)
+        // Automatically fetch the trusted AniLight .cs3 from this project's GitHub builds
+        // branch, verify its published SHA-256, and register its CloudStream provider.
+        // This runs off the UI thread and does not require a manual file import.
+        thread(name = "SANY-AniLight-AutoSync") {
+            runCatching {
+                val packageFile = SanyExtensionRepositories.syncOfficialAniLight(applicationContext)
+                val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                if (loadResult.success) {
+                    android.util.Log.i("SANY-CS", "Official AniLight synced and loaded: ${loadResult.providerNames.joinToString()}")
+                } else {
+                    android.util.Log.e("SANY-CS", "Official AniLight package verified but DEX load failed: ${loadResult.error}")
+                }
+            }.onFailure { error ->
+                android.util.Log.e("SANY-CS", "Official AniLight auto-sync failed", error)
+            }
+        }
         // If the previous playback attempt crashed the Activity, surface the saved
         // stack trace on the next launch so the failure can be diagnosed precisely.
         showPreviousCrashReport()
