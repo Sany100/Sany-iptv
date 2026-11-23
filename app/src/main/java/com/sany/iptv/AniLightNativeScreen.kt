@@ -1216,12 +1216,20 @@ class AniLightNativeScreen(
                     sourcePool.shutdownNow()
                 }
                 val unique = sources.distinctBy { it.language + "|" + it.url }
-                val preferred = unique
-                    .sortedWith(compareBy<ResolvedSource> {
-                        if (it.language.equals("dub", true)) 0 else 1
+                // Auto-pick a source: prefer a dubbed stream when available,
+                // then the highest advertised rendition. Media3 selects audio
+                // tracks in Bengali > Hindi > English order within that stream.
+                val preferred = unique.sortedWith(
+                    compareBy<ResolvedSource> {
+                        when {
+                            it.language.equals("dub", true) -> 0
+                            it.language.equals("sub", true) -> 1
+                            else -> 2
+                        }
                     }.thenByDescending {
                         Regex("(\\d{3,4})").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                    })
+                    }.thenBy { if (it.mimeType?.contains("mpegurl", true) == true) 0 else 1 }
+                )
                 ui.post {
                     if (preferred.isEmpty()) {
                         toast("কোনো playable source পাওয়া যায়নি। Main server বা backup server-এ এই Episode-এর link নাও থাকতে পারে।")
@@ -1229,41 +1237,31 @@ class AniLightNativeScreen(
                         return@post
                     }
                     currentEpisodeNumber = episode
-                    val labels = preferred.mapIndexed { index, source ->
-                        val langLabel = if (source.language.equals("dub", true)) "DUB" else "SUB"
-                        "$langLabel  •  ${source.quality}  •  Server ${index + 1}"
-                    }.toTypedArray()
-                    AlertDialog.Builder(context)
-                        .setTitle("$animeTitle • Episode $episode\nSelect video source")
-                        .setItems(labels) { _, which ->
-                            val selected = preferred[which]
-                            language = selected.language
-                            saveWatchLater(anime ?: JSONObject(), episode, selected.language)
-                            val selectedSubtitles = subtitlesByLanguage[selected.language]
-                                .orEmpty()
-                                .mapIndexed { subtitleIndex, subtitleUrl ->
-                                    SanySubtitleTrack(
-                                        url = subtitleUrl,
-                                        language = selected.language,
-                                        mimeType = "text/vtt",
-                                        label = "${selected.language.uppercase()} Subtitle ${subtitleIndex + 1}"
-                                    )
-                                }
-                            onPlay(
-                                SanyPlaybackRequest(
-                                    title = "$animeTitle • Episode $episode • ${selected.language.uppercase()} • ${selected.quality}",
-                                    url = selected.url,
-                                    provider = "AniLight",
-                                    streamMimeType = selected.mimeType,
-                                    quality = selected.quality,
-                                    audioLanguage = selected.language,
-                                    headers = playbackHeaders(),
-                                    subtitles = selectedSubtitles
-                                )
+                    val selected = preferred.first()
+                    language = selected.language
+                    saveWatchLater(anime ?: JSONObject(), episode, selected.language)
+                    val selectedSubtitles = subtitlesByLanguage[selected.language]
+                        .orEmpty()
+                        .mapIndexed { subtitleIndex, subtitleUrl ->
+                            SanySubtitleTrack(
+                                url = subtitleUrl,
+                                language = selected.language,
+                                mimeType = "text/vtt",
+                                label = "${selected.language.uppercase()} Subtitle ${subtitleIndex + 1}"
                             )
                         }
-                        .setNegativeButton("Cancel", null)
-                        .show()
+                    onPlay(
+                        SanyPlaybackRequest(
+                            title = "$animeTitle • Episode $episode",
+                            url = selected.url,
+                            provider = "AniLight",
+                            streamMimeType = selected.mimeType,
+                            quality = "auto",
+                            audioLanguage = "bn,hi,en",
+                            headers = playbackHeaders(),
+                            subtitles = selectedSubtitles
+                        )
+                    )
                     showDetailsAgain()
                 }
             } catch (e: Exception) {
