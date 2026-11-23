@@ -1317,7 +1317,8 @@ class AniLightNativeScreen(
         // Ignore rapid/repeated taps while the same source request or picker is active.
         if (episodeSourceResolving || activeSourceDialog?.isShowing == true) return
         episodeSourceResolving = true
-        onPlaybackLoading("$animeTitle • Episode $episode", true)
+        // Resolve the source list without covering the player. The in-player
+        // loading overlay starts only after the user chooses a source.
         // Loading is displayed on the video surface by MainActivity; never
         // replace the Anime page with a separate full-screen loading page.
         thread(name = "AniLight-Resolve") {
