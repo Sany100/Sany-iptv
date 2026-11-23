@@ -1064,7 +1064,7 @@ class MainActivity : AppCompatActivity() {
                 } else bottomNav.getChildAt(0)
             }
             else -> bottomNav.getChildAt(
-                listOf("Live TV", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
+                listOf("Live TV", "Live Sports", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
             )
         }
         target?.requestFocus()
@@ -2239,7 +2239,7 @@ class MainActivity : AppCompatActivity() {
             logoFrame.scaleX = 1f
             logoFrame.scaleY = 1f
             // Live TV and Movies can play; Checker remains diagnostic only.
-            if (section == "Live TV" || section == "Movies") {
+            if (section == "Live TV" || section == "Live Sports" || section == "Movies") {
                 row.setOnClickListener { play(channel) }
             }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
@@ -2285,7 +2285,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     applyTvFocusStyle(this)
                     contentDescription = if (isPlayingChannel) "Currently playing: ${channel.name}" else "Play ${channel.name}"
-                    if (section == "Live TV" || section == "Movies") setOnClickListener { play(channel) }
+                    if (section == "Live TV" || section == "Live Sports" || section == "Movies") setOnClickListener { play(channel) }
                 }
                 val topLine = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -2361,11 +2361,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun filteredChannels(): List<Channel> {
         // Live TV shows only streams positively verified by the Checker.
-        val liveCandidates = if (section == "Live TV") liveTvVisibleCandidates() else channels
+        val liveCandidates = if (section == "Live TV" || section == "Live Sports") liveTvVisibleCandidates() else channels
         return liveCandidates.filter { c ->
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
+                "Live Sports" -> isSportsChannel(c)
                 else -> !isMovie(c) && !isSeries(c)
             }
             val groupMatch = when {
@@ -2415,6 +2416,22 @@ class MainActivity : AppCompatActivity() {
     // Existing playlist entries that were previously classified as Movies are
     // now routed through the Live TV section and its existing category/checker flow.
     private fun isMovie(c: Channel): Boolean = false
+    // Live Sports is a focused view over sports-related entries in the existing playlist.
+    // Streams still pass through the same checker verification and Media3 playback path.
+    private fun isSportsChannel(c: Channel): Boolean {
+        val metadata = (c.group + " " + c.name + " " + c.url).lowercase()
+        val keywords = listOf(
+            "sport", "espn", "star sports", "ten sports", "sony sports", "fox sports",
+            "sky sports", "bein sports", "tnt sports", "willow", "cricket", "football",
+            "soccer", "fifa", "ipl", "nba", "nfl", "nhl", "wwe", "ufc", "formula 1",
+            "formula one", "motogp", "tennis", "golf", "olympic", "premier league",
+            "champions league", "la liga", "bundesliga", "serie a", "uefa", "icc",
+            "bcci", "rugby", "badminton", "volleyball", "basketball", "baseball",
+            "hockey", "boxing", "wimbledon", "euro cup", "world cup"
+        )
+        return keywords.any(metadata::contains)
+    }
+
     private fun isAnime(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
         listOf("anime", "animation", "animé").any(it::contains)
     }
@@ -2424,7 +2441,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderBottomNav() {
         bottomNav.removeAllViews()
-        listOf("Live TV" to "▣", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
+        listOf("Live TV" to "▣", "Live Sports" to "🏆", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
                 isFocusable = true
@@ -2479,7 +2496,7 @@ class MainActivity : AppCompatActivity() {
                     renderSection()
                     renderBottomNav()
                     if (isTvDevice) bottomNav.getChildAt(
-                        listOf("Live TV", "Movies", "Series", "Settings").indexOf(section)
+                        listOf("Live TV", "Live Sports", "Movies", "Series", "Settings").indexOf(section)
                     )?.requestFocus()
                 }
             }
@@ -4161,7 +4178,7 @@ class MainActivity : AppCompatActivity() {
         qualityHint: String? = null,
         externalAudioTracks: List<SanyAudioTrack> = emptyList()
     ) {
-        if (section != "Live TV" && section != "Movies" && section != "Series") return
+        if (section != "Live TV" && section != "Live Sports" && section != "Movies" && section != "Series") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
@@ -4246,7 +4263,7 @@ class MainActivity : AppCompatActivity() {
         closePlayer(keepOrientation = true)
         currentChannel = channel
         // Move the single active-channel highlight immediately when playback selection changes.
-        if (::listContainer.isInitialized && (section == "Live TV" || section == "Movies")) {
+        if (::listContainer.isInitialized && (section == "Live TV" || section == "Live Sports" || section == "Movies")) {
             val scroll = listContainer.parent as? ScrollView
             val previousScrollY = scroll?.scrollY ?: 0
             renderChannelRows(listContainer)
@@ -5754,6 +5771,13 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             returnToLiveTvHome(keepPlayback = playerView != null && player != null)
+            return
+        }
+
+        // Live Sports playback returns to its own list before normal section navigation.
+        if (section == "Live Sports" && playerView != null) {
+            closePlayer()
+            lastBackPressedAt = 0L
             return
         }
 
