@@ -916,12 +916,13 @@ class MainActivity : AppCompatActivity() {
                 if (isLight) intArrayOf(Color.WHITE, Color.rgb(246, 250, 255))
                 else intArrayOf(Color.rgb(7, 22, 45), Color.rgb(10, 28, 55))
             ).apply {
-                cornerRadius = dp(22).toFloat()
+                // Square-corner branded header; keep it visually separate from the page.
+                cornerRadius = 0f
                 setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
             }
-            // Premium raised header; opaque fill prevents the content behind it tinting the surface.
+            // Keep the header flat so its square geometry remains crisp.
             cameraDistance = 11000f * resources.displayMetrics.density
-            rotationX = 2.2f
+            rotationX = 0f
             translationZ = dp(10).toFloat()
             elevation = dp(14).toFloat()
         }
@@ -1013,14 +1014,9 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(2), dp(5), dp(2))
             // Solid bottom dock keeps the gesture/navigation area visually consistent.
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                if (isLight) intArrayOf(Color.WHITE, Color.rgb(245, 249, 255))
-                else intArrayOf(Color.rgb(6, 18, 38), Color.rgb(9, 25, 49))
-            ).apply {
-                cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
-            }
+            // Full-width independent navigation surface: pure white in Day mode,
+            // pure black in Night mode. No rounded corners or gradient tint.
+            setBackgroundColor(if (isLight) Color.WHITE else Color.BLACK)
         }
         home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
         renderSection()
@@ -2347,12 +2343,10 @@ class MainActivity : AppCompatActivity() {
                 applyTvFocusStyle(this)
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                background = if (isLight) {
-                    if (active) rounded(Color.rgb(229, 241, 255), 14, Color.BLACK, 2)
-                    else rounded(Color.WHITE, 14, Color.BLACK, 1)
-                } else if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
+                // Keep every tab transparent so the dock remains one solid theme surface.
+                background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
                 setPadding(dp(3), 0, dp(3), 0)
-                translationY = -dp(3).toFloat()
+                translationY = 0f
                 setOnClickListener {
                     if (section == name) return@setOnClickListener
                     // Switch immediately; keep the transition animation lightweight.
