@@ -30,7 +30,8 @@ class NativeMoviesScreen(
     private val light: Boolean,
     private val accent: Int,
     private val onPlay: (String, String) -> Unit,
-    private val onManageExtensions: () -> Unit = {}
+    private val onManageExtensions: () -> Unit = {},
+    private val onOpenExtensionProvider: (String) -> Unit = {}
 ) {
     private data class Movie(val title: String, val url: String, val category: String, val poster: String)
     private val prefs = context.getSharedPreferences("sany_iptv", Context.MODE_PRIVATE)
@@ -93,6 +94,32 @@ class NativeMoviesScreen(
         top.addView(button("+ ADD") { showAddMovieDialog() }, LinearLayout.LayoutParams(dp(82), dp(40)))
         body.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
 
+        // Show active CloudStream Movie providers directly on the Movies page.
+        val installedPaths = SanyMovieExtensionManager.installed(context)
+            .map { runCatching { java.io.File(it.packagePath).canonicalPath }.getOrNull() }
+            .filterNotNull()
+            .toSet()
+        val extensionProviders = SanyCloudStreamPluginRuntime.providers()
+            .filter { provider ->
+                runCatching { java.io.File(provider.sourcePlugin).canonicalPath in installedPaths }
+                    .getOrDefault(false)
+            }
+            .distinctBy { it.name.lowercase() }
+            .sortedBy { it.name.lowercase() }
+        if (extensionProviders.isNotEmpty()) {
+            addSectionTitle("MOVIE EXTENSIONS")
+            extensionProviders.forEach { provider ->
+                val entry = button("▶   ${provider.name}   •   SEARCH MOVIES") {
+                    onOpenExtensionProvider(provider.name)
+                }
+                entry.gravity = Gravity.CENTER_VERTICAL
+                entry.textSize = 14f
+                body.addView(entry, LinearLayout.LayoutParams(-1, dp(52)).apply {
+                    bottomMargin = dp(8)
+                })
+            }
+        }
+
         val lastUrl = prefs.getString("movies_continue_url", null)
         movies.firstOrNull { it.url == lastUrl }?.let {
             addSectionTitle("Continue Watching")
@@ -100,11 +127,13 @@ class NativeMoviesScreen(
         }
 
         if (movies.isEmpty()) {
-            body.addView(label("এখনো কোনো Movie link যোগ করা হয়নি।\n+ ADD চাপ দিয়ে তোমার মুভি, ক্যাটাগরি ও পোস্টার যোগ করো।",
-                14, muted, false).apply {
-                gravity = Gravity.CENTER
-                setPadding(dp(12), dp(44), dp(12), dp(44))
-            })
+            if (extensionProviders.isEmpty()) {
+                body.addView(label("এখনো কোনো Movie link বা active Movie extension নেই।\\nEXTENSIONS চাপ দিয়ে Movie provider install করো。",
+                    14, muted, false).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(44), dp(12), dp(44))
+                })
+            }
             return
         }
         movies.map { it.category }.distinct().forEach { category ->
