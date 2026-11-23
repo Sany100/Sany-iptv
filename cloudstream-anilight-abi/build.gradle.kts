@@ -21,7 +21,7 @@ kotlin {
     sourceSets.getByName("main").kotlin.apply {
         srcDir("../cloudstream-original/AniLight/src/main/kotlin/com/anilight")
         // The ABI-only gate checks provider sources; the Android Plugin host is compiled in :app.
-        exclude("AniLightPlugin.kt")
+        exclude("**/AniLightPlugin.kt")
     }
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
