@@ -62,6 +62,7 @@ class AniLightNativeScreen(
         override fun sizeOf(key: String, value: Bitmap): Int = (value.byteCount / 1024).coerceAtLeast(1)
     }
     private val posterRequests = ConcurrentHashMap.newKeySet<String>()
+    @Volatile private var posterCacheLastCleanupAt = 0L
     private val posterExecutor = Executors.newFixedThreadPool(6)
     private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
@@ -1903,8 +1904,7 @@ class AniLightNativeScreen(
                     BitmapFactory.decodeFile(file.absolutePath, bounds)
                     val maxDimension = 720
                     var sample = 1
-                    while (bounds.outWidth / (sample * 2) >= maxDimension &&
-                        bounds.outHeight / (sample * 2) >= maxDimension) sample *= 2
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxDimension) sample *= 2
                     val options = BitmapFactory.Options().apply {
                         inSampleSize = sample
                         inPreferredConfig = Bitmap.Config.RGB_565
@@ -1920,9 +1920,19 @@ class AniLightNativeScreen(
                         }
                     }
                 }
-                // Keep the disk cache bounded; evict oldest poster files first.
-                val files = directory.listFiles()?.filter { it.isFile && it.extension == "img" }.orEmpty()
-                if (files.size > 240) files.sortedBy { it.lastModified() }.take(files.size - 200).forEach { it.delete() }
+                // Run disk-cache maintenance occasionally, not after every poster.
+                val now = System.currentTimeMillis()
+                if (now - posterCacheLastCleanupAt > 60_000L) synchronized(this@AniLightNativeScreen) {
+                    if (now - posterCacheLastCleanupAt > 60_000L) {
+                        posterCacheLastCleanupAt = now
+                        val files = directory.listFiles()?.filter { it.isFile && it.extension == "img" }.orEmpty()
+                        if (files.size > 240) {
+                            files.sortedBy { it.lastModified() }
+                                .take(files.size - 200)
+                                .forEach { it.delete() }
+                        }
+                    }
+                }
             } catch (_: Exception) {
                 // Recycle only while this worker still exclusively owns the bitmap.
                 // Recycling after cache insertion can crash ImageView drawing with
