@@ -30,6 +30,29 @@ data class SanyVideoSource(
     val subtitles: List<String> = emptyList()
 )
 
+/** Subtitle metadata passed across the provider-to-Media3 boundary. */
+data class SanySubtitleTrack(
+    val url: String,
+    val language: String = "und",
+    val mimeType: String? = null,
+    val label: String? = null
+)
+
+/**
+ * Provider-neutral playback request. CloudStream model classes must be converted
+ * to this DTO before reaching the SANY app/player layer.
+ */
+data class SanyPlaybackRequest(
+    val title: String,
+    val url: String,
+    val provider: String = "Extension",
+    val streamMimeType: String? = null,
+    val quality: String? = null,
+    val audioLanguage: String? = null,
+    val headers: Map<String, String> = emptyMap(),
+    val subtitles: List<SanySubtitleTrack> = emptyList()
+)
+
 interface SanyExtensionProvider {
     val id: String
     val name: String
