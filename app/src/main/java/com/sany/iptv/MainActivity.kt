@@ -1231,8 +1231,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateAnimeFullscreenBuffering() {
-        val shouldShow = section == "Series" && isPlayerFullscreen && playerScreen != null &&
-            (animePlaybackLoadingRequested || player?.playbackState == Player.STATE_BUFFERING)
+        // Keep all Anime loading feedback attached to the actual video surface.
+        // PlayerView has the same bounds in FIT and fullscreen, so the spinner
+        // never covers the page or appears outside the video.
+        val shouldShow = section == "Series" && playerView != null &&
+            (animePlaybackLoadingRequested || player?.isLoading == true ||
+                player?.playbackState == Player.STATE_BUFFERING)
         animeFullscreenBufferingOverlay?.visibility = if (shouldShow) View.VISIBLE else View.GONE
     }
 
@@ -4326,6 +4330,9 @@ class MainActivity : AppCompatActivity() {
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                         refreshPictureInPictureParams()
                     }
+                    override fun onIsLoadingChanged(isLoading: Boolean) {
+                        if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
+                    }
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         // Enable PiP auto-entry only while an actual video is playing.
                         // Pausing/stopping immediately unregisters the PiP entry path.
@@ -4366,7 +4373,10 @@ class MainActivity : AppCompatActivity() {
                 indeterminateTintList = android.content.res.ColorStateList.valueOf(accent)
             }
             loading.addView(spinner, FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER))
-            screen.addView(loading, FrameLayout.LayoutParams(-1, -1))
+            // Add the indicator as a PlayerView child, not a screen-level
+            // overlay. This keeps it directly over the video in both FIT and
+            // fullscreen layouts.
+            view.addView(loading, FrameLayout.LayoutParams(-1, -1))
             animeFullscreenBufferingOverlay = loading
             updateAnimeFullscreenBuffering()
         } else {
