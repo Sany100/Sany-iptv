@@ -1834,7 +1834,11 @@ class AniLightNativeScreen(
     }
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
     private fun openSite() { runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(site))) } }
-    private fun toast(s: String) = android.widget.Toast.makeText(context, s, android.widget.Toast.LENGTH_LONG).show()
+    // Network/source failures are recorded for diagnostics, not shown as intrusive
+    // Android toast banners over the episode list or player.
+    private fun toast(s: String) {
+        android.util.Log.w("SANY-AniLight", s)
+    }
     private fun dp(n: Int) = (n * context.resources.displayMetrics.density).toInt()
 
     companion object {
