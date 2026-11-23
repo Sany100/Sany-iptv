@@ -1279,32 +1279,15 @@ class MainActivity : AppCompatActivity() {
                 request.provider.takeIf { it.isNotBlank() }
             ).joinToString(" • ").ifBlank { request.url.substringBefore('?').takeLast(48) }
         }.toTypedArray()
-        var selectedIndex = -1
-        lateinit var dialog: AlertDialog
-        dialog = AlertDialog.Builder(this)
+        // A single tap on a listed source immediately starts that exact stream.
+        // No extra PLAY confirmation is required.
+        AlertDialog.Builder(this)
             .setTitle("$title — Sources")
-            .setSingleChoiceItems(labels, -1) { _, which ->
-                selectedIndex = which
-                if (dialog.isShowing) {
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-                }
+            .setItems(labels) { _, index ->
+                if (index in requests.indices) startAnimeSourceFallback(requests, index)
             }
             .setNegativeButton("Cancel", null)
-            .setPositiveButton("PLAY", null)
-            .create()
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val index = selectedIndex
-                if (index !in requests.indices) {
-                    toast("আগে একটি Source নির্বাচন করুন")
-                    return@setOnClickListener
-                }
-                startAnimeSourceFallback(requests, index)
-                dialog.dismiss()
-            }
-        }
-        dialog.show()
+            .show()
     }
 
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
