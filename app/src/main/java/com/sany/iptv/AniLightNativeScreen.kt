@@ -33,6 +33,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 
+data class SanyProviderItem(val title: String, val url: String, val posterUrl: String)
+data class SanyProviderShelf(val providerName: String, val shelfName: String, val items: List<SanyProviderItem>)
+
 /** Native AniLight browser backed by the provider's public JSON API. */
 class AniLightNativeScreen(
     private val context: Context,
@@ -41,7 +44,8 @@ class AniLightNativeScreen(
     private val onPlay: (SanyPlaybackRequest) -> Unit,
     private val onPlaybackLoading: (String, Boolean) -> Unit = { _, _ -> },
     private val onBrowseCloudStreamProviders: () -> Unit = {},
-    private val onCloudStreamResult: (providerName: String, url: String, title: String) -> Unit = { _, _, _ -> }
+    private val onCloudStreamResult: (providerName: String, url: String, title: String) -> Unit = { _, _, _ -> },
+    private val onLoadProviderShelves: (onLoaded: (List<SanyProviderShelf>) -> Unit) -> Unit = { it(emptyList()) }
 ) {
     @Volatile private var api = "https://api.anilight.live/api"
     @Volatile private var site = "https://anilight.live"
@@ -331,13 +335,6 @@ class AniLightNativeScreen(
             contentDescription = "Search Anime"
         }, LinearLayout.LayoutParams(dp(52), dp(48)))
         contentHost.addView(catalogueActions)
-        contentHost.addView(button("☷  MORE ANIME PROVIDERS  →") {
-            onBrowseCloudStreamProviders()
-        }, bottom(16).apply {
-            leftMargin = dp(12)
-            rightMargin = dp(12)
-        })
-
         val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
             .filterNot { it.optBoolean("isAdult", false) }
 
@@ -365,6 +362,64 @@ class AniLightNativeScreen(
             "Slice of Life", "Sports", "Supernatural", "Thriller"
         )
         genres.forEach { genre -> loadHomeShelf(genre, "genre:$genre", genre) }
+
+        // Automatically merge every loaded CloudStream provider's homepage shelves
+        // into the main Anime home. A slow or empty provider does not block others.
+        val homeVersion = homeRequestVersion
+        onLoadProviderShelves { providerShelves ->
+            ui.post {
+                if (!isHomePage || homeVersion != homeRequestVersion) return@post
+                providerShelves.forEach { shelf -> addProviderShelf(shelf) }
+            }
+        }
+    }
+
+    private fun addProviderShelf(shelf: SanyProviderShelf) {
+        if (!isHomePage || shelf.items.isEmpty()) return
+        val title = if (shelf.shelfName.isBlank()) shelf.providerName
+            else "${shelf.providerName} • ${shelf.shelfName}"
+        val heading = label(title, 18, fg, true).apply {
+            setPadding(dp(12), dp(18), dp(12), dp(8))
+        }
+        contentHost.addView(heading)
+        val scroller = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        scroller.addView(rail)
+        val widthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val cardWidth = (widthDp / 3f).toInt().coerceAtLeast(96)
+        shelf.items.take(24).forEach { entry ->
+            val card = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                isFocusable = true
+                setOnClickListener { onCloudStreamResult(shelf.providerName, entry.url, entry.title) }
+            }
+            val posterFrame = FrameLayout(context).apply {
+                background = rounded(surface, 12)
+                clipToOutline = true
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(surface)
+            }
+            posterFrame.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            if (entry.posterUrl.startsWith("http")) loadImage(entry.posterUrl, poster)
+            card.addView(posterFrame, LinearLayout.LayoutParams(dp(cardWidth), dp((cardWidth * 1.42f).toInt())))
+            card.addView(label(entry.title, 12, fg, false).apply {
+                maxLines = 2
+                gravity = Gravity.CENTER
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(3), dp(5), dp(3), 0)
+            }, LinearLayout.LayoutParams(dp(cardWidth), -2))
+            rail.addView(card, LinearLayout.LayoutParams(-2, -2).apply {
+                rightMargin = dp(9)
+            })
+        }
+        contentHost.addView(scroller, bottom(10).apply {
+            leftMargin = dp(12)
+        })
     }
 
     private fun addFeaturedHero(item: JSONObject) {
