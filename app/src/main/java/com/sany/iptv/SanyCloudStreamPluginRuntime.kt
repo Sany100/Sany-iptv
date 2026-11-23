@@ -15,6 +15,8 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.extractorApis
 import dalvik.system.DexClassLoader
 import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipFile
 
@@ -55,7 +57,46 @@ object SanyCloudStreamPluginRuntime {
         val manifest = readManifest(file)
         val optimized = File(context.codeCacheDir, "cloudstream_dex_opt").apply { mkdirs() }
         require(optimized.isDirectory) { "Unable to create DEX optimization directory" }
-        val loader = DexClassLoader(file.absolutePath, optimized.absolutePath, null, context.classLoader)
+
+        // Android 14+ rejects dynamically loaded DEX files that remain writable.
+        // A .cs3 is a ZIP package, so extract its classes.dex into code_cache,
+        // make the extracted DEX read-only, and load that immutable file.
+        val dexDirectory = File(context.codeCacheDir, "cloudstream_dex").apply { mkdirs() }
+        require(dexDirectory.isDirectory) { "Unable to create DEX staging directory" }
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(16 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val packageHash = digest.digest().joinToString("") { "%02x".format(it) }
+        val dexFile = File(dexDirectory, "$packageHash.dex")
+        if (!dexFile.exists() || dexFile.canWrite()) {
+            val temporaryDex = File(dexDirectory, "$packageHash.dex.tmp")
+            if (temporaryDex.exists()) temporaryDex.delete()
+            ZipFile(file).use { zip ->
+                val dexEntry = zip.getEntry("classes.dex") ?: error("Plugin archive has no classes.dex")
+                require(!dexEntry.isDirectory && dexEntry.size in 1..80L * 1024L * 1024L) {
+                    "Invalid classes.dex size"
+                }
+                zip.getInputStream(dexEntry).use { input ->
+                    FileOutputStream(temporaryDex).use { output -> input.copyTo(output) }
+                }
+            }
+            require(temporaryDex.setReadable(true, true)) { "Unable to set DEX read permission" }
+            require(temporaryDex.setWritable(false, false)) {
+                "Unable to make dynamically loaded DEX read-only"
+            }
+            if (dexFile.exists()) dexFile.delete()
+            check(temporaryDex.renameTo(dexFile)) { "Unable to stage read-only DEX file" }
+        }
+        require(dexFile.isFile && !dexFile.canWrite()) {
+            "Android requires the staged DEX file to be read-only"
+        }
+        val loader = DexClassLoader(dexFile.absolutePath, optimized.absolutePath, null, context.classLoader)
 
         var instance: BasePlugin? = null
         try {
