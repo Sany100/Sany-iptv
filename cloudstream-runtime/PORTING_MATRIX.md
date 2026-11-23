@@ -84,3 +84,28 @@ logging API, so compiling only these two vendored classes is insufficient.
 Validation gate remains unchanged: compile, install, load the actual AniLight
 .cs3 package, register its provider, search, load details/episodes, extract a
 playable source, play through SANY Media3, and unload without stale registrations.
+
+
+## 2026-11-23 provider/extractor API source snapshot
+
+Added exact source snapshots from pinned upstream commit
+`a28e6468f54cfe420feebd205d3d21d08ed0cde8`:
+
+- `upstream-source/library/.../MainAPI.kt` (95,768 characters)
+- `upstream-source/library/.../utils/ExtractorApi.kt` (48,994 characters)
+
+These are reference/vendor snapshots, not yet part of SANY's compiled source set.
+They expose why a safe runtime port is larger than adding two Kotlin files:
+
+- `MainAPI.kt` references shared response/model types, tracker and sync models,
+  host HTTP/network helpers, serialization (Jackson + kotlinx), Ktor URL types,
+  OkHttp, coroutine utilities, date/time APIs and subtitle helpers.
+- `ExtractorApi.kt` references a broad set of concrete extractor classes,
+  common models, networking and coroutine helpers. It is not a standalone
+  interface file that can be compiled in isolation.
+
+SANY's current app module uses AGP 8.7.3, Kotlin Android plugin 2.4.0,
+compileSdk 35 and Java 17. No upstream dependency coordinates have been assumed.
+The next gate is a reproducible dependency map and a small isolated compile
+experiment; do not add the upstream source tree to the app source set until
+its multiplatform dependencies and host APIs are resolved.
