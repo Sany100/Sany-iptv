@@ -180,10 +180,9 @@ object SanyExtensionRepositories {
     }
 
     /**
-     * Downloads and verifies a CloudStream .cs3 ZIP package. The package is kept
-     * in app-private storage. This method deliberately does NOT execute its DEX:
-     * CloudStream's MainAPI/BasePlugin ABI and app services are not yet embedded
-     * in SANY, so attempting to load it would cause linkage errors or crashes.
+     * Downloads and verifies a CloudStream .cs3 ZIP package in app-private storage.
+     * DEX execution is a separate, explicit step handled by SanyCloudStreamPluginRuntime
+     * after validation; this method itself never executes plugin code.
      */
     fun downloadAndValidate(context: Context, plugin: CloudStreamPluginInfo): CloudStreamInstalledPackage {
         require(plugin.status != 0) { "This provider is marked offline by its repository" }

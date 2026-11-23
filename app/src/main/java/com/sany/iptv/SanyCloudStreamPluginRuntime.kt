@@ -6,6 +6,7 @@ import android.content.res.Resources
 import android.util.Log
 import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.plugins.BasePlugin
@@ -104,6 +105,12 @@ object SanyCloudStreamPluginRuntime {
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         return provider.search(query).orEmpty()
+    }
+
+    suspend fun load(providerName: String, url: String): LoadResponse? {
+        val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
+            ?: error("CloudStream provider is not loaded: $providerName")
+        return provider.load(url)
     }
 
     suspend fun resolvePlayback(

@@ -1215,6 +1215,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderAniLightNative() {
+        val cloudStreamButton = Button(this).apply {
+            text = "CLOUDSTREAM DEX PROVIDERS"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accent))
+            setOnClickListener { showCloudStreamProviderBrowser() }
+        }
+        contentArea.addView(cloudStreamButton, LinearLayout.LayoutParams(-1, dp(48)).apply {
+            setMargins(dp(12), dp(8), dp(12), dp(8))
+        })
         lateinit var screen: AniLightNativeScreen
         screen = AniLightNativeScreen(
             context = this,
@@ -1230,6 +1240,78 @@ class MainActivity : AppCompatActivity() {
         contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
     }
 
+    private fun showCloudStreamProviderBrowser() {
+        val providers = SanyCloudStreamPluginRuntime.providers()
+        if (providers.isEmpty()) {
+            AlertDialog.Builder(this).setTitle("CloudStream DEX")
+                .setMessage("কোনো .cs3 provider এখনো LOAD হয়নি। Extension Manager থেকে trusted package load করুন।")
+                .setPositiveButton("OK", null).show()
+            return
+        }
+        AlertDialog.Builder(this).setTitle("CloudStream Provider নির্বাচন")
+            .setItems(providers.map { it.name }.toTypedArray()) { _, index -> showCloudStreamSearch(providers[index].name) }
+            .setNegativeButton("বন্ধ", null).show()
+    }
+
+    private fun showCloudStreamSearch(providerName: String) {
+        val input = EditText(this).apply { hint = "Anime title লিখুন"; setSingleLine(true); setPadding(dp(18), dp(12), dp(18), dp(12)) }
+        val dialog = AlertDialog.Builder(this).setTitle("$providerName Search").setView(input)
+            .setPositiveButton("SEARCH", null).setNegativeButton("CANCEL", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val query = input.text.toString().trim()
+                if (query.isBlank()) { input.error = "Search title লিখুন"; return@setOnClickListener }
+                dialog.dismiss(); toast("Searching $providerName…")
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    val result = runCatching { SanyCloudStreamPluginRuntime.search(providerName, query) }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        result.onSuccess { items ->
+                            if (items.isEmpty()) toast("কোনো ফলাফল পাওয়া যায়নি")
+                            else AlertDialog.Builder(this).setTitle("Search Results (${items.size})")
+                                .setItems(items.map { it.name }.toTypedArray()) { _, i -> showCloudStreamDetails(providerName, items[i].url, items[i].name) }
+                                .setNegativeButton("বন্ধ", null).show()
+                        }.onFailure { toast("Search error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Search failed", it) }
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showCloudStreamDetails(providerName: String, url: String, fallbackTitle: String) {
+        toast("Loading $fallbackTitle…")
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val result = runCatching { SanyCloudStreamPluginRuntime.load(providerName, url) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { response ->
+                    if (response == null) { toast("Anime details পাওয়া যায়নি"); return@onSuccess }
+                    val episodes = (response as? com.lagradost.cloudstream3.AnimeLoadResponse)?.episodes?.values?.flatten().orEmpty()
+                    if (episodes.isEmpty()) { toast("এই title-এ playable episode নেই"); return@onSuccess }
+                    val labels = episodes.map { ep -> buildString { ep.episode?.let { append("Episode $it") }; ep.name?.takeIf { it.isNotBlank() }?.let { if (isNotEmpty()) append(" • "); append(it) } }.ifBlank { "Episode" } }.toTypedArray()
+                    AlertDialog.Builder(this).setTitle(response.name).setItems(labels) { _, i -> resolveCloudStreamEpisode(providerName, response.name, episodes[i].data) }.setNegativeButton("বন্ধ", null).show()
+                }.onFailure { toast("Details error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Load failed", it) }
+            }
+        }
+    }
+
+    private fun resolveCloudStreamEpisode(providerName: String, title: String, episodeData: String) {
+        toast("Extracting video links…")
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val result = runCatching { SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { links ->
+                    if (links.isEmpty()) toast("কোনো video source পাওয়া যায়নি")
+                    else {
+                        val labels = links.map { req -> listOfNotNull(req.quality, req.streamMimeType?.substringAfterLast('/'), req.provider).joinToString(" • ").ifBlank { req.url.substringBefore('?').takeLast(48) } }.toTypedArray()
+                        AlertDialog.Builder(this).setTitle("$title — Sources").setItems(labels) { _, i -> playSanyPlaybackRequest(links[i]) }.setNegativeButton("বন্ধ", null).show()
+                    }
+                }.onFailure { toast("Extractor error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Extractor failed", it) }
+            }
+        }
+    }
     private fun renderAniLightWebsite() {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
