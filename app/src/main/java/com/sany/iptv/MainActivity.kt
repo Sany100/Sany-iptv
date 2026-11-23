@@ -977,7 +977,9 @@ class MainActivity : AppCompatActivity() {
         home.addView(top, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            topMargin = 0
+            // Add a little breathing room above the full-width brand header,
+            // moving the circled header area down from the status bar.
+            topMargin = dp(if (isTvDevice) 10 else 18)
             leftMargin = 0
             rightMargin = 0
         })
