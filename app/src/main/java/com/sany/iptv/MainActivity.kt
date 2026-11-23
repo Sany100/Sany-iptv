@@ -1232,16 +1232,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderAniLightNative() {
-        val cloudStreamButton = Button(this).apply {
-            text = "CLOUDSTREAM DEX PROVIDERS"
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            setBackgroundTintList(android.content.res.ColorStateList.valueOf(accent))
-            setOnClickListener { showCloudStreamProviderBrowser() }
-        }
-        contentArea.addView(cloudStreamButton, LinearLayout.LayoutParams(-1, dp(48)).apply {
-            setMargins(dp(12), dp(8), dp(12), dp(8))
-        })
+        // Keep CloudStream DEX provider management internal. The verified providers
+        // are synchronized and loaded automatically at app startup; no manual
+        // provider/search entry is shown in the Anime Series UI.
         lateinit var screen: AniLightNativeScreen
         screen = AniLightNativeScreen(
             context = this,
