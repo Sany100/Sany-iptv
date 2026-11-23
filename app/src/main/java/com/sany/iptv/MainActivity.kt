@@ -1526,13 +1526,7 @@ class MainActivity : AppCompatActivity() {
                     val target = if (episodeNumber != null) {
                         episodes.firstOrNull { it.episode == episodeNumber }
                     } else null
-                    val mappedEpisode = target
-                        ?: episodes.firstOrNull {
-                            it.name?.let(::normalizeAnimeTitle) == normalizeAnimeTitle(
-                                SanyCloudStreamPluginRuntime.load(providerName, title)?.name ?: ""
-                            ) && it.episode == episodeNumber
-                        }
-                        ?: episodes.getOrNull(episodeIndex)
+                    val mappedEpisode = target ?: episodes.getOrNull(episodeIndex)
                     if (mappedEpisode != null) {
                         resolved += SanyCloudStreamPluginRuntime.resolvePlayback(
                             provider.name, response.name, mappedEpisode.data
