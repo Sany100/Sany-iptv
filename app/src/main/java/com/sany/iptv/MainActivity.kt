@@ -1396,12 +1396,17 @@ class MainActivity : AppCompatActivity() {
                     val episodes = when (response) {
                         is com.lagradost.cloudstream3.AnimeLoadResponse ->
                             response.episodes.values.flatten()
-                        is com.lagradost.cloudstream3.MovieLoadResponse ->
+                        is com.lagradost.cloudstream3.MovieLoadResponse -> {
+                            val movieProvider = SanyCloudStreamPluginRuntime.providers()
+                                .firstOrNull { it.name == providerName }
                             listOfNotNull(
                                 response.dataUrl.takeIf { it.isNotBlank() }?.let { data ->
-                                    com.lagradost.cloudstream3.Episode(data = data, name = "Movie")
+                                    movieProvider?.newEpisode(data) {
+                                        name = "Movie"
+                                    }
                                 }
                             )
+                        }
                         else -> emptyList()
                     }
                     if (episodes.isEmpty()) {
