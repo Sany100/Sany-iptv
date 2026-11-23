@@ -35,7 +35,16 @@ data class SanySubtitleTrack(
     val url: String,
     val language: String = "und",
     val mimeType: String? = null,
-    val label: String? = null
+    val label: String? = null,
+    val headers: Map<String, String> = emptyMap()
+)
+
+/** Separate audio rendition supplied by a CloudStream extractor. */
+data class SanyAudioTrack(
+    val url: String,
+    val label: String = "External audio",
+    val language: String = "und",
+    val headers: Map<String, String> = emptyMap()
 )
 
 /**
@@ -50,7 +59,8 @@ data class SanyPlaybackRequest(
     val quality: String? = null,
     val audioLanguage: String? = null,
     val headers: Map<String, String> = emptyMap(),
-    val subtitles: List<SanySubtitleTrack> = emptyList()
+    val subtitles: List<SanySubtitleTrack> = emptyList(),
+    val audioTracks: List<SanyAudioTrack> = emptyList()
 )
 
 interface SanyExtensionProvider {
