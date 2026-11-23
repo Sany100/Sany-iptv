@@ -4433,8 +4433,12 @@ class MainActivity : AppCompatActivity() {
                         refreshPictureInPictureParams()
                     }
                 })
-                created.addVideoListener(object : androidx.media3.common.VideoListener {
-                    override fun onRenderedFirstFrame() {
+                created.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                    override fun onRenderedFirstFrame(
+                        eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                        output: Any,
+                        renderTimeMs: Long
+                    ) {
                         if (section == "Series") {
                             runOnUiThread {
                                 animeFirstFrameRendered = true
