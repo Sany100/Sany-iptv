@@ -4229,7 +4229,7 @@ class MainActivity : AppCompatActivity() {
                 if (section == "Series") {
                     selector.setParameters(
                         selector.buildUponParameters()
-                            .setPreferredAudioLanguages("bn", "hi", "en")
+                            .setPreferredAudioLanguages("bn", "ben", "hi", "hin", "en", "eng")
                             // Audio preference: Bengali, then Hindi, then English. Subtitles remain off by default.
                             .setMaxVideoSize(1920, 1080)
                             .setMaxVideoBitrate(Int.MAX_VALUE)
@@ -4533,16 +4533,14 @@ class MainActivity : AppCompatActivity() {
                 .setMessage("Current source: $host")
                 .setPositiveButton("OK", null).show()
         }
-        val tracksAction = animeAction("▥  Tracks", "Change Anime audio language") {
-            showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
-        }
+        // Audio track selection is automatic: Bengali → Hindi → English.
         var onAnimeFullscreenToggle: (() -> Unit)? = null
         val fullscreenAction = animeAction("⛶  Fit Screen", "Switch between Fit Screen and Full Screen") {
             onAnimeFullscreenToggle?.invoke() ?: setPlayerFullscreen(!isPlayerFullscreen)
         }
         // Replace Next Episode with the Full Screen shortcut in the Anime action strip.
         // Play/Pause remains available only as the large centre overlay.
-        listOf(sourceAction, tracksAction, fullscreenAction).forEach { action ->
+        listOf(sourceAction, fullscreenAction).forEach { action ->
             animeActions.addView(action, LinearLayout.LayoutParams(0, dp(32), 1f))
         }
         controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
@@ -4600,7 +4598,7 @@ class MainActivity : AppCompatActivity() {
         fun openPlayerSettings() {
             val isAnimePlayback = section == "Series"
             val options = if (isAnimePlayback)
-                arrayOf("Playback speed", "Audio language", "Subtitle", "Video quality")
+                arrayOf("Playback speed", "Subtitle", "Video quality")
                 else arrayOf("Playback speed", "Video quality")
             AlertDialog.Builder(this).setTitle("Player settings").setItems(options) { _, which ->
                 if (which == 0) {
@@ -4613,10 +4611,8 @@ class MainActivity : AppCompatActivity() {
                         dialog.dismiss()
                     }.setNegativeButton("CLOSE", null).show()
                 } else if (isAnimePlayback && which == 1) {
-                    showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
-                } else if (isAnimePlayback && which == 2) {
                     showAnimeTrackSelection(C.TRACK_TYPE_TEXT, "Subtitles", true)
-                } else if (isAnimePlayback && which == 3) {
+                } else if (isAnimePlayback && which == 2) {
                     showAnimeTrackSelection(C.TRACK_TYPE_VIDEO, "Video quality", false)
                 } else if (!isAnimePlayback && which == 1) {
                     val qualities = arrayOf("auto", "480", "720", "1080")
@@ -4942,7 +4938,7 @@ class MainActivity : AppCompatActivity() {
         // Anime captions are disabled by default; other sections keep their normal track behavior.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, section == "Series")
-            .apply { if (section == "Series") setPreferredAudioLanguages("bn", "hi", "en") }
+            .apply { if (section == "Series") setPreferredAudioLanguages("bn", "ben", "hi", "hin", "en", "eng") }
             .build()
         val mediaItem = itemBuilder.build()
         val animeResumePosition = if (section == "Series") prefs.getLong(animeResumePreferenceKey(channel), 0L).coerceAtLeast(0L) else 0L
@@ -5060,7 +5056,7 @@ class MainActivity : AppCompatActivity() {
         if (section == "Series") {
             // Anime always starts in adaptive Auto quality. Audio track preference is Bengali > Hindi > English.
             // Subtitle tracks remain disabled until the viewer explicitly enables them inside the player.
-            val audioLanguages = activeProviderAudioLanguages ?: listOf("bn", "hi", "en")
+            val audioLanguages = activeProviderAudioLanguages ?: listOf("bn", "ben", "hi", "hin", "en", "eng")
             builder.setPreferredAudioLanguages(*audioLanguages.toTypedArray())
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             val requestedHeight = activeProviderQualityHint?.lowercase()?.removeSuffix("p")?.toIntOrNull()
