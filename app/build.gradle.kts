@@ -1,6 +1,8 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    // Keep Kotlin Android scoped to the app module. The CloudStream library
+    // applies Kotlin Multiplatform from its own upstream version catalog.
+    id("org.jetbrains.kotlin.android") version "2.4.0"
 }
 
 // Firebase is enabled when app/google-services.json is supplied (local file or CI secret).
@@ -36,8 +38,6 @@ android {
         }
     }
     defaultConfig {
-        // Android 6.0 (Marshmallow), API 23, is the minimum installable version.
-        // Newer Android versions are not capped here; test on actual devices.
         minSdk = 23
         targetSdk = 35
         versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("365").get().toInt()
@@ -66,12 +66,9 @@ kotlin {
 }
 
 dependencies {
-    // Pinned CloudStream GPL-3.0 API/runtime library; compiled from the submodule commit.
     implementation(project(":cloudstream-library"))
 
     if (file("google-services.json").exists()) {
-        // BoM 34.14.1 maps Firebase Analytics to 23.2.0, avoiding the API 24
-        // minimum introduced by Analytics 24.0.0 and retaining Android 6 support.
         implementation(platform("com.google.firebase:firebase-bom:34.14.1"))
         implementation("com.google.firebase:firebase-analytics")
         implementation("com.google.firebase:firebase-messaging")
