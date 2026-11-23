@@ -550,7 +550,72 @@ class AniLightNativeScreen(
             val arr = data?.optJSONArray("results")
                 ?: data?.optJSONObject("data")?.optJSONArray("results")
                 ?: data?.optJSONArray("data")
-            showCards("Search results", items(arr).filterNot { it.optBoolean("isAdult", false) })
+            val nativeResults = items(arr).filterNot { it.optBoolean("isAdult", false) }
+            showCards("AniLight", nativeResults)
+            searchLoadedCloudStreamProviders(query.trim(), version)
+        }
+    }
+
+    /**
+     * Search every loaded CloudStream Anime MainAPI in the same search view.
+     * Provider calls run off the UI thread and stale query responses are discarded.
+     */
+    private fun searchLoadedCloudStreamProviders(query: String, requestVersion: Int) {
+        thread(name = "SANY-Anime-UnifiedSearch") {
+            val results = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    SanyCloudStreamPluginRuntime.providers()
+                        .filter { provider ->
+                            provider.supportedTypes.any { type ->
+                                type.name.contains("Anime", true) ||
+                                    type.name.contains("Movie", true) ||
+                                    type.name.contains("OVA", true)
+                            }
+                        }
+                        .flatMap { provider ->
+                            runCatching {
+                                provider to SanyCloudStreamPluginRuntime.search(provider.name, query)
+                            }.getOrElse { error ->
+                                android.util.Log.w("SANY-AnimeSearch", "${provider.name}: ${error.message}")
+                                provider to emptyList()
+                            }
+                        }
+                }
+            }.getOrElse {
+                android.util.Log.w("SANY-AnimeSearch", "CloudStream provider search unavailable", it)
+                emptyList()
+            }
+            ui.post {
+                if (!isAnimeSearchPage || requestVersion != animeSearchRequestVersion) return@post
+                val host = animeSearchResultsHost ?: return@post
+                val heading = label("OTHER PROVIDERS", 13, accent, true).apply {
+                    setPadding(0, dp(18), 0, dp(8))
+                }
+                host.addView(heading)
+                var count = 0
+                results.forEach { (provider, entries) ->
+                    if (entries.isEmpty()) return@forEach
+                    host.addView(label(provider.name.uppercase(), 12, muted, true).apply {
+                        setPadding(0, dp(10), 0, dp(4))
+                    })
+                    entries.take(12).forEach { entry ->
+                        val title = entry.name.takeIf { it.isNotBlank() } ?: return@forEach
+                        val row = TextView(context).apply {
+                            text = "▶  $title"
+                            textSize = 14f
+                            setTextColor(fg)
+                            setPadding(dp(12), dp(12), dp(12), dp(12))
+                            background = rounded(surface, 10)
+                            contentDescription = "${provider.name}: $title"
+                        }
+                        host.addView(row, bottom(6))
+                        count++
+                    }
+                }
+                if (count == 0) {
+                    host.addView(label("অন্য Anime Provider-এ কোনো ফলাফল পাওয়া যায়নি।", 12, muted, false))
+                }
+            }
         }
     }
 
