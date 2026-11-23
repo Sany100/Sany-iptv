@@ -184,6 +184,7 @@ object SanyExtensionRepositories {
      * The index and package are pinned to this repository's builds branch; no file picker
      * or user-supplied repository is required for the built-in AniLight provider.
      */
+    @Synchronized
     fun syncOfficialAniLight(context: Context): File {
         val indexUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
         val index = JSONArray(readHttps(indexUrl, MAX_JSON_BYTES))
