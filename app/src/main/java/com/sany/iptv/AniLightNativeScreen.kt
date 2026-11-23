@@ -1226,9 +1226,10 @@ class AniLightNativeScreen(
                             it.language.equals("sub", true) -> 1
                             else -> 2
                         }
-                    }.thenByDescending {
-                        Regex("(\\d{3,4})").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                     }.thenBy { if (it.mimeType?.contains("mpegurl", true) == true) 0 else 1 }
+                    .thenByDescending {
+                        Regex("(\\d{3,4})").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                    }
                 )
                 ui.post {
                     if (preferred.isEmpty()) {
