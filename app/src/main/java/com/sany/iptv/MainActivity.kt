@@ -1298,7 +1298,7 @@ class MainActivity : AppCompatActivity() {
                         kotlinx.coroutines.runBlocking {
                             kotlinx.coroutines.coroutineScope {
                                 SanyCloudStreamPluginRuntime.providers().map { provider ->
-                                    kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                                    this@coroutineScope.async(kotlinx.coroutines.Dispatchers.IO) {
                                         runCatching {
                                             kotlinx.coroutines.withTimeoutOrNull(15_000L) {
                                                 SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
