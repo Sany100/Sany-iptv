@@ -91,6 +91,9 @@ jobs:
             namespace="${spec#*:}"
             printf '\nandroid {\n    namespace = "%s"\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_11\n        targetCompatibility = JavaVersion.VERSION_11\n    }\n}\n' "$namespace" >> "$RUNNER_TEMP/cloudstream-build/$module/build.gradle.kts"
           done
+          # AniKotoAnime imports Gson directly; the CloudStream plugin stub does not provide it.
+          # Add JSpecify explicitly so Kotlin can read Gson's nullability annotations.
+          printf '\ndependencies {\n    implementation("com.google.code.gson:gson:2.11.0")\n    implementation("org.jspecify:jspecify:1.0.0")\n}\n' >> "$RUNNER_TEMP/cloudstream-build/AniKotoAnime/build.gradle.kts"
           test -f "$RUNNER_TEMP/cloudstream-build/AniLight/src/main/kotlin/com/anilight/AniLightPlugin.kt"
           test -f "$RUNNER_TEMP/cloudstream-build/AniChan/src/main/kotlin/com/csksy/anichan/AniChanPlugin.kt"
           test -f "$RUNNER_TEMP/cloudstream-build/Anidap/src/main/kotlin/com/laddu100/AnidapPlugin.kt"
