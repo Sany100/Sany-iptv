@@ -1,5 +1,7 @@
 package com.sany.iptv
 
+import com.lagradost.cloudstream3.CommonActivity
+
 import com.lagradost.cloudstream3.newEpisode
 
 import android.app.Activity
@@ -223,6 +225,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CommonActivity.setActivityInstance(this)
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
         // Refresh EPG on every fresh app launch, without blocking the first screen.
@@ -5590,6 +5593,7 @@ class MainActivity : AppCompatActivity() {
         moviesWebView = null
         player?.release(); player = null
         logoExecutor.shutdownNow()
+        if (CommonActivity.activity === this) CommonActivity.setActivityInstance(null)
         super.onDestroy()
     }
 
