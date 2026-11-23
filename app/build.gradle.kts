@@ -1,8 +1,8 @@
 plugins {
     id("com.android.application")
-    // Keep Kotlin Android scoped to the app module. The CloudStream library
-    // applies Kotlin Multiplatform from its own upstream version catalog.
-    id("org.jetbrains.kotlin.android") version "2.4.0"
+    // The pinned CloudStream KMP plugin places Kotlin Gradle on the shared
+    // classpath. Apply the already-resolved Android plugin without a version.
+    id("org.jetbrains.kotlin.android")
 }
 
 // Firebase is enabled when app/google-services.json is supplied (local file or CI secret).
