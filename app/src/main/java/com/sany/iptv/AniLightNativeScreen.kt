@@ -35,7 +35,8 @@ class AniLightNativeScreen(
     private val light: Boolean,
     private val accent: Int,
     private val onPlay: (SanyPlaybackRequest) -> Unit,
-    private val onPlaybackLoading: (String, Boolean) -> Unit = { _, _ -> }
+    private val onPlaybackLoading: (String, Boolean) -> Unit = { _, _ -> },
+    private val onBrowseCloudStreamProviders: () -> Unit = {}
 ) {
     @Volatile private var api = "https://api.anilight.live/api"
     @Volatile private var site = "https://anilight.live"
@@ -310,6 +311,12 @@ class AniLightNativeScreen(
             contentDescription = "Search Anime"
         }, LinearLayout.LayoutParams(dp(52), dp(48)))
         contentHost.addView(catalogueActions)
+        contentHost.addView(button("☷  MORE ANIME PROVIDERS  →") {
+            onBrowseCloudStreamProviders()
+        }, bottom(16).apply {
+            leftMargin = dp(12)
+            rightMargin = dp(12)
+        })
 
         val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
             .filterNot { it.optBoolean("isAdult", false) }
