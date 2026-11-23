@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -150,17 +151,25 @@ object SanyMovieExtensionManager {
             val actualHash = sha256(temporary)
             require(actualHash == extension.sha256) { "Movie extension checksum mismatch" }
             val old = installed(context).firstOrNull { it.id == extension.id }
-            if (old != null && old.packagePath != target.absolutePath) {
-                SanyCloudStreamPluginRuntime.unload(File(old.packagePath))
+            val backup = File(directory, "movie_$safeId.cs3.backup")
+            if (backup.exists()) backup.delete()
+            if (old != null) SanyCloudStreamPluginRuntime.unload(File(old.packagePath))
+            if (target.exists()) check(target.renameTo(backup)) { "Could not preserve previous Movie extension" }
+            check(temporary.renameTo(target)) {
+                if (backup.exists()) backup.renameTo(target)
+                "Could not finalize Movie extension package"
             }
-            if (target.exists()) target.delete()
-            check(temporary.renameTo(target)) { "Could not finalize Movie extension package" }
 
             val loaded = SanyCloudStreamPluginRuntime.load(context, target)
             if (!loaded.success) {
                 target.delete()
+                if (backup.exists()) {
+                    check(backup.renameTo(target)) { "Could not restore previous Movie extension" }
+                    SanyCloudStreamPluginRuntime.load(context, target)
+                }
                 return loaded
             }
+            if (backup.exists()) backup.delete()
             val remaining = installed(context).filterNot { it.id == extension.id }
             val array = JSONArray()
             (remaining + Installed(
@@ -211,9 +220,19 @@ object SanyMovieExtensionManager {
         }
         try {
             require(connection.responseCode in 200..299) { "Repository HTTP ${connection.responseCode}" }
-            val data = connection.inputStream.use { it.readNBytes(maxBytes + 1) }
-            require(data.size <= maxBytes) { "Repository index is too large" }
-            return data.toString(Charsets.UTF_8)
+            val output = ByteArrayOutputStream()
+            connection.inputStream.use { input ->
+                val buffer = ByteArray(8 * 1024)
+                var total = 0
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    require(total <= maxBytes) { "Repository index is too large" }
+                    output.write(buffer, 0, count)
+                }
+            }
+            return output.toString(Charsets.UTF_8.name())
         } finally {
             connection.disconnect()
         }
