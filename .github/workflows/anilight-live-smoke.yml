@@ -1,6 +1,12 @@
 name: AniLight live API smoke test
 
 on:
+  push:
+    branches:
+      - feature/cloudstream-gpl-runtime-port
+    paths:
+      - ".github/scripts/anilight_live_smoke.py"
+      - ".github/workflows/anilight-live-smoke.yml"
   workflow_dispatch:
     inputs:
       query:
@@ -24,5 +30,5 @@ jobs:
           python-version: "3.12"
       - name: Test AniLight homepage, search, detail, watch and stream resolver
         env:
-          ANILIGHT_SMOKE_QUERY: ${{ inputs.query }}
+          ANILIGHT_SMOKE_QUERY: ${{ inputs.query || 'one piece' }}
         run: python .github/scripts/anilight_live_smoke.py
