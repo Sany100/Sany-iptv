@@ -25,3 +25,6 @@ rootProject.name = "SANY IPTV"
 include(":app")
 include(":cloudstream-library")
 project(":cloudstream-library").projectDir = file("cloudstream-upstream/library")
+
+// Isolated ABI compile gate: not packaged into the SANY APK.
+include(":cloudstream-anilight-abi")
