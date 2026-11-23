@@ -103,6 +103,15 @@ object SanyMovieExtensionManager {
         }
     }
 
+    /** Reloads previously installed Movie packages after an app restart. */
+    fun loadInstalled(context: Context): List<SanyCloudStreamPluginRuntime.LoadResult> =
+        installed(context).mapNotNull { item ->
+            val packageFile = File(item.packagePath).canonicalFile
+            val expected = File(context.filesDir, "cloudstream_extensions/pending").canonicalFile
+            if (packageFile.parentFile != expected || !packageFile.isFile) null
+            else SanyCloudStreamPluginRuntime.load(context, packageFile)
+        }
+
     /** Fetches and validates the independent Movie-only repository indexes. */
     fun catalogue(context: Context): List<Extension> {
         val result = LinkedHashMap<String, Extension>()
