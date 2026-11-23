@@ -1362,11 +1362,9 @@ class AniLightNativeScreen(
                 )
                 val sources = mutableListOf<ResolvedSource>()
                 val subtitlesByLanguage = linkedMapOf<String, LinkedHashSet<String>>()
-                // Resolve all load-balancer tokens concurrently. Previously each
-                // token performed its own redirect request one after another, so
-                // a page with several qualities could take many seconds to show.
-                // Use a wider pool and collect completed redirects immediately.
-                val linkPool = Executors.newFixedThreadPool(16)
+                // Resolve load-balancer tokens concurrently, but keep the pool bounded
+                // so a large episode response cannot overwhelm low-memory phones.
+                val linkPool = Executors.newFixedThreadPool(8)
                 val linkCompletions = java.util.concurrent.ExecutorCompletionService<ResolvedSource?>(linkPool)
                 var linkTaskCount = 0
                 fun add(data: JSONObject?, languageCode: String, checkHls: Boolean) {
@@ -1425,39 +1423,52 @@ class AniLightNativeScreen(
                 }
                 val sourcePool = Executors.newFixedThreadPool(4)
                 val sourceCompletions = java.util.concurrent.ExecutorCompletionService<Triple<String, Boolean, JSONObject?>>(sourcePool)
+                val startedAt = System.nanoTime()
+                val metadataDeadline = startedAt + java.util.concurrent.TimeUnit.SECONDS.toNanos(4)
+                val linkDeadline = startedAt + java.util.concurrent.TimeUnit.SECONDS.toNanos(7)
                 try {
                     requests.forEach { request ->
                         sourceCompletions.submit<Triple<String, Boolean, JSONObject?>> {
                             Triple(request.first, request.second, sourceBlocking(request.third))
                         }
                     }
-                    // Do not let one slow SUB/DUB or backup endpoint block faster results.
-                    var completed = 0
-                    val metadataDeadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(4)
-                    while (completed < requests.size) {
-                        val remaining = metadataDeadline - System.nanoTime()
-                        if (remaining <= 0) break
-                        val future = sourceCompletions.poll(remaining, java.util.concurrent.TimeUnit.NANOSECONDS) ?: break
-                        runCatching { future.get() }.getOrNull()?.let { (languageCode, isBackup, data) ->
-                            add(data, languageCode, isBackup)
+
+                    // Pipeline metadata and redirects together: as soon as one SUB/DUB
+                    // endpoint responds, enqueue its token resolutions and collect any
+                    // completed links without waiting for the other metadata endpoints.
+                    var metadataCompleted = 0
+                    var linkCompleted = 0
+                    while (metadataCompleted < requests.size || linkCompleted < linkTaskCount ||
+                        System.nanoTime() < metadataDeadline && metadataCompleted < requests.size) {
+                        val now = System.nanoTime()
+                        if (metadataCompleted < requests.size && now < metadataDeadline) {
+                            val metadataFuture = sourceCompletions.poll(
+                                minOf(
+                                    java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(60),
+                                    metadataDeadline - now
+                                ).coerceAtLeast(1L),
+                                java.util.concurrent.TimeUnit.NANOSECONDS
+                            )
+                            if (metadataFuture != null) {
+                                runCatching { metadataFuture.get() }.getOrNull()?.let { (languageCode, isBackup, data) ->
+                                    add(data, languageCode, isBackup)
+                                }
+                                metadataCompleted++
+                            }
                         }
-                        completed++
+
+                        while (linkCompleted < linkTaskCount) {
+                            val linkFuture = linkCompletions.poll() ?: break
+                            runCatching { linkFuture.get() }.getOrNull()?.let { sources.add(it) }
+                            linkCompleted++
+                        }
+
+                        if (System.nanoTime() >= linkDeadline) break
+                        if (metadataCompleted >= requests.size && linkCompleted >= linkTaskCount) break
+                        if (metadataCompleted >= requests.size && linkCompleted >= linkTaskCount) break
                     }
                 } finally {
                     sourcePool.shutdownNow()
-                }
-                try {
-                    // Show available sources quickly; skip only redirects that exceed the short wait budget.
-                    var completed = 0
-                    val linkDeadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5)
-                    while (completed < linkTaskCount) {
-                        val remaining = linkDeadline - System.nanoTime()
-                        if (remaining <= 0) break
-                        val future = linkCompletions.poll(remaining, java.util.concurrent.TimeUnit.NANOSECONDS) ?: break
-                        runCatching { future.get() }.getOrNull()?.let { sources.add(it) }
-                        completed++
-                    }
-                } finally {
                     linkPool.shutdownNow()
                 }
                 val unique = sources.distinctBy { it.language + "|" + it.url }
