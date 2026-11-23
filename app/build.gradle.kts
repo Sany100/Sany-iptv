@@ -83,5 +83,8 @@ dependencies {
     implementation("commons-net:commons-net:3.11.1")
     implementation("com.github.Blatzar:NiceHttp:0.4.18")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
+    // CloudStream plugin DEX files resolve Gson through the host app classloader.
+    // Package Gson explicitly so plugin references such as com.google.gson.JsonParser resolve at runtime.
+    implementation("com.google.code.gson:gson:2.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 }
