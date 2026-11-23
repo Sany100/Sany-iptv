@@ -1178,6 +1178,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Anime Universe UI/template removed. Keep the Series page free of placeholder text.
+    /**
+     * Single SANY player entry point for provider-neutral playback data.
+     * CloudStream ExtractorLink/SubtitleFile values must be mapped to this DTO
+     * by a host bridge; CloudStream classes never enter MainActivity.
+     */
+    private fun playSanyPlaybackRequest(request: SanyPlaybackRequest) {
+        val title = request.title.ifBlank { "AniLight" }
+        val provider = request.provider.ifBlank { "Extension" }
+        play(
+            channel = Channel(title, request.url, provider),
+            startPlayback = true,
+            requestHeaders = request.headers,
+            streamMimeTypeHint = request.streamMimeType,
+            subtitleTracks = request.subtitles
+        )
+    }
+
     private fun renderAniLightNative() {
         lateinit var screen: AniLightNativeScreen
         screen = AniLightNativeScreen(
@@ -1185,7 +1202,14 @@ class MainActivity : AppCompatActivity() {
             light = isLight,
             accent = accent,
             onPlay = { title, url, _ ->
-                play(Channel(title, url, "AniLight"), true, null, null, screen.playbackHeaders())
+                playSanyPlaybackRequest(
+                    SanyPlaybackRequest(
+                        title = title,
+                        url = url,
+                        provider = "AniLight",
+                        headers = screen.playbackHeaders()
+                    )
+                )
             }
         )
         aniLightNativeScreen = screen
@@ -3603,7 +3627,9 @@ class MainActivity : AppCompatActivity() {
         startPlayback: Boolean = true,
         ftpCredentials: Pair<String, String>? = null,
         subtitleUrl: String? = null,
-        requestHeaders: Map<String, String> = emptyMap()
+        requestHeaders: Map<String, String> = emptyMap(),
+        streamMimeTypeHint: String? = null,
+        subtitleTracks: List<SanySubtitleTrack> = emptyList()
     ) {
         if (section != "Live TV" && section != "Movies" && section != "Series") return
         if (channel.url.isBlank()) {
@@ -4359,23 +4385,52 @@ class MainActivity : AppCompatActivity() {
         setPlayerFullscreen(keepFullscreenMode)
         val lowerUrl = streamUrl.substringBefore("?").substringBefore("#").lowercase()
         val itemBuilder = MediaItem.Builder().setUri(streamUrl)
-        when {
-            lowerUrl.endsWith(".m3u8") || lowerUrl.endsWith(".m3u") ||
-                lowerUrl.contains("/hls/") || lowerUrl.contains("format=m3u8") ->
+        when (streamMimeTypeHint?.lowercase()) {
+            MimeTypes.APPLICATION_M3U8.lowercase(), "m3u8", "hls" ->
                 itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            lowerUrl.endsWith(".mpd") || lowerUrl.contains("/dash/") ->
+            MimeTypes.APPLICATION_MPD.lowercase(), "mpd", "dash" ->
                 itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+            else -> when {
+                lowerUrl.endsWith(".m3u8") || lowerUrl.endsWith(".m3u") ||
+                    lowerUrl.contains("/hls/") || lowerUrl.contains("format=m3u8") ->
+                    itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+                lowerUrl.endsWith(".mpd") || lowerUrl.contains("/dash/") ->
+                    itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+            }
         }
-        if (!subtitleUrl.isNullOrBlank() && subtitleUrl.startsWith("https://")) {
-            itemBuilder.setSubtitleConfigurations(
-                listOf(
-                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
-                        .setMimeType(MimeTypes.TEXT_VTT)
-                        .setLanguage("und")
-                        .setSelectionFlags(0)
-                        .build()
-                )
-            )
+
+        // Merge the legacy single WebVTT URL with provider-supplied subtitle tracks.
+        // The same provider request headers are applied by the shared Media3 HTTP
+        // DataSource factory, including subtitle requests.
+        val subtitleCandidates = buildList {
+            if (!subtitleUrl.isNullOrBlank()) {
+                add(SanySubtitleTrack(url = subtitleUrl, mimeType = MimeTypes.TEXT_VTT))
+            }
+            addAll(subtitleTracks)
+        }
+        val mediaSubtitles = subtitleCandidates
+            .filter { candidate ->
+                candidate.url.startsWith("https://", true) ||
+                    candidate.url.startsWith("http://", true)
+            }
+            .distinctBy { it.url }
+            .map { candidate ->
+                val subtitlePath = candidate.url.substringBefore("?").substringBefore("#").lowercase()
+                val inferredMime = when {
+                    subtitlePath.endsWith(".vtt") -> MimeTypes.TEXT_VTT
+                    subtitlePath.endsWith(".ttml") || subtitlePath.endsWith(".xml") ->
+                        MimeTypes.APPLICATION_TTML
+                    else -> MimeTypes.APPLICATION_SUBRIP
+                }
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(candidate.url))
+                    .setMimeType(candidate.mimeType?.takeIf { it.isNotBlank() } ?: inferredMime)
+                    .setLanguage(candidate.language.ifBlank { "und" })
+                    .apply { candidate.label?.takeIf { it.isNotBlank() }?.let(::setLabel) }
+                    .setSelectionFlags(0)
+                    .build()
+            }
+        if (mediaSubtitles.isNotEmpty()) {
+            itemBuilder.setSubtitleConfigurations(mediaSubtitles)
         }
         // Anime captions are disabled by default; other sections keep their normal track behavior.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
