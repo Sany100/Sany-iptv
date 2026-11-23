@@ -4866,10 +4866,14 @@ class MainActivity : AppCompatActivity() {
             val audioLanguages = activeProviderAudioLanguages ?: listOf("bn", "hi", "en")
             builder.setPreferredAudioLanguages(*audioLanguages.toTypedArray())
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            when (activeProviderQualityHint?.lowercase()?.removeSuffix("p")?.toIntOrNull()) {
-                in 1..480 -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
-                in 481..720 -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
-                in 721..1080 -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
+            val requestedHeight = activeProviderQualityHint?.lowercase()?.removeSuffix("p")?.toIntOrNull()
+            when {
+                requestedHeight != null && requestedHeight in 1..480 ->
+                    builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
+                requestedHeight != null && requestedHeight in 481..720 ->
+                    builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
+                requestedHeight != null && requestedHeight in 721..1080 ->
+                    builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
                 else -> builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
             }
             target.setParameters(builder)
