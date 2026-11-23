@@ -10,9 +10,10 @@ cloudstream {
     authors = listOf("KSHITIJ8473")
 
     status = 1
+    // This provider is intentionally limited to episodic anime series.
+    // Anime movies are excluded from repository catalog metadata as well.
     tvTypes = listOf(
         "Anime",
-        "AnimeMovie",
         "OVA"
     )
     iconUrl = "https://anilight.live/favicon-96x96.png"
