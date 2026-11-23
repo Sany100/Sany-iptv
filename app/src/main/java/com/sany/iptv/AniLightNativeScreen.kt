@@ -1332,6 +1332,11 @@ class AniLightNativeScreen(
                 )
                 val sources = mutableListOf<ResolvedSource>()
                 val subtitlesByLanguage = linkedMapOf<String, LinkedHashSet<String>>()
+                // Resolve all load-balancer tokens concurrently. Previously each
+                // token performed its own redirect request one after another, so
+                // a page with several qualities could take many seconds to show.
+                val linkPool = Executors.newFixedThreadPool(8)
+                val pendingLinks = mutableListOf<java.util.concurrent.Future<ResolvedSource?>>()
                 fun add(data: JSONObject?, languageCode: String, checkHls: Boolean) {
                     val subtitles = subtitlesByLanguage.getOrPut(languageCode) { linkedSetOf() }
                     val tracks = data?.optJSONArray("tracks")
@@ -1352,21 +1357,17 @@ class AniLightNativeScreen(
                             else -> emptyList()
                         }
                         for (token in tokens) {
-                            val resolved = resolveToken(token) ?: continue
                             val quality = entry.optString("quality").ifBlank {
                                 entry.optString("server").ifBlank { if (checkHls) "HLS" else "Auto" }
                             }
-                            // AniLight load-balancer URLs are often extensionless. Media3
-                            // otherwise guesses Progressive playback and rejects an HLS manifest.
-                            // Probe the resolved endpoint and pass an explicit HLS MIME hint.
-                            // Avoid a second network probe for every source just to detect HLS:
-                            // it delayed the picker by up to several seconds per link. Use metadata
-                            // and URL hints; Media3 can infer the type from the response otherwise.
-                            val cleanUrl = resolved.substringBefore("?").substringBefore("#").lowercase()
-                            val hls = quality.contains("hls", ignoreCase = true) ||
-                                cleanUrl.endsWith(".m3u8") || cleanUrl.endsWith(".m3u") ||
-                                cleanUrl.contains("/hls/")
-                            sources.add(
+                            pendingLinks.add(linkPool.submit<ResolvedSource?> {
+                                val resolved = resolveToken(token) ?: return@submit null
+                                // AniLight load-balancer URLs are often extensionless.
+                                // Use advertised quality and URL hints instead of a slow probe.
+                                val cleanUrl = resolved.substringBefore("?").substringBefore("#").lowercase()
+                                val hls = quality.contains("hls", ignoreCase = true) ||
+                                    cleanUrl.endsWith(".m3u8") || cleanUrl.endsWith(".m3u") ||
+                                    cleanUrl.contains("/hls/")
                                 ResolvedSource(
                                     languageCode,
                                     quality,
@@ -1374,7 +1375,7 @@ class AniLightNativeScreen(
                                     if (hls) "application/x-mpegURL" else null,
                                     if (checkHls) "Backup" else "Main"
                                 )
-                            )
+                            })
                         }
                     }
                 }
@@ -1401,7 +1402,16 @@ class AniLightNativeScreen(
                         add(data, languageCode, isBackup)
                     }
                 } finally {
-                    sourcePool.shutdownNow()
+                    sourcePool.shutdown()
+                }
+                try {
+                    // All token redirects run in parallel; retain the provider order
+                    // when collecting results so the source list remains predictable.
+                    pendingLinks.forEach { future ->
+                        runCatching { future.get() }.getOrNull()?.let { sources.add(it) }
+                    }
+                } finally {
+                    linkPool.shutdownNow()
                 }
                 val unique = sources.distinctBy { it.language + "|" + it.url }
                 // Auto-pick a source: prefer a dubbed stream when available,
