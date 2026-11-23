@@ -1221,51 +1221,19 @@ class MainActivity : AppCompatActivity() {
      * by a host bridge; CloudStream classes never enter MainActivity.
      */
     private var animeLoadingOverlay: View? = null
+    private var animePlaybackLoadingRequested = false
+    private var animeFullscreenBufferingOverlay: View? = null
 
+    // Anime loading is drawn only inside the fullscreen video surface.
     private fun showAnimePlaybackLoading(title: String, show: Boolean) {
-        runOnUiThread {
-            if (!show) {
-                (animeLoadingOverlay?.parent as? android.view.ViewGroup)?.removeView(animeLoadingOverlay)
-                animeLoadingOverlay = null
-                return@runOnUiThread
-            }
-            (animeLoadingOverlay?.parent as? android.view.ViewGroup)?.removeView(animeLoadingOverlay)
-            val overlay = FrameLayout(this).apply {
-                setBackgroundColor(Color.BLACK)
-                isClickable = true
-                isFocusable = true
-                elevation = dp(40).toFloat()
-            }
-            val panel = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(28), dp(24), dp(28), dp(24))
-            }
-            panel.addView(android.widget.ProgressBar(this).apply {
-                isIndeterminate = true
-                indeterminateTintList = android.content.res.ColorStateList.valueOf(accent)
-            }, LinearLayout.LayoutParams(dp(54), dp(54)).apply { bottomMargin = dp(22) })
-            panel.addView(TextView(this).apply {
-                text = "LOADING"
-                setTextColor(Color.WHITE)
-                textSize = 18f
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-            })
-            panel.addView(TextView(this).apply {
-                text = title
-                setTextColor(0xFFB8C7DD.toInt())
-                textSize = 13f
-                gravity = Gravity.CENTER
-                maxLines = 2
-                setPadding(0, dp(8), 0, 0)
-            })
-            overlay.addView(panel, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
-            (window.decorView as? android.view.ViewGroup)?.addView(
-                overlay, android.view.ViewGroup.LayoutParams(-1, -1)
-            )
-            animeLoadingOverlay = overlay
-        }
+        animePlaybackLoadingRequested = show
+        runOnUiThread { updateAnimeFullscreenBuffering() }
+    }
+
+    private fun updateAnimeFullscreenBuffering() {
+        val shouldShow = section == "Series" && isPlayerFullscreen && playerScreen != null &&
+            (animePlaybackLoadingRequested || player?.playbackState == Player.STATE_BUFFERING)
+        animeFullscreenBufferingOverlay?.visibility = if (shouldShow) View.VISIBLE else View.GONE
     }
 
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
@@ -4296,8 +4264,10 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     override fun onPlaybackStateChanged(state: Int) {
+                        if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
                         if (state == Player.STATE_READY) {
                             if (section == "Series") showAnimePlaybackLoading("", false)
+                            updateAnimeFullscreenBuffering()
                             playbackRetryCount = 0
                             animeAutoNextInProgress = false
                             refreshPictureInPictureParams()
@@ -4337,11 +4307,28 @@ class MainActivity : AppCompatActivity() {
             // Retain the last rendered frame during short surface/Activity transitions
             // so the app icon or an empty shutter does not flash before video resumes.
             setKeepContentOnPlayerReset(true)
-            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+            setShowBuffering(if (isAnimeEpisode) PlayerView.SHOW_BUFFERING_NEVER else PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
+        if (isAnimeEpisode) {
+            val loading = FrameLayout(this).apply {
+                setBackgroundColor(Color.BLACK)
+                visibility = View.GONE
+                isClickable = false
+            }
+            val spinner = android.widget.ProgressBar(this).apply {
+                isIndeterminate = true
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(accent)
+            }
+            loading.addView(spinner, FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER))
+            screen.addView(loading, FrameLayout.LayoutParams(-1, -1))
+            animeFullscreenBufferingOverlay = loading
+            updateAnimeFullscreenBuffering()
+        } else {
+            animeFullscreenBufferingOverlay = null
+        }
         animeEpisodePanel = if (isAnimeEpisode) aniLightNativeScreen?.createPlayerEpisodePanel() else null
         animeEpisodePanel?.let { episodePanel ->
             episodePanel.visibility = View.GONE
@@ -5125,6 +5112,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setPlayerFullscreen(enabled: Boolean) {
         isPlayerFullscreen = enabled
+        updateAnimeFullscreenBuffering()
         if (enabled) {
             // A channel selected from the inline category search can leave the
             // soft keyboard visible over the landscape player. Dismiss the IME
