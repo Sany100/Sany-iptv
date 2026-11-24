@@ -2233,7 +2233,9 @@ class MainActivity : AppCompatActivity() {
         val provider = request.provider.ifBlank { "Extension" }
         showAnimePlaybackLoading(title, true)
         if (section == "Series") {
-            val pending = pendingCloudStreamAnimeItem
+            val pending = pendingCloudStreamAnimeItem?.takeIf {
+                title.startsWith(it.third, ignoreCase = true) || it.third.startsWith(title.substringBefore(" • "), ignoreCase = true)
+            }
             val playedTitle = pending?.third ?: title.substringBefore(" • ").trim()
             val playedProvider = pending?.first ?: provider
             val playedItemUrl = pending?.second ?: request.url.trim()
