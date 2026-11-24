@@ -151,6 +151,59 @@ object SanyLiveSportsExtensionManager {
         prefs(context).edit().putStringSet(KEY_SELECTED, ids.intersect(installedIds)).apply()
     }
 
+    /**
+     * Automatically installs/updates, selects, and loads SANY's pinned PlayZTV
+     * Sports provider. No manual repository setup or installation is required.
+     */
+    @Synchronized
+    fun syncBuiltInPlayZTV(context: Context): SanyCloudStreamPluginRuntime.LoadResult {
+        val root = JSONObject(downloadText(SANY_LIVE_SPORTS_CATALOGUE, MAX_INDEX_BYTES))
+        require(root.optInt("schema") == 1) { "Unsupported SANY Live Sports catalogue schema" }
+        val entries = root.optJSONArray("extensions") ?: JSONArray()
+        val item = (0 until entries.length())
+            .mapNotNull { entries.optJSONObject(it) }
+            .firstOrNull { it.optString("id").equals("playztvprovider", true) }
+            ?: error("PlayZTVProvider is missing from the SANY Live Sports catalogue")
+
+        val extension = Extension(
+            id = item.optString("id").trim(),
+            name = item.optString("name").trim(),
+            version = item.optString("version").trim(),
+            description = item.optString("description"),
+            packageUrl = item.optString("packageUrl").trim(),
+            sha256 = item.optString("sha256").trim().lowercase(),
+            repositoryUrl = SANY_LIVE_SPORTS_CATALOGUE
+        )
+        require(extension.id == "playztvprovider" && extension.name.equals("PlayZTVProvider", true)) {
+            "Unexpected built-in Live Sports provider identity"
+        }
+        require(extension.version.isNotBlank() && isHttps(extension.packageUrl)) {
+            "Invalid built-in PlayZTVProvider version or package URL"
+        }
+        require(extension.sha256.matches(Regex("[a-f0-9]{64}"))) {
+            "Invalid built-in PlayZTVProvider SHA-256"
+        }
+
+        val current = installed(context).firstOrNull { it.id == extension.id }
+        val currentFile = current?.let { File(it.packagePath).canonicalFile }
+        val isCurrent = current != null &&
+            current.version == extension.version &&
+            current.sha256.equals(extension.sha256, true) &&
+            currentFile != null &&
+            currentFile.isFile &&
+            runCatching { sha256(currentFile) == extension.sha256 }.getOrDefault(false)
+
+        val loaded = if (isCurrent) {
+            SanyCloudStreamPluginRuntime.load(context, currentFile!!)
+        } else {
+            installOrUpdate(context, extension)
+        }
+        if (loaded.success) {
+            setSelectedIds(context, selectedIds(context) + extension.id)
+        }
+        return loaded
+    }
+
     /** Reloads previously installed Live Sports packages after an app restart. */
     fun loadInstalled(context: Context): List<SanyCloudStreamPluginRuntime.LoadResult> =
         installed(context).mapNotNull { item ->
