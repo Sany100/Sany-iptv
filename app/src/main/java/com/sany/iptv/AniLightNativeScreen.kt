@@ -269,8 +269,18 @@ class AniLightNativeScreen(
         }
         body.addView(contentHost, bottom(12))
         contentHost.addView(label("Anime Series • Extension Providers", 18, fg, true).apply {
-            setPadding(dp(14), dp(12), dp(14), dp(14))
+            setPadding(dp(14), dp(12), dp(14), dp(8))
         })
+        // Keep extension discovery available directly inside the Anime Series page.
+        // This opens the curated Anime provider directory and its install/search flows.
+        contentHost.addView(
+            button("＋  EXTENSIONS") { onBrowseCloudStreamProviders() },
+            LinearLayout.LayoutParams(-1, dp(46)).apply {
+                leftMargin = dp(14)
+                rightMargin = dp(14)
+                bottomMargin = dp(10)
+            }
+        )
         val loading = label("নতুন Bangla ও Hindi Anime Extension লোড হচ্ছে…", 14, muted, false).apply {
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(36), dp(12), dp(36))
