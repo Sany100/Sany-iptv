@@ -75,6 +75,7 @@ dependencies {
     }
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("com.github.Dimezis:BlurView:version-3.2.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.media3:media3-exoplayer:1.9.3")
     implementation("androidx.media3:media3-exoplayer-hls:1.9.3")
