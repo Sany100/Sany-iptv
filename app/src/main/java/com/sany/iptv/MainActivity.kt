@@ -1584,21 +1584,27 @@ class MainActivity : AppCompatActivity() {
             providers.forEach { provider ->
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    setPadding(dp(12), dp(12), dp(12), dp(12))
-                    setBackgroundColor(0xFF182235.toInt())
+                    // Keep the provider panel full width; only its controls get inner spacing.
+                    setPadding(0, dp(10), 0, dp(10))
+                    setBackgroundColor(0xFF101820.toInt())
                 }
-                card.addView(text(provider.name, 17, white, true))
-                card.addView(text("Live Sports provider", 12, muted).apply {
-                    setPadding(0, dp(3), 0, dp(10))
+                card.addView(text(provider.name, 17, white, true).apply {
+                    setPadding(dp(12), dp(3), dp(12), 0)
                 })
-                val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                card.addView(text("Live Sports provider", 12, muted).apply {
+                    setPadding(dp(12), dp(3), dp(12), dp(10))
+                })
+                val actions = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(dp(12), 0, dp(12), 0)
+                }
                 actions.addView(actionButton("LOAD HOME") { loadLiveSportsHome(provider.name, card) },
                     LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
                 actions.addView(actionButton("SEARCH") { showLiveSportsSearch(provider.name, card) },
                     LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(6) })
                 card.addView(actions)
                 page.addView(card, LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = dp(14)
+                    topMargin = dp(10)
                 })
                 // Load automatically so opening Live Sports never shows an empty shell.
                 loadLiveSportsHome(provider.name, card)
@@ -1700,8 +1706,10 @@ class MainActivity : AppCompatActivity() {
                             } else {
                                 val screenWidthDp = resources.displayMetrics.widthPixels /
                                     resources.displayMetrics.density
-                                val cardWidth = ((screenWidthDp - 4f) / 2f).toInt().coerceAtLeast(132)
-                                val bannerHeight = (cardWidth * 0.66f).toInt().coerceIn(94, 126)
+                                // Edge-to-edge wide banners: remove the narrow half-width cards
+                                // that exposed black gutters on both sides of each poster.
+                                val cardWidth = screenWidthDp.toInt().coerceAtLeast(160)
+                                val bannerHeight = (cardWidth * 0.52f).toInt().coerceIn(150, 220)
                                 val rail = LinearLayout(this).apply {
                                     orientation = LinearLayout.HORIZONTAL
                                     clipChildren = false
@@ -1757,8 +1765,7 @@ class MainActivity : AppCompatActivity() {
                                     }
                                     card.addView(titleOverlay, FrameLayout.LayoutParams(-1, dp(42), Gravity.BOTTOM))
                                     rail.addView(card, LinearLayout.LayoutParams(dp(cardWidth), dp(bannerHeight)).apply {
-                                        leftMargin = dp(2)
-                                        rightMargin = dp(2)
+                                        // No side margins: banner artwork reaches the screen edges.
                                         bottomMargin = dp(2)
                                     })
                                 }
