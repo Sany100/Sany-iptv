@@ -9,6 +9,8 @@ on:
       - "playlist.m3u"
       - "cloudstream-upstream"
       - "cloudstream-original/AniLight/**"
+      - "cloudstream-original/Indflix-Multimovies/**"
+      - "movie-extensions/**"
       - "cloudstream-anilight-abi/**"
       - ".gitmodules"
       - "build.gradle.kts"
