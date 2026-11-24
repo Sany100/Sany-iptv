@@ -164,10 +164,21 @@ object SanyCloudStreamPluginRuntime {
             }
         }
 
+    private data class CachedSearch(val savedAt: Long, val items: List<SearchResponse>)
+    private val searchCache = ConcurrentHashMap<String, CachedSearch>()
+    private const val SEARCH_CACHE_TTL_MS = 5 * 60 * 1000L
+
     suspend fun search(providerName: String, query: String): List<SearchResponse> {
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
-        return provider.search(query).orEmpty()
+        val normalizedQuery = query.trim()
+        val cacheKey = "${provider.name.lowercase()}:${normalizedQuery.lowercase()}"
+        searchCache[cacheKey]?.takeIf {
+            System.currentTimeMillis() - it.savedAt < SEARCH_CACHE_TTL_MS
+        }?.let { return it.items }
+        val result = provider.search(normalizedQuery).orEmpty()
+        searchCache[cacheKey] = CachedSearch(System.currentTimeMillis(), result)
+        return result
     }
 
     private data class CachedHomePage(val savedAt: Long, val shelves: List<HomePageList>)
