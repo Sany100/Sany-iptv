@@ -805,7 +805,7 @@ class MultimoviesProvider : MainAPI() {
             else -> "$base?page=$page"
         }
         val doc = fetchDoc(url, timeoutSeconds = 12, required = false) ?: return@withDomainRetry null
-        val items = doc.select("article.poster-card, article.cinema-slide a.button-glass, div.catalog-grid article, a.cinejoy-rec-card").mapNotNull { el ->
+        val items = doc.select("$SEARCH_ITEMS_SELECTOR, article.cinema-slide a.button-glass, div.catalog-grid article").mapNotNull { el ->
             if (el.tagName() == "a" && el.hasClass("button-glass")) {
                 val href = liveUrl(el.attr("href").trim())
                 if (!isMultimoviesUrl(href)) return@mapNotNull null
