@@ -164,37 +164,47 @@ object SanyMovieExtensionManager {
     /** Reads SANY schema-1 indexes and native CloudStream manifest-v1 repositories. */
     fun catalogue(context: Context): List<Extension> {
         val result = LinkedHashMap<String, Extension>()
+        val failures = mutableListOf<String>()
+        // A broken third-party repository must never hide valid entries from
+        // the SANY-curated catalogue. Read each source independently.
         repositories(context).forEach { repository ->
-            val document = downloadText(repository.url, MAX_INDEX_BYTES).trim()
-            if (document.startsWith("[")) {
-                parseCloudStreamPluginList(JSONArray(document), repository.url, result)
-                return@forEach
-            }
-            val root = JSONObject(document)
-            if (root.optInt("schema") == 1) {
-                val entries = root.optJSONArray("extensions") ?: JSONArray()
-                for (i in 0 until entries.length()) {
-                    val item = entries.optJSONObject(i) ?: continue
-                    val id = item.optString("id").trim()
-                    val name = item.optString("name").trim()
-                    val version = item.optString("version").trim()
-                    val packageUrl = item.optString("packageUrl").trim()
-                    val hash = item.optString("sha256").trim().lowercase()
-                    if (!id.matches(Regex("[a-z0-9][a-z0-9._-]{1,63}"))) continue
-                    if (name.isBlank() || version.isBlank() || !isHttps(packageUrl)) continue
-                    if (!hash.matches(Regex("[a-f0-9]{64}"))) continue
-                    result[id] = Extension(id, name, version, item.optString("description"), packageUrl, hash, repository.url)
+            runCatching {
+                val document = downloadText(repository.url, MAX_INDEX_BYTES).trim()
+                if (document.startsWith("[")) {
+                    parseCloudStreamPluginList(JSONArray(document), repository.url, result)
+                    return@runCatching
                 }
-            } else if (root.optInt("manifestVersion") == 1) {
-                val pluginLists = root.optJSONArray("pluginLists") ?: JSONArray()
-                for (i in 0 until pluginLists.length()) {
-                    val listUrl = pluginLists.optString(i).trim()
-                    require(isHttps(listUrl)) { "CloudStream plugin list must use HTTPS: $listUrl" }
-                    parseCloudStreamPluginList(JSONArray(downloadText(listUrl, MAX_INDEX_BYTES)), repository.url, result)
+                val root = JSONObject(document)
+                if (root.optInt("schema") == 1) {
+                    val entries = root.optJSONArray("extensions") ?: JSONArray()
+                    for (i in 0 until entries.length()) {
+                        val item = entries.optJSONObject(i) ?: continue
+                        val id = item.optString("id").trim()
+                        val name = item.optString("name").trim()
+                        val version = item.optString("version").trim()
+                        val packageUrl = item.optString("packageUrl").trim()
+                        val hash = item.optString("sha256").trim().lowercase()
+                        if (!id.matches(Regex("[a-z0-9][a-z0-9._-]{1,63}"))) continue
+                        if (name.isBlank() || version.isBlank() || !isHttps(packageUrl)) continue
+                        if (!hash.matches(Regex("[a-f0-9]{64}"))) continue
+                        result[id] = Extension(id, name, version, item.optString("description"), packageUrl, hash, repository.url)
+                    }
+                } else if (root.optInt("manifestVersion") == 1) {
+                    val pluginLists = root.optJSONArray("pluginLists") ?: JSONArray()
+                    for (listIndex in 0 until pluginLists.length()) {
+                        val listUrl = pluginLists.optString(listIndex).trim()
+                        require(isHttps(listUrl)) { "CloudStream plugin list must use HTTPS: $listUrl" }
+                        parseCloudStreamPluginList(JSONArray(downloadText(listUrl, MAX_INDEX_BYTES)), repository.url, result)
+                    }
+                } else {
+                    error("Unsupported Movie repository format: ${repository.url}")
                 }
-            } else {
-                error("Unsupported Movie repository format: ${repository.url}")
+            }.onFailure { error ->
+                failures += "${repository.name}: ${error.message ?: error.javaClass.simpleName}"
             }
+        }
+        if (result.isEmpty() && failures.isNotEmpty()) {
+            error("কোনো Movie catalogue লোড হয়নি:\\n" + failures.joinToString("\\n"))
         }
         return result.values.toList()
     }
