@@ -42,7 +42,7 @@ class NativeMoviesScreen(
     private val fg = Color.WHITE
     private val muted = Color.rgb(185, 185, 190)
     private val mainHandler = Handler(Looper.getMainLooper())
-    // Reuse a small worker pool; never create one OS thread per poster request.
+    // Keep image networking and bitmap decoding off the UI thread with a bounded worker pool.
     private val posterExecutor = Executors.newFixedThreadPool(3)
     private lateinit var body: LinearLayout
 
