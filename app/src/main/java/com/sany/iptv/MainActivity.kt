@@ -1835,22 +1835,13 @@ class MainActivity : AppCompatActivity() {
                 thread(name = "SANY-Provider-Home-Shelves") {
                     val shelves = runCatching {
                         kotlinx.coroutines.runBlocking {
-                            // Sync SANY's verified Anime packages plus the curated Hindi/Bangla
-                            // providers. Do this off the UI thread; each package is SHA-256 checked.
-                            val syncReport = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
-                            val allowedAnimeProviderNames = syncReport.packages.flatMap { packageFile ->
-                                val loaded = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
-                                if (!loaded.success) {
-                                    android.util.Log.w("SANY-Anime-Provider", "${packageFile.name}: ${loaded.error}")
-                                    emptyList()
-                                } else loaded.providerNames
-                            }.toSet()
-                            if (syncReport.failures.isNotEmpty()) {
-                                android.util.Log.w("SANY-Anime-Provider", syncReport.failures.joinToString("; "))
-                            }
+                            // Plugins are synchronized and loaded once during app startup.
+                            // Never repeat repository downloads/hash checks when the user merely
+                            // opens this screen; use the already registered curated providers.
+                            val curatedNames = setOf("Animedubhindi", "Animesalt", "Cinefreak")
                             val animeProviders = SanyCloudStreamPluginRuntime.providers()
                                 .filter { provider ->
-                                    provider.name in allowedAnimeProviderNames &&
+                                    provider.name in curatedNames &&
                                         provider.supportedTypes.any { type ->
                                             type == com.lagradost.cloudstream3.TvType.Anime ||
                                                 type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
@@ -2127,48 +2118,71 @@ class MainActivity : AppCompatActivity() {
             val resolved = mutableListOf<SanyPlaybackRequest>()
             val failures = mutableListOf<String>()
             runCatching {
-                resolved += SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
+                kotlinx.coroutines.withTimeout(22_000L) {
+                    resolved += SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
+                }
             }.onFailure { failures += "$providerName: ${it.message ?: it.javaClass.simpleName}" }
 
             fun normalizeAnimeTitle(value: String): String =
                 value.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
 
-            // Search the other loaded providers for the same title, then map the
-            // same numbered episode (or exact episode name/index when numbering is absent).
-            for (provider in SanyCloudStreamPluginRuntime.providers()) {
-                if (provider.name.equals(providerName, ignoreCase = true)) continue
-                runCatching {
-                    val match = SanyCloudStreamPluginRuntime.search(provider.name, title)
-                        .firstOrNull { normalizeAnimeTitle(it.name) == normalizeAnimeTitle(title) }
-                        ?: return@runCatching
-                    val response = SanyCloudStreamPluginRuntime.load(provider.name, match.url)
-                        ?: return@runCatching
-                    val episodes = when (response) {
-                        is com.lagradost.cloudstream3.AnimeLoadResponse -> response.episodes.values.flatten()
-                        is com.lagradost.cloudstream3.MovieLoadResponse -> {
-                            listOfNotNull(response.dataUrl.takeIf { it.isNotBlank() }?.let { data ->
-                                provider.newEpisode(data) { name = "Movie" }
-                            })
-                        }
-                        else -> emptyList()
+            // Search alternate curated Anime providers concurrently. A slow or offline
+            // provider must not block the sources returned by the others.
+            val alternateProviders = SanyCloudStreamPluginRuntime.providers().filter { provider ->
+                !provider.name.equals(providerName, ignoreCase = true) &&
+                    provider.name in setOf("Animedubhindi", "Animesalt", "Cinefreak") &&
+                    provider.supportedTypes.any { type ->
+                        type == com.lagradost.cloudstream3.TvType.Anime ||
+                            type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
+                            type == com.lagradost.cloudstream3.TvType.OVA
                     }
-                    val targetByNumber = episodeNumber?.let { number ->
-                        episodes.firstOrNull { it.episode == number }
-                    }
-                    val targetByName = episodeName.takeIf { it.isNotBlank() }?.let { selectedName ->
-                        episodes.firstOrNull {
-                            it.name?.let(::normalizeAnimeTitle) == normalizeAnimeTitle(selectedName)
-                        }
-                    }
-                    val mappedEpisode = targetByNumber ?: targetByName ?: episodes.getOrNull(episodeIndex)
-                    if (mappedEpisode != null) {
-                        resolved += SanyCloudStreamPluginRuntime.resolvePlayback(
-                            provider.name, response.name, mappedEpisode.data
-                        )
-                    }
-                }.onFailure { failures += "${provider.name}: ${it.message ?: it.javaClass.simpleName}" }
             }
-            val distinct = resolved.distinctBy { it.url }
+            val gate = kotlinx.coroutines.sync.Semaphore(3)
+            val alternateResults = kotlinx.coroutines.coroutineScope {
+                alternateProviders.map { provider ->
+                    async(kotlinx.coroutines.Dispatchers.IO) {
+                        gate.withPermit {
+                            runCatching {
+                                kotlinx.coroutines.withTimeout(18_000L) {
+                                    val match = SanyCloudStreamPluginRuntime.search(provider.name, title)
+                                        .firstOrNull { normalizeAnimeTitle(it.name) == normalizeAnimeTitle(title) }
+                                        ?: return@withTimeout emptyList<SanyPlaybackRequest>()
+                                    val response = SanyCloudStreamPluginRuntime.load(provider.name, match.url)
+                                        ?: return@withTimeout emptyList<SanyPlaybackRequest>()
+                                    val episodes = when (response) {
+                                        is com.lagradost.cloudstream3.AnimeLoadResponse ->
+                                            response.episodes.values.flatten()
+                                        is com.lagradost.cloudstream3.MovieLoadResponse -> {
+                                            listOfNotNull(response.dataUrl.takeIf { it.isNotBlank() }?.let { data ->
+                                                provider.newEpisode(data) { name = "Movie" }
+                                            })
+                                        }
+                                        else -> emptyList()
+                                    }
+                                    val targetByNumber = episodeNumber?.let { number ->
+                                        episodes.firstOrNull { it.episode == number }
+                                    }
+                                    val targetByName = episodeName.takeIf { it.isNotBlank() }?.let { selectedName ->
+                                        episodes.firstOrNull {
+                                            it.name?.let(::normalizeAnimeTitle) == normalizeAnimeTitle(selectedName)
+                                        }
+                                    }
+                                    val mappedEpisode = targetByNumber ?: targetByName ?: episodes.getOrNull(episodeIndex)
+                                    if (mappedEpisode != null) {
+                                        SanyCloudStreamPluginRuntime.resolvePlayback(
+                                            provider.name, response.name, mappedEpisode.data
+                                        )
+                                    } else emptyList()
+                                }
+                            }.onFailure { error ->
+                                failures += "${provider.name}: ${error.message ?: error.javaClass.simpleName}"
+                            }.getOrDefault(emptyList())
+                        }
+                    }
+                }.awaitAll()
+            }
+            resolved += alternateResults.flatten()
+                        val distinct = resolved.distinctBy { it.url }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (distinct.isEmpty()) {
