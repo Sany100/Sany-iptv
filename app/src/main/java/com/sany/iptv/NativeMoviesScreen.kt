@@ -90,22 +90,33 @@ class NativeMoviesScreen(
         val movies = readMovies()
         val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(label("MY MOVIES", 23, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(button("EXTENSIONS") { onManageExtensions() }, LinearLayout.LayoutParams(dp(104), dp(40)).apply {
+        top.addView(button("ADD / SELECT") { onManageExtensions() }, LinearLayout.LayoutParams(dp(112), dp(40)).apply {
             rightMargin = dp(8)
         })
         top.addView(button("+ ADD") { showAddMovieDialog() }, LinearLayout.LayoutParams(dp(82), dp(40)))
         body.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
 
-        // Show active CloudStream Movie providers directly on the Movies page.
-        // Runtime.providers() already returns only providers registered by loaded
-        // SANY-hosted plugins. Do not apply a second package-path filter here:
-        // some CloudStream builds normalize sourcePlugin paths differently.
+        // Only manually selected, installed Movie extensions are rendered here.
+        // Anime-only providers such as AniKoto are excluded by their declared TV types.
+        val installedExtensions = SanyMovieExtensionManager.installed(context)
+        val selectedIds = SanyMovieExtensionManager.selectedIds(context)
+        val selectedPaths = installedExtensions.filter { it.id in selectedIds }
+            .map { runCatching { java.io.File(it.packagePath).canonicalPath }.getOrNull() }
+            .filterNotNull().toSet()
         val extensionProviders = SanyCloudStreamPluginRuntime.providers()
+            .filter { provider ->
+                provider.supportedTypes.any {
+                    it == com.lagradost.cloudstream3.TvType.Movie ||
+                        it == com.lagradost.cloudstream3.TvType.AnimeMovie
+                } && runCatching {
+                    java.io.File(provider.sourcePlugin).canonicalPath in selectedPaths
+                }.getOrDefault(false)
+            }
             .distinctBy { it.name.lowercase() }
             .sortedBy { it.name.lowercase() }
-        val installedExtensions = SanyMovieExtensionManager.installed(context)
-        if (extensionProviders.isNotEmpty() || installedExtensions.isNotEmpty()) {
-            addSectionTitle("MOVIE EXTENSIONS")
+
+        if (extensionProviders.isNotEmpty()) {
+            addSectionTitle("SELECTED MOVIE EXTENSIONS")
             extensionProviders.forEach { provider ->
                 val entry = button("▶   ${provider.name}   •   SEARCH MOVIES") {
                     onOpenExtensionProvider(provider.name)
@@ -121,13 +132,11 @@ class NativeMoviesScreen(
                 })
                 loadExtensionHome(provider.name, homeHost)
             }
-            val loadedNames = extensionProviders.map { it.name.lowercase() }.toSet()
-            installedExtensions.filter { it.name.lowercase() !in loadedNames }.forEach { item ->
-                body.addView(label(
-                    "${item.name} ইনস্টল আছে, কিন্তু Provider runtime-এ load হয়নি। অ্যাপ restart করে আবার চেষ্টা করুন।",
-                    13, muted, false
-                ).apply { setPadding(dp(4), dp(8), dp(4), dp(12)) })
-            }
+        } else {
+            body.addView(label(
+                "কোনো Movie Extension নির্বাচন করা হয়নি। ADD / SELECT চাপ দিয়ে ইনস্টল করা Movie provider নির্বাচন করুন।",
+                13, muted, false
+            ).apply { setPadding(dp(4), dp(12), dp(4), dp(16)) })
         }
 
         val lastUrl = prefs.getString("movies_continue_url", null)
@@ -182,24 +191,35 @@ class NativeMoviesScreen(
                                 orientation = LinearLayout.HORIZONTAL
                             }
                             shelf.list.take(20).forEach { item ->
-                                val tile = TextView(context).apply {
-                                    text = item.name
-                                    textSize = 13f
-                                    typeface = Typeface.DEFAULT_BOLD
-                                    setTextColor(fg)
-                                    gravity = Gravity.CENTER
-                                    setPadding(dp(12), dp(14), dp(12), dp(14))
-                                    minWidth = dp(132)
-                                    maxWidth = dp(172)
-                                    minHeight = dp(88)
+                                val tile = FrameLayout(context).apply {
                                     background = rounded(card, 14)
+                                    clipToOutline = true
                                     isFocusable = true
                                     setOnClickListener {
                                         onOpenExtensionTitle(providerName, item.url, item.name)
                                     }
                                 }
-                                row.addView(tile, LinearLayout.LayoutParams(-2, -2).apply {
-                                    rightMargin = dp(8)
+                                val poster = ImageView(context).apply {
+                                    scaleType = ImageView.ScaleType.CENTER_CROP
+                                    setBackgroundColor(card)
+                                }
+                                tile.addView(poster, FrameLayout.LayoutParams(dp(142), dp(206)))
+                                item.posterUrl?.takeIf { isHttpUrl(it) }?.let { loadPoster(it, poster) }
+                                val shade = View(context).apply {
+                                    background = GradientDrawable(
+                                        GradientDrawable.Orientation.TOP_BOTTOM,
+                                        intArrayOf(0x00000000, 0xDD000000.toInt())
+                                    )
+                                }
+                                tile.addView(shade, FrameLayout.LayoutParams(-1, dp(86), Gravity.BOTTOM))
+                                tile.addView(label(item.name, 12, Color.WHITE, true).apply {
+                                    gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                                    textAlignment = View.TEXT_ALIGNMENT_CENTER
+                                    maxLines = 3
+                                    setPadding(dp(8), dp(8), dp(8), dp(10))
+                                }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+                                row.addView(tile, LinearLayout.LayoutParams(dp(142), dp(206)).apply {
+                                    rightMargin = dp(9)
                                 })
                             }
                             val horizontal = HorizontalScrollView(context).apply {
