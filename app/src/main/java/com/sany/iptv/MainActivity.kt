@@ -3741,7 +3741,7 @@ class MainActivity : AppCompatActivity() {
         settingsCard(box, "Clone Site", "Save an alternate HTTPS URL for an extension/repository host") {
             showCloneSiteDialog()
         }
-        settingsToggleCard(box, "DNS over HTTPS", "Encrypted DNS for SANY extension repository and package downloads", "bypass_doh_enabled", false) { enabled ->
+        settingsToggleCard(box, "DNS over HTTPS", "Encrypted DNS enabled by default for extension, provider and supported playback requests", "bypass_doh_enabled", true) { enabled ->
             getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putBoolean("doh_enabled", enabled).apply()
         }
         settingsCard(box, "DNS Provider", "Choose Cloudflare, Google or Quad9") {
@@ -3754,7 +3754,7 @@ class MainActivity : AppCompatActivity() {
                     toast("DNS provider saved")
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "GitHub Proxy", "Load raw GitHub extension files through jsDelivr CDN", "bypass_github_proxy", false) { enabled ->
+        settingsToggleCard(box, "GitHub Proxy", "Use jsDelivr CDN for raw GitHub extension files by default", "bypass_github_proxy", true) { enabled ->
             getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putBoolean("github_proxy", enabled).apply()
         }
         box.addView(text("PLAYBACK SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
