@@ -1986,26 +1986,31 @@ class MainActivity : AppCompatActivity() {
                                                 }
                                             }
 
-                                        val homepageItems = runCatching {
-                                            kotlinx.coroutines.withTimeout(18_000L) {
-                                                SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
-                                                    .flatMap { it.list }
-                                                    .let(::mapItems)
-                                            }
-                                        }.onFailure { error ->
-                                            android.util.Log.w("SANY-Anime-Home", "${provider.name} homepage failed: ${error.message}", error)
-                                        }.getOrDefault(emptyList())
+                                        val homepageItems: List<Pair<String, SanyProviderItem>> =
+                                            runCatching<List<Pair<String, SanyProviderItem>>> {
+                                                kotlinx.coroutines.withTimeout(18_000L) {
+                                                    val pages = SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
+                                                    val responses: List<com.lagradost.cloudstream3.SearchResponse> =
+                                                        pages.flatMap { page -> page.list }
+                                                    mapItems(responses)
+                                                }
+                                            }.onFailure { error ->
+                                                android.util.Log.w("SANY-Anime-Home", "${provider.name} homepage failed: ${error.message}", error)
+                                            }.getOrDefault(emptyList())
 
                                         if (homepageItems.isNotEmpty()) {
                                             homepageItems
                                         } else {
                                             val fallback = mutableListOf<Pair<String, SanyProviderItem>>()
                                             for (query in fallbackQueries) {
-                                                val matches = runCatching {
-                                                    kotlinx.coroutines.withTimeout(6_000L) {
-                                                        SanyCloudStreamPluginRuntime.search(provider.name, query)
-                                                    }.let(::mapItems)
-                                                }.getOrDefault(emptyList())
+                                                val matches: List<Pair<String, SanyProviderItem>> =
+                                                    runCatching<List<Pair<String, SanyProviderItem>>> {
+                                                        val responses: List<com.lagradost.cloudstream3.SearchResponse> =
+                                                            kotlinx.coroutines.withTimeout(6_000L) {
+                                                                SanyCloudStreamPluginRuntime.search(provider.name, query)
+                                                            }
+                                                        mapItems(responses)
+                                                    }.getOrDefault(emptyList())
                                                 fallback += matches
                                                 if (fallback.size >= 12) break
                                             }
