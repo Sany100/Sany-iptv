@@ -5259,6 +5259,9 @@ class MainActivity : AppCompatActivity() {
         if (oldChannel != null && oldChannel.url != channel.url) previousChannel = oldChannel
         closePlayer(keepOrientation = true)
         currentChannel = channel
+        if (section == "Movies") {
+            prefs.edit().putString("movies_now_playing_title", channel.name.trim()).apply()
+        }
         // Move the single active-channel highlight immediately when playback selection changes.
         if (::listContainer.isInitialized && (section == "Live TV" || section == "Live Sports")) {
             val scroll = listContainer.parent as? ScrollView
