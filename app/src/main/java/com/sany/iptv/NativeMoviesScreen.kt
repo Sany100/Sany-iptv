@@ -40,6 +40,7 @@ class NativeMoviesScreen(
     private val onOpenExtensionTitle: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     private data class Movie(val title: String, val url: String, val category: String, val poster: String)
+    private data class MovieShelfCard(val title: String, val poster: String, val onClick: () -> Unit)
     private val prefs = context.getSharedPreferences("sany_iptv", Context.MODE_PRIVATE)
     private val bg = Color.BLACK
     private val card = Color.rgb(25, 25, 28)
@@ -108,7 +109,6 @@ class NativeMoviesScreen(
         body.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
 
         // Only manually selected, installed Movie extensions are rendered here.
-        // Anime-only providers such as AniKoto are excluded by their declared TV types.
         val installedExtensions = SanyMovieExtensionManager.installed(context)
         val selectedIds = SanyMovieExtensionManager.selectedIds(context)
         val selectedFiles = installedExtensions.filter { it.id in selectedIds }
@@ -158,28 +158,30 @@ class NativeMoviesScreen(
         }
 
         val lastUrl = prefs.getString("movies_continue_url", null)
-        movies.firstOrNull { it.url == lastUrl }?.let {
-            addSectionTitle("Continue Watching")
-            addMovieRow(listOf(it), true)
+        movies.firstOrNull { it.url == lastUrl }?.let { movie ->
+            addMovieShelf("Continue Watching", listOf(
+                MovieShelfCard(movie.title, movie.poster) { playMovie(movie) }
+            ), showMore = false)
         }
 
-        if (movies.isEmpty()) {
-            if (extensionProviders.isEmpty()) {
-                body.addView(label("এখনো কোনো Movie link বা active Movie extension নেই।\nEXTENSIONS চাপ দিয়ে Movie provider install করো।",
-                    14, muted, false).apply {
-                    gravity = Gravity.CENTER
-                    setPadding(dp(12), dp(44), dp(12), dp(44))
-                })
+        movies.groupBy { it.category }.forEach { (category, categoryMovies) ->
+            val cards = categoryMovies.map { movie ->
+                MovieShelfCard(movie.title, movie.poster) { playMovie(movie) }
             }
-            return
+            addMovieShelf(category, cards)
         }
-        movies.map { it.category }.distinct().forEach { category ->
-            addSectionTitle(category)
-            addMovieRow(movies.filter { it.category == category })
+        if (movies.isEmpty() && extensionProviders.isEmpty()) {
+            body.addView(label(
+                "এখনো কোনো Movie link বা active Movie extension নেই।\\nEXTENSIONS চাপ দিয়ে Movie provider install করো।",
+                14, muted, false
+            ).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(44), dp(12), dp(44))
+            })
         }
     }
 
-    /** Load the provider's own homepage catalogue into the separate Movies screen. */
+    /** Load the selected provider's shelves as large, swipeable three-card rails. */
     private fun loadExtensionHome(providerName: String, host: LinearLayout) {
         host.removeAllViews()
         host.addView(label("Loading $providerName movies…", 13, muted, false))
@@ -201,60 +203,12 @@ class NativeMoviesScreen(
                         ))
                     } else {
                         visibleShelves.forEach { shelf ->
-                            host.addView(label(shelf.name, 17, fg, true),
-                                LinearLayout.LayoutParams(-1, -2).apply {
-                                    topMargin = dp(8); bottomMargin = dp(8)
-                                })
-                            // Three-column grid; cap first paint to keep large catalogues smooth.
-                            val screenWidthDp = (context.resources.displayMetrics.widthPixels /
-                                context.resources.displayMetrics.density).toInt()
-                            val tileWidth = ((screenWidthDp - 24 - 16) / 3).coerceAtLeast(88)
-                            val tileHeight = (tileWidth * 1.45f).toInt()
-                            shelf.list.take(15).chunked(3).forEach { itemsRow ->
-                                val row = LinearLayout(context).apply {
-                                    orientation = LinearLayout.HORIZONTAL
-                                    gravity = Gravity.TOP
+                            val cards = shelf.list.map { item ->
+                                MovieShelfCard(item.name, item.posterUrl.orEmpty()) {
+                                    onOpenExtensionTitle(providerName, item.url, item.name)
                                 }
-                                itemsRow.forEach { item ->
-                                    val tile = FrameLayout(context).apply {
-                                        background = rounded(card, 14)
-                                        clipToOutline = true
-                                        isFocusable = true
-                                        setOnClickListener {
-                                            onOpenExtensionTitle(providerName, item.url, item.name)
-                                        }
-                                    }
-                                    val poster = ImageView(context).apply {
-                                        scaleType = ImageView.ScaleType.CENTER_CROP
-                                        setBackgroundColor(card)
-                                    }
-                                    tile.addView(poster, FrameLayout.LayoutParams(-1, -1))
-                                    item.posterUrl?.takeIf { isHttpUrl(it) }?.let { loadPoster(it, poster) }
-                                    val shade = View(context).apply {
-                                        background = GradientDrawable(
-                                            GradientDrawable.Orientation.TOP_BOTTOM,
-                                            intArrayOf(0x00000000, 0xDD000000.toInt())
-                                        )
-                                    }
-                                    tile.addView(shade, FrameLayout.LayoutParams(-1, dp(76), Gravity.BOTTOM))
-                                    tile.addView(label(item.name, 11, Color.WHITE, true).apply {
-                                        gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                                        textAlignment = View.TEXT_ALIGNMENT_CENTER
-                                        maxLines = 2
-                                        setPadding(dp(5), dp(6), dp(5), dp(8))
-                                    }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-                                    row.addView(tile, LinearLayout.LayoutParams(tileWidth, tileHeight).apply {
-                                        rightMargin = dp(8)
-                                        bottomMargin = dp(10)
-                                    })
-                                }
-                                repeat(3 - itemsRow.size) {
-                                    row.addView(View(context), LinearLayout.LayoutParams(tileWidth, tileHeight).apply {
-                                        rightMargin = dp(8)
-                                    })
-                                }
-                                host.addView(row, LinearLayout.LayoutParams(-1, -2))
                             }
+                            addMovieShelf(shelf.name, cards, host)
                         }
                     }
                 }.onFailure { error ->
@@ -268,79 +222,158 @@ class NativeMoviesScreen(
         homeJobs.add(job)
     }
 
-    private fun addSectionTitle(title: String) {
-        val heading = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        heading.addView(label(title, 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        heading.addView(label("›", 32, fg, false).apply { gravity = Gravity.CENTER })
-        body.addView(heading, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(8); bottomMargin = dp(12)
+    /** Anime-style category rail: three large posters visible, swipe sideways for the rest. */
+    private fun addMovieShelf(
+        title: String,
+        cards: List<MovieShelfCard>,
+        parent: LinearLayout = body,
+        showMore: Boolean = true
+    ) {
+        if (cards.isEmpty()) return
+        val heading = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        heading.addView(label(title, 19, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
+        if (showMore) {
+            heading.addView(label("SEE MORE  ⌄", 12, accent, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(8), dp(8), dp(8))
+                isFocusable = true
+                contentDescription = "See more $title"
+                setOnClickListener { openMovieShelfPage(title, cards) }
+            })
+        }
+        parent.addView(heading, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(8)
         })
-    }
 
-    private fun addMovieRow(items: List<Movie>, continueBadge: Boolean = false) {
-        val horizontal = HorizontalScrollView(context).apply {
+        val scroller = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
         }
-        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        items.forEach { movie ->
+        val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        scroller.addView(rail)
+        val screenWidthDp = context.resources.displayMetrics.widthPixels /
+            context.resources.displayMetrics.density
+        val cardWidth = (screenWidthDp / 3f).toInt().coerceAtLeast(96)
+        val posterHeight = (cardWidth * 1.45f).toInt()
+        cards.forEach { item ->
             val tile = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 isFocusable = true
-                setOnClickListener { playMovie(movie) }
-                setOnLongClickListener { showRemoveDialog(movie); true }
+                setOnClickListener { item.onClick() }
             }
-            val frame = FrameLayout(context).apply { background = rounded(card, 16); clipToOutline = true }
-            val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(card) }
+            val frame = FrameLayout(context).apply {
+                background = rounded(card, 14)
+                clipToOutline = true
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(card)
+            }
             frame.addView(poster, FrameLayout.LayoutParams(-1, -1))
-            if (movie.poster.isNotBlank() && isHttpUrl(movie.poster)) loadPoster(movie.poster, poster)
-            else frame.addView(label("SANY\nMOVIES", 17, muted, true).apply {
-                gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
+            if (item.poster.startsWith("http")) loadPoster(item.poster, poster)
+            else frame.addView(label("SANY\\nMOVIES", 16, muted, true).apply {
+                gravity = Gravity.CENTER
+                textAlignment = View.TEXT_ALIGNMENT_CENTER
             }, FrameLayout.LayoutParams(-1, -1))
-
-            // Subtle classic glass finish: translucent diagonal sheen and a fine frosted edge.
-            // Kept light enough to preserve the original poster artwork and colours.
-            val glassSheen = View(context).apply {
-                isClickable = false
-                isFocusable = false
-                background = GradientDrawable(
-                    GradientDrawable.Orientation.TL_BR,
-                    intArrayOf(
-                        0x38FFFFFF,
-                        0x12FFFFFF,
-                        0x03FFFFFF,
-                        0x1CFFFFFF
-                    )
-                ).apply {
-                    cornerRadius = dp(16).toFloat()
-                    setStroke(dp(1), 0x55FFFFFF)
-                    gradientType = GradientDrawable.LINEAR_GRADIENT
-                }
-            }
-            frame.addView(glassSheen, FrameLayout.LayoutParams(-1, -1))
-            val play = TextView(context).apply {
-                text = "▶"; textSize = 25f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(0x99000000.toInt()); setStroke(dp(2), Color.WHITE)
-                }
-            }
-            frame.addView(play, FrameLayout.LayoutParams(dp(58), dp(58), Gravity.CENTER))
-            if (continueBadge) frame.addView(label("CONTINUE", 10, Color.WHITE, true).apply {
-                gravity = Gravity.CENTER; setPadding(dp(8), dp(4), dp(8), dp(4))
-                background = rounded(0xDD111111.toInt(), 20)
-            }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(8) })
-            tile.addView(frame, LinearLayout.LayoutParams(dp(148), dp(222)))
-            tile.addView(label(movie.title, 14, fg, false).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                textAlignment = View.TEXT_ALIGNMENT_CENTER; maxLines = 2
-                setPadding(dp(3), dp(8), dp(3), 0)
-            }, LinearLayout.LayoutParams(dp(148), dp(52)))
-            row.addView(tile, LinearLayout.LayoutParams(dp(148), -2).apply { rightMargin = dp(9) })
+            tile.addView(frame, LinearLayout.LayoutParams(dp(cardWidth), dp(posterHeight)))
+            tile.addView(label(item.title, 13, fg, false).apply {
+                maxLines = 2
+                gravity = Gravity.CENTER
+                textAlignment = View.TEXT_ALIGNMENT_CENTER
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(3), dp(6), dp(3), 0)
+            }, LinearLayout.LayoutParams(dp(cardWidth), dp(44)))
+            rail.addView(tile, LinearLayout.LayoutParams(dp(cardWidth), -2).apply {
+                rightMargin = dp(4)
+            })
         }
-        horizontal.addView(row)
-        body.addView(horizontal, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+        parent.addView(scroller, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(18)
+        })
+    }
+
+    /** Dedicated category dropdown page, matching Anime's three-column poster grid. */
+    private fun openMovieShelfPage(title: String, cards: List<MovieShelfCard>) {
+        if (cards.isEmpty()) return
+        homeJobs.forEach { it.cancel() }
+        homeJobs.clear()
+        body.removeAllViews()
+
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(2), dp(8), dp(2), dp(14))
+        }
+        header.addView(button("←  BACK") { renderMovies() })
+        header.addView(label(title, 20, fg, true), LinearLayout.LayoutParams(0, -2, 1f).apply {
+            leftMargin = dp(12)
+        })
+        header.addView(label("${cards.size} titles", 12, muted, false))
+        body.addView(header, LinearLayout.LayoutParams(-1, -2))
+
+        val screenWidthDp = context.resources.displayMetrics.widthPixels /
+            context.resources.displayMetrics.density
+        val cardWidth = (screenWidthDp / 3f).toInt().coerceAtLeast(96)
+        val posterHeight = (cardWidth * 1.42f).toInt()
+        var gridRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+            clipChildren = false
+            clipToPadding = false
+        }
+        cards.forEachIndexed { index, item ->
+            val tile = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                isFocusable = true
+                setPadding(dp(4), 0, dp(4), dp(10))
+                setOnClickListener { item.onClick() }
+            }
+            val frame = FrameLayout(context).apply {
+                background = rounded(card, 12)
+                clipToOutline = true
+            }
+            val poster = ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(card)
+            }
+            frame.addView(poster, FrameLayout.LayoutParams(-1, -1))
+            if (item.poster.startsWith("http")) loadPoster(item.poster, poster)
+            else frame.addView(label("SANY\\nMOVIES", 16, muted, true).apply {
+                gravity = Gravity.CENTER
+                textAlignment = View.TEXT_ALIGNMENT_CENTER
+            }, FrameLayout.LayoutParams(-1, -1))
+            tile.addView(frame, LinearLayout.LayoutParams(-1, dp(posterHeight)))
+            tile.addView(label(item.title, 12, fg, true).apply {
+                maxLines = 2
+                gravity = Gravity.CENTER
+                textAlignment = View.TEXT_ALIGNMENT_CENTER
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(2), dp(5), dp(2), dp(3))
+            }, LinearLayout.LayoutParams(-1, dp(42)))
+            gridRow.addView(tile, LinearLayout.LayoutParams(0, -2, 1f))
+            if (index % 3 == 2) {
+                body.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+                gridRow = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.TOP
+                    clipChildren = false
+                    clipToPadding = false
+                }
+            }
+        }
+        if (cards.size % 3 != 0) {
+            repeat(3 - (cards.size % 3)) {
+                gridRow.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            }
+            body.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
+        }
+        body.addView(View(context), LinearLayout.LayoutParams(1, dp(24)))
     }
 
     private fun loadPoster(url: String, target: ImageView) {
