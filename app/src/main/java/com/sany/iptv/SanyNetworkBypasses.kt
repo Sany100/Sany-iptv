@@ -67,17 +67,42 @@ object SanyNetworkBypasses {
         return mirror + if (path == "/") "" else path
     }
 
-    fun client(context: Context): OkHttpClient {
-        val builder = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS).followRedirects(true).followSslRedirects(false)
+
+    /**
+     * Apply SANY's DoH choice to CloudStream's shared NiceHttp clients.
+     * CloudStream providers and its own Media3 player both consume app.baseClient.
+     */
+    fun configureCloudStream(context: Context) {
+        val appClient = client(context, com.lagradost.cloudstream3.app.baseClient)
+        com.lagradost.cloudstream3.app.baseClient = appClient
+        com.lagradost.cloudstream3.insecureApp.baseClient =
+            client(context, com.lagradost.cloudstream3.insecureApp.baseClient)
+    }
+
+    fun client(
+        context: Context,
+        baseClient: OkHttpClient = OkHttpClient(),
+        connectTimeoutMs: Long = 8_000,
+        readTimeoutMs: Long = 20_000
+    ): OkHttpClient {
+        val builder = baseClient.newBuilder()
+            .connectTimeout(connectTimeoutMs, TimeUnit.MILLISECONDS)
+            .readTimeout(readTimeoutMs, TimeUnit.MILLISECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
         if (dohEnabled(context)) {
             val (endpoint, ips) = when (dohProvider(context)) {
                 "Google" -> "https://dns.google/dns-query" to listOf("8.8.8.8", "8.8.4.4")
                 "Quad9" -> "https://dns.quad9.net/dns-query" to listOf("9.9.9.9", "149.112.112.112")
                 else -> "https://cloudflare-dns.com/dns-query" to listOf("1.1.1.1", "1.0.0.1")
             }
-            builder.dns(DnsOverHttps.Builder().client(OkHttpClient()).url(endpoint.toHttpUrl())
-                .bootstrapDnsHosts(ips.map { InetAddress.getByName(it) }).build())
+            val dohDns = DnsOverHttps.Builder().client(OkHttpClient())
+                .url(endpoint.toHttpUrl())
+                .bootstrapDnsHosts(ips.map { InetAddress.getByName(it) })
+                .build()
+            builder.dns(dohDns)
+        } else {
+            builder.dns(okhttp3.Dns.SYSTEM)
         }
         return builder.build()
     }
