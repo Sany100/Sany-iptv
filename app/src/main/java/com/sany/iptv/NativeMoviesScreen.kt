@@ -97,18 +97,14 @@ class NativeMoviesScreen(
         body.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
 
         // Show active CloudStream Movie providers directly on the Movies page.
-        val installedPaths = SanyMovieExtensionManager.installed(context)
-            .map { runCatching { java.io.File(it.packagePath).canonicalPath }.getOrNull() }
-            .filterNotNull()
-            .toSet()
+        // Runtime.providers() already returns only providers registered by loaded
+        // SANY-hosted plugins. Do not apply a second package-path filter here:
+        // some CloudStream builds normalize sourcePlugin paths differently.
         val extensionProviders = SanyCloudStreamPluginRuntime.providers()
-            .filter { provider ->
-                runCatching { java.io.File(provider.sourcePlugin).canonicalPath in installedPaths }
-                    .getOrDefault(false)
-            }
             .distinctBy { it.name.lowercase() }
             .sortedBy { it.name.lowercase() }
-        if (extensionProviders.isNotEmpty()) {
+        val installedExtensions = SanyMovieExtensionManager.installed(context)
+        if (extensionProviders.isNotEmpty() || installedExtensions.isNotEmpty()) {
             addSectionTitle("MOVIE EXTENSIONS")
             extensionProviders.forEach { provider ->
                 val entry = button("▶   ${provider.name}   •   SEARCH MOVIES") {
@@ -124,6 +120,13 @@ class NativeMoviesScreen(
                     bottomMargin = dp(14)
                 })
                 loadExtensionHome(provider.name, homeHost)
+            }
+            val loadedNames = extensionProviders.map { it.name.lowercase() }.toSet()
+            installedExtensions.filter { it.name.lowercase() !in loadedNames }.forEach { item ->
+                body.addView(label(
+                    "${item.name} ইনস্টল আছে, কিন্তু Provider runtime-এ load হয়নি। অ্যাপ restart করে আবার চেষ্টা করুন।",
+                    13, muted, false
+                ).apply { setPadding(dp(4), dp(8), dp(4), dp(12)) })
             }
         }
 
