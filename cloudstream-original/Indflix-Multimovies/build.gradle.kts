@@ -17,7 +17,7 @@ cloudstream {
     tvTypes = listOf("Movie", "TvSeries", "Anime", "AnimeMovie", "Cartoon")
     requiresResources = false
     setRepo(System.getenv("GITHUB_REPOSITORY") ?: "https://github.com/dipender98/Indflix")
-    iconUrl = "https://raw.githubusercontent.com/dipender98/Indflix/main/Multimovies/icon.png"
+    iconUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/migration/cloudstream-runtime-toolchain/cloudstream-original/Indflix-Multimovies/icon.png"
 }
 
 android {
