@@ -3791,7 +3791,6 @@ class MainActivity : AppCompatActivity() {
         }
         settingsToggleCard(box, "Auto Retry on Failure", "Retry a failed stream up to 2 times automatically", "auto_retry_playback", true)
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Extensions & Repositories", "Browse CloudStream-compatible repository catalogues and manage repository URLs") { showExtensionManager() }
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
         settingsToggleCard(box, "Floating window", "Show video in a floating window when you leave the app", "floating_window_enabled", true) { enabled ->
