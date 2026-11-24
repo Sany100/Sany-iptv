@@ -3218,6 +3218,24 @@ class MainActivity : AppCompatActivity() {
     private fun renderListOnly() {
         if (!::contentArea.isInitialized || section == "Settings" || channels.isEmpty()) return
         if (!::listContainer.isInitialized) return
+
+        // Category cards update the list in place (without calling renderHome).
+        // Record those transitions here as well, otherwise Back has no category
+        // history and incorrectly jumps straight to the Live TV home.
+        val currentNavigation = currentNavigationSnapshot()
+        val previousNavigation = lastRenderedNavigation
+        if (!restoringNavigation && previousNavigation != null &&
+            previousNavigation.section == currentNavigation.section &&
+            (previousNavigation.selectedGroup != currentNavigation.selectedGroup ||
+             previousNavigation.liveTvSelectedGroup != currentNavigation.liveTvSelectedGroup)
+        ) {
+            if (navigationHistory.isEmpty() || navigationHistory.peekLast() != previousNavigation) {
+                navigationHistory.addLast(previousNavigation)
+            }
+        }
+        lastRenderedNavigation = currentNavigation
+        restoringNavigation = false
+
         renderCategories()
         renderChannelRows(listContainer)
     }
