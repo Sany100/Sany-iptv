@@ -45,6 +45,7 @@ class AniLightNativeScreen(
     private val onPlaybackLoading: (String, Boolean) -> Unit = { _, _ -> },
     private val onBrowseCloudStreamProviders: () -> Unit = {},
     private val onCloudStreamResult: (providerName: String, url: String, title: String) -> Unit = { _, _, _ -> },
+    private val onSearchProvider: (providerName: String) -> Unit = {},
     private val onLoadProviderShelves: (onLoaded: (List<SanyProviderShelf>) -> Unit) -> Unit = { it(emptyList()) }
 ) {
     @Volatile private var api = "https://api.anilight.live/api"
@@ -298,13 +299,35 @@ class AniLightNativeScreen(
     }
 
     private fun addProviderShelf(shelf: SanyProviderShelf) {
-        if (!isHomePage || shelf.items.isEmpty()) return
+        if (!isHomePage) return
         val title = if (shelf.shelfName.isBlank()) shelf.providerName
             else "${shelf.providerName} • ${shelf.shelfName}"
         val heading = label(title, 18, fg, true).apply {
             setPadding(dp(12), dp(18), dp(12), dp(8))
         }
         contentHost.addView(heading)
+        if (shelf.items.isEmpty()) {
+            // Providers without a curated homepage still remain visible and usable.
+            // A direct Search action prevents a successfully installed extension
+            // from appearing to be missing just because it exposes no home shelves.
+            val providerCard = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = rounded(surface, 12)
+                isFocusable = true
+                setOnClickListener { onSearchProvider(shelf.providerName) }
+            }
+            providerCard.addView(label("Browse ${shelf.providerName}", 14, fg, true),
+                LinearLayout.LayoutParams(0, -2, 1f))
+            providerCard.addView(label("SEARCH  ›", 12, accent, true))
+            contentHost.addView(providerCard, LinearLayout.LayoutParams(-1, dp(54)).apply {
+                leftMargin = dp(12)
+                rightMargin = dp(12)
+                bottomMargin = dp(8)
+            })
+            return
+        }
         val scroller = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
