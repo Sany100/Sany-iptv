@@ -20,6 +20,12 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.Dispatchers
 import java.util.zip.ZipFile
 
 /**
@@ -171,25 +177,36 @@ object SanyCloudStreamPluginRuntime {
         }
         // Query every homepage shelf independently. One unavailable category must
         // not prevent the remaining MultiMovies sections from appearing.
-        val failedShelves = mutableListOf<String>()
-        val shelves = provider.mainPage
-            .sortedBy { it.name.trim().lowercase() }
-            .flatMap { data ->
-                try {
-                    val response = provider.getMainPage(
-                        page,
-                        MainPageRequest(data.name, data.data, data.horizontalImages)
-                    )
-                    val items = response?.items.orEmpty()
-                    if (items.isEmpty()) failedShelves += data.name
-                    items
-                } catch (error: Throwable) {
-                    failedShelves += "${data.name}: ${error.cause?.message ?: error.message ?: error.javaClass.simpleName}"
-                    emptyList()
+        val failedShelves = java.util.Collections.synchronizedList(mutableListOf<String>())
+        // Fetch homepage categories concurrently with a small limit. A slow shelf
+        // no longer makes every later category wait in a long serial queue.
+        val shelfGate = Semaphore(2)
+        val shelves = coroutineScope {
+            provider.mainPage
+                .sortedBy { it.name.trim().lowercase() }
+                .map { data ->
+                    async(Dispatchers.IO) {
+                        shelfGate.withPermit {
+                            try {
+                                val response = provider.getMainPage(
+                                    page,
+                                    MainPageRequest(data.name, data.data, data.horizontalImages)
+                                )
+                                val items = response?.items.orEmpty()
+                                if (items.isEmpty()) failedShelves.add(data.name)
+                                items
+                            } catch (error: Throwable) {
+                                failedShelves.add("${data.name}: ${error.cause?.message ?: error.message ?: error.javaClass.simpleName}")
+                                emptyList()
+                            }
+                        }
+                    }
                 }
-            }
-            .filter { it.list.isNotEmpty() }
-            .sortedBy { it.name.trim().lowercase() }
+                .awaitAll()
+                .flatten()
+                .filter { it.list.isNotEmpty() }
+                .sortedBy { it.name.trim().lowercase() }
+        }
         if (shelves.isEmpty()) {
             error("Homepage returned no items for ${provider.mainUrl}. Failed/empty categories: ${failedShelves.joinToString("; ")}")
         }
