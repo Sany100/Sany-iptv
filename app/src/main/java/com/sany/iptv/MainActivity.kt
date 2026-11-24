@@ -1833,6 +1833,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             runOnUiThread {
+                animeEpisodeSourceResolving = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { sources ->
                     if (sources.isEmpty()) {
@@ -2139,10 +2140,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var movieSourcePickerDialog: AlertDialog? = null
+    private var animeEpisodeSourceResolving = false
+    private var animeSourcePickerDialog: AlertDialog? = null
     private var subtitleTrackDialog: android.app.Dialog? = null
 
     private fun showAnimeSourcePicker(title: String, requests: List<SanyPlaybackRequest>) {
-        if (requests.isEmpty() || isFinishing || isDestroyed) return
+        if (requests.isEmpty() || isFinishing || isDestroyed || animeSourcePickerDialog?.isShowing == true) return
         val ordered = requests.distinctBy { it.url }.filter { it.url.isNotBlank() }
         if (ordered.isEmpty()) {
             toast("কোনো valid video source পাওয়া যায়নি")
@@ -2158,13 +2161,19 @@ class MainActivity : AppCompatActivity() {
             "$provider$quality$type"
         }.toTypedArray()
 
-        AlertDialog.Builder(this)
+        animeSourcePickerDialog = AlertDialog.Builder(this)
             .setTitle(title)
             .setItems(labels) { _, selectedIndex ->
                 startAnimeSourceFallback(ordered, selectedIndex)
             }
             .setNegativeButton("বন্ধ", null)
-            .show()
+            .create()
+            .also { dialog ->
+                dialog.setOnDismissListener {
+                    if (animeSourcePickerDialog === dialog) animeSourcePickerDialog = null
+                }
+                dialog.show()
+            }
     }
 
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
@@ -2676,6 +2685,9 @@ class MainActivity : AppCompatActivity() {
         episodeName: String,
         episodeIndex: Int
     ) {
+        // Ignore rapid repeated taps while resolving or while the source picker is open.
+        if (animeEpisodeSourceResolving || animeSourcePickerDialog?.isShowing == true) return
+        animeEpisodeSourceResolving = true
         toast("এই Episode-এর Source খোঁজা হচ্ছে…")
         // Resolve the selected provider first. Waiting for every alternate provider
         // made playback feel slow even when the selected provider already had a link.
