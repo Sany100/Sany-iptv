@@ -2230,13 +2230,14 @@ class MainActivity : AppCompatActivity() {
                             // Load every provider independently. A provider without a
                             // homepage must not prevent the other providers or the fallback
                             // search catalogue from appearing.
-                            val fallbackQueries = listOf("a", "one piece", "naruto", "demon slayer")
+                            val fallbackQueries = listOf("anime", "popular anime", "one piece", "naruto", "demon slayer", "jujutsu kaisen")
                             val providerResults = kotlinx.coroutines.coroutineScope {
                                 animeProviders.map { provider ->
                                     async(kotlinx.coroutines.Dispatchers.IO) {
                                         fun mapItems(
                                             items: List<com.lagradost.cloudstream3.SearchResponse>,
-                                            categoryName: String
+                                            categoryName: String,
+                                            curatedAnimeProvider: Boolean = false
                                         ): List<Pair<String, SanyProviderItem>> =
                                             items.mapNotNull { item ->
                                                 val title = item.name.trim()
@@ -2244,7 +2245,12 @@ class MainActivity : AppCompatActivity() {
                                                 val isAnimeMovie = item.type == com.lagradost.cloudstream3.TvType.AnimeMovie
                                                 val isAnimeSeries = item.type == com.lagradost.cloudstream3.TvType.Anime ||
                                                     item.type == com.lagradost.cloudstream3.TvType.OVA
-                                                if (title.isBlank() || url.isBlank() || (!isAnimeMovie && !isAnimeSeries)) null
+                                                // These three packages are explicitly curated as Anime sources.
+                                                // Some CloudStream plugins report generic/incorrect TvType values;
+                                                // do not hide their valid homepage/search entries because of that metadata.
+                                                if (title.isBlank() || url.isBlank() ||
+                                                    (!curatedAnimeProvider && !isAnimeMovie && !isAnimeSeries)
+                                                ) null
                                                 else {
                                                     val category = categoryName.trim()
                                                         .ifBlank { if (isAnimeMovie) "Anime Movies" else "Anime" }
@@ -2263,7 +2269,7 @@ class MainActivity : AppCompatActivity() {
                                                 kotlinx.coroutines.withTimeout(18_000L) {
                                                     val pages = SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
                                                     pages.flatMap { page ->
-                                                        mapItems(page.list, page.name)
+                                                        mapItems(page.list, page.name, curatedAnimeProvider = true)
                                                     }
                                                 }
                                             }.onFailure { error ->
@@ -2281,7 +2287,7 @@ class MainActivity : AppCompatActivity() {
                                                             kotlinx.coroutines.withTimeout(6_000L) {
                                                                 SanyCloudStreamPluginRuntime.search(provider.name, query)
                                                             }
-                                                        mapItems(responses, "Anime")
+                                                        mapItems(responses, "Anime", curatedAnimeProvider = true)
                                                     }.getOrDefault(emptyList())
                                                 fallback += matches
                                                 if (fallback.size >= 12) break
