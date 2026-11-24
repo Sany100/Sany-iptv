@@ -325,6 +325,7 @@ class NativeMoviesScreen(
                 isEnabled = page < pageCount
                 alpha = if (page < pageCount) 1f else 0.4f
             })
+            host.addView(pager, LinearLayout.LayoutParams(-1, -2))
         }
     }
 
