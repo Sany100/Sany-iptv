@@ -1707,10 +1707,10 @@ class MainActivity : AppCompatActivity() {
                             } else {
                                 val screenWidthDp = resources.displayMetrics.widthPixels /
                                     resources.displayMetrics.density
-                                // Edge-to-edge wide banners: remove the narrow half-width cards
-                                // that exposed black gutters on both sides of each poster.
-                                val cardWidth = screenWidthDp.toInt().coerceAtLeast(160)
-                                val bannerHeight = (cardWidth * 0.52f).toInt().coerceIn(150, 220)
+                                // Compact banners: keep them smaller than the viewport while
+                                // preserving a wide landscape shape and horizontal browsing.
+                                val cardWidth = (screenWidthDp * 0.82f).toInt().coerceAtLeast(140)
+                                val bannerHeight = (cardWidth * 0.48f).toInt().coerceIn(112, 168)
                                 val rail = LinearLayout(this).apply {
                                     orientation = LinearLayout.HORIZONTAL
                                     clipChildren = false
@@ -1766,7 +1766,8 @@ class MainActivity : AppCompatActivity() {
                                     }
                                     card.addView(titleOverlay, FrameLayout.LayoutParams(-1, dp(42), Gravity.BOTTOM))
                                     rail.addView(card, LinearLayout.LayoutParams(dp(cardWidth), dp(bannerHeight)).apply {
-                                        // No side margins: banner artwork reaches the screen edges.
+                                        // Small gutters separate compact banner cards.
+                                        marginEnd = dp(8)
                                         bottomMargin = dp(2)
                                     })
                                 }
