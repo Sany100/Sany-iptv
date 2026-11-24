@@ -124,7 +124,8 @@ class NativeMoviesScreen(
                 intArrayOf(accent, 0xFF172B4D.toInt())).apply { cornerRadius = dp(18).toFloat() }
         }
         searchBanner.addView(label("DISCOVER MOVIES", 20, Color.WHITE, true))
-        searchBanner.addView(label("Search all selected providers at once", 12, 0xFFE5ECF7.toInt(), false),
+        val searchBannerSubtitle = label("Search all selected providers at once", 12, 0xFFE5ECF7.toInt(), false)
+        searchBanner.addView(searchBannerSubtitle,
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         val searchField = EditText(context).apply {
             hint = "Movie name লিখুন…"
@@ -174,7 +175,13 @@ class NativeMoviesScreen(
         searchField.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                scheduleMovieSearch(s?.toString().orEmpty())
+                val query = s?.toString().orEmpty().trim()
+                searchBannerSubtitle.text = if (query.isBlank()) {
+                    "Search all selected providers at once"
+                } else {
+                    "LIVE SEARCH • $query"
+                }
+                scheduleMovieSearch(query)
             }
             override fun afterTextChanged(s: Editable?) {}
         })
@@ -303,21 +310,25 @@ class NativeMoviesScreen(
                     if (generation != searchGeneration || host.parent == null) return@post
                     host.removeAllViews()
                     result.onSuccess { providerResults ->
-                        val unique = LinkedHashMap<String, Triple<String, String, String>>()
+                        val unique = LinkedHashMap<String, Triple<String, String, MovieShelfCard>>()
                         providerResults.forEach { (providerName, items) ->
                             items.forEach { item ->
                                 val title = item.name.trim()
                                 val url = item.url.trim()
                                 val key = title.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
                                 if (title.isNotBlank() && url.isNotBlank() && key.isNotBlank() && !unique.containsKey(key)) {
-                                    unique[key] = Triple(providerName, url, title)
+                                    unique[key] = Triple(
+                                        providerName,
+                                        url,
+                                        MovieShelfCard(title, item.posterUrl.orEmpty()) {
+                                            onOpenExtensionTitle(providerName, url, title)
+                                        }
+                                    )
                                 }
                             }
                         }
                         if (unique.isEmpty()) host.addView(label("কোনো Movie পাওয়া যায়নি।", 13, muted, false))
-                        else addMovieShelf("SEARCH RESULTS • ${unique.size}", unique.values.map { (provider, url, title) ->
-                            MovieShelfCard(title, "") { onOpenExtensionTitle(provider, url, title) }
-                        }, host, showMore = false)
+                        else addMovieShelf("SEARCH RESULTS • ${unique.size}", unique.values.map { it.third }, host, showMore = false)
                     }.onFailure { error ->
                         host.addView(label("Search failed: ${error.message ?: error.javaClass.simpleName}", 13, muted, false))
                     }
