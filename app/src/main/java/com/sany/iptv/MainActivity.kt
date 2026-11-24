@@ -1534,8 +1534,11 @@ class MainActivity : AppCompatActivity() {
         animeFullscreenBufferingOverlay?.visibility = if (shouldShow) View.VISIBLE else View.GONE
     }
 
+    private var movieSourcePickerDialog: AlertDialog? = null
+    private var subtitleTrackDialog: android.app.Dialog? = null
+
     private fun showAnimeSourcePicker(title: String, requests: List<SanyPlaybackRequest>) {
-        if (requests.isEmpty() || isFinishing || isDestroyed) return
+        if (requests.isEmpty() || isFinishing || isDestroyed || movieSourcePickerDialog?.isShowing == true) return
         val labels = requests.map { request ->
             listOfNotNull(
                 request.quality?.takeIf { it.isNotBlank() },
@@ -1545,13 +1548,16 @@ class MainActivity : AppCompatActivity() {
         }.toTypedArray()
         // A single tap on a listed source immediately starts that exact stream.
         // No extra PLAY confirmation is required.
-        AlertDialog.Builder(this)
+        val dialog = AlertDialog.Builder(this)
             .setTitle("$title — Sources")
             .setItems(labels) { _, index ->
                 if (index in requests.indices) startAnimeSourceFallback(requests, index)
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+        movieSourcePickerDialog = dialog
+        dialog.setOnDismissListener { if (movieSourcePickerDialog === dialog) movieSourcePickerDialog = null }
+        dialog.show()
     }
 
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
@@ -4587,7 +4593,7 @@ class MainActivity : AppCompatActivity() {
         ).setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(DefaultTrackSelector(this).also { selector ->
                 trackSelector = selector
-                if (section == "Series") {
+                if (section == "Series" || section == "Movies") {
                     selector.setParameters(
                         selector.buildUponParameters()
                             .setPreferredAudioLanguages("bn", "ben", "hi", "hin", "en", "eng")
@@ -4899,10 +4905,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Anime Series-only actions. Live TV and Movies keep their existing player UI.
+        val isMoviePlayback = section == "Movies"
+        val showVodActions = isAnimeEpisode || isMoviePlayback
         val animeActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            visibility = if (isAnimeEpisode) View.VISIBLE else View.GONE
+            visibility = if (showVodActions) View.VISIBLE else View.GONE
         }
         var animeControlsLocked = false
         fun animeAction(text: String, description: String, action: () -> Unit) =
@@ -5004,7 +5012,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun openPlayerSettings() {
-            val isAnimePlayback = section == "Series"
+            val isAnimePlayback = section == "Series" || section == "Movies"
             val options = if (isAnimePlayback)
                 arrayOf("Playback speed", "Subtitle", "Video quality")
                 else arrayOf("Playback speed", "Video quality")
@@ -5345,8 +5353,8 @@ class MainActivity : AppCompatActivity() {
         }
         // Anime captions are disabled by default; other sections keep their normal track behavior.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, section == "Series")
-            .apply { if (section == "Series") setPreferredAudioLanguages("bn", "ben", "hi", "hin", "en", "eng") }
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, section == "Series" || section == "Movies")
+            .apply { if (section == "Series" || section == "Movies") setPreferredAudioLanguages("bn", "ben", "hi", "hin", "en", "eng") }
             .build()
         val mediaItem = itemBuilder.build()
         val animeResumePosition = if (section == "Series") prefs.getLong(animeResumePreferenceKey(channel), 0L).coerceAtLeast(0L) else 0L
@@ -5394,17 +5402,22 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun showAnimeTrackSelection(trackType: Int, title: String, allowDisable: Boolean) {
-        if (section != "Series") return
+        if (section != "Series" && section != "Movies") return
         val activePlayer = player ?: return
+        if (trackType == C.TRACK_TYPE_TEXT && subtitleTrackDialog?.isShowing == true) return
         if (trackType == C.TRACK_TYPE_TEXT) {
             activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters
                 .buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         }
-        TrackSelectionDialogBuilder(this, title, activePlayer, trackType)
+        val dialog = TrackSelectionDialogBuilder(this, title, activePlayer, trackType)
             .setAllowAdaptiveSelections(false)
             .setShowDisableOption(allowDisable)
             .build()
-            .show()
+        if (trackType == C.TRACK_TYPE_TEXT) {
+            subtitleTrackDialog = dialog
+            dialog.setOnDismissListener { if (subtitleTrackDialog === dialog) subtitleTrackDialog = null }
+        }
+        dialog.show()
     }
 
     private fun showAnimeSubtitleOptions() {
