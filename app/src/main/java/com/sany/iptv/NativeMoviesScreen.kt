@@ -100,17 +100,24 @@ class NativeMoviesScreen(
         // Anime-only providers such as AniKoto are excluded by their declared TV types.
         val installedExtensions = SanyMovieExtensionManager.installed(context)
         val selectedIds = SanyMovieExtensionManager.selectedIds(context)
-        val selectedPaths = installedExtensions.filter { it.id in selectedIds }
-            .map { runCatching { java.io.File(it.packagePath).canonicalPath }.getOrNull() }
-            .filterNotNull().toSet()
+        val selectedFiles = installedExtensions.filter { it.id in selectedIds }
+            .map { java.io.File(it.packagePath) }
+        val selectedPaths = selectedFiles.mapNotNull {
+            runCatching { it.canonicalPath }.getOrNull()
+        }.toSet()
+        val selectedFileNames = selectedFiles.map { it.name }.toSet()
         val extensionProviders = SanyCloudStreamPluginRuntime.providers()
             .filter { provider ->
-                provider.supportedTypes.any {
+                val supportsMovies = provider.supportedTypes.any {
                     it == com.lagradost.cloudstream3.TvType.Movie ||
                         it == com.lagradost.cloudstream3.TvType.AnimeMovie
-                } && runCatching {
-                    java.io.File(provider.sourcePlugin).canonicalPath in selectedPaths
-                }.getOrDefault(false)
+                }
+                val sourceFile = runCatching { java.io.File(provider.sourcePlugin) }.getOrNull()
+                val belongsToSelectedExtension = sourceFile != null && (
+                    runCatching { sourceFile.canonicalPath in selectedPaths }.getOrDefault(false) ||
+                        sourceFile.name in selectedFileNames
+                    )
+                supportsMovies && belongsToSelectedExtension
             }
             .distinctBy { it.name.lowercase() }
             .sortedBy { it.name.lowercase() }
@@ -190,7 +197,7 @@ class NativeMoviesScreen(
                             val row = LinearLayout(context).apply {
                                 orientation = LinearLayout.HORIZONTAL
                             }
-                            shelf.list.take(20).forEach { item ->
+                            shelf.list.forEach { item ->
                                 val tile = FrameLayout(context).apply {
                                     background = rounded(card, 14)
                                     clipToOutline = true
