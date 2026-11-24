@@ -1406,33 +1406,68 @@ class MainActivity : AppCompatActivity() {
     private fun openMovieExtensionTitle(providerName: String, url: String, fallbackTitle: String) {
         toast("Loading movie details…")
         thread(name = "SANY-Movie-Details") {
-            val result = runCatching { kotlinx.coroutines.runBlocking { SanyCloudStreamPluginRuntime.load(providerName, url) } }
+            val result = runCatching {
+                kotlinx.coroutines.runBlocking { SanyCloudStreamPluginRuntime.load(providerName, url) }
+            }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { response ->
-                    val movie = response as? com.lagradost.cloudstream3.MovieLoadResponse
-                    if (movie == null) {
-                        toast("এই extension result টি Movie নয়; Movie page-এ দেখানো হয়নি")
-                        return@onSuccess
-                    }
-                    toast("Resolving ${movie.name.ifBlank { fallbackTitle }}…")
-                    thread(name = "SANY-Movie-Resolve") {
-                        val links = runCatching {
-                            kotlinx.coroutines.runBlocking {
-                                SanyCloudStreamPluginRuntime.resolvePlayback(
-                                    providerName, movie.name.ifBlank { fallbackTitle }, movie.dataUrl
-                                )
+                    when (response) {
+                        is com.lagradost.cloudstream3.MovieLoadResponse -> {
+                            resolveMovieExtensionPlayback(
+                                providerName,
+                                response.name.ifBlank { fallbackTitle },
+                                response.dataUrl
+                            )
+                        }
+                        is com.lagradost.cloudstream3.TvSeriesLoadResponse -> {
+                            val episodes = response.episodes
+                            if (episodes.isEmpty()) {
+                                toast("এই Series-এ কোনো episode পাওয়া যায়নি")
+                            } else {
+                                val choices = episodes.map { episode ->
+                                    buildString {
+                                        episode.season?.let { append("S").append(it).append(" ") }
+                                        episode.episode?.let { append("E").append(it).append("  ") }
+                                        append(episode.name?.takeIf { it.isNotBlank() } ?: "Episode")
+                                    }
+                                }.toTypedArray()
+                                AlertDialog.Builder(this)
+                                    .setTitle(response.name.ifBlank { fallbackTitle })
+                                    .setItems(choices) { _, index ->
+                                        val episode = episodes[index]
+                                        resolveMovieExtensionPlayback(
+                                            providerName,
+                                            "${response.name.ifBlank { fallbackTitle }} • ${choices[index]}",
+                                            episode.data
+                                        )
+                                    }
+                                    .setNegativeButton("CLOSE", null)
+                                    .show()
                             }
                         }
-                        runOnUiThread {
-                            if (isFinishing || isDestroyed) return@runOnUiThread
-                            links.onSuccess { sources ->
-                                if (sources.isEmpty()) toast("এই Movie-এর কোনো playable source পাওয়া যায়নি")
-                                else showAnimeSourcePicker(movie.name.ifBlank { fallbackTitle }, sources)
-                            }.onFailure { toast("Source resolve failed: ${it.message}") }
-                        }
+                        null -> toast("Extension থেকে Movie details পাওয়া যায়নি")
+                        else -> toast("এই result টি Movie/Series নয়: ${response.javaClass.simpleName}")
                     }
                 }.onFailure { toast("Movie details failed: ${it.message}") }
+            }
+        }
+    }
+
+    private fun resolveMovieExtensionPlayback(providerName: String, title: String, data: String) {
+        toast("Resolving $title…")
+        thread(name = "SANY-Movie-Resolve") {
+            val links = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
+                }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                links.onSuccess { sources ->
+                    if (sources.isEmpty()) toast("এই Movie/Episode-এর কোনো playable source পাওয়া যায়নি")
+                    else showAnimeSourcePicker(title, sources)
+                }.onFailure { toast("Source resolve failed: ${it.message}") }
             }
         }
     }
