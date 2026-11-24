@@ -433,9 +433,17 @@ class NativeMoviesScreen(
                 isFocusable = true
                 setOnClickListener { item.onClick() }
             }
+            val isNowPlaying = prefs.getString("movies_now_playing_title", "").equals(item.title, ignoreCase = true)
             val frame = FrameLayout(context).apply {
                 background = rounded(card, 14)
                 clipToOutline = true
+                if (isNowPlaying) {
+                    foreground = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setStroke(dp(3), 0xFF35B8FF.toInt())
+                    }
+                    elevation = dp(8).toFloat()
+                }
             }
             val poster = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
@@ -501,9 +509,17 @@ class NativeMoviesScreen(
                 setPadding(dp(1), 0, dp(1), dp(8))
                 setOnClickListener { item.onClick() }
             }
+            val isNowPlaying = prefs.getString("movies_now_playing_title", "").equals(item.title, ignoreCase = true)
             val frame = FrameLayout(context).apply {
                 background = rounded(card, 12)
                 clipToOutline = true
+                if (isNowPlaying) {
+                    foreground = GradientDrawable().apply {
+                        cornerRadius = dp(12).toFloat()
+                        setStroke(dp(3), 0xFF35B8FF.toInt())
+                    }
+                    elevation = dp(8).toFloat()
+                }
             }
             val poster = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
