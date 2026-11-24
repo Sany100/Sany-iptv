@@ -152,6 +152,24 @@ object SanyMovieExtensionManager {
         prefs(context).edit().putStringSet(KEY_SELECTED, ids.intersect(installedIds)).apply()
     }
 
+    /** Removes the retired VegaMovies provider from catalogue and existing installs. */
+    @Synchronized
+    fun removeVegaMovies(context: Context): Int {
+        val removedIds = installed(context)
+            .filter { item ->
+                item.id.contains("vegamovies", ignoreCase = true) ||
+                    item.name.contains("vegamovies", ignoreCase = true)
+            }
+            .map { it.id }
+        var removed = 0
+        removedIds.forEach { id ->
+            if (runCatching { uninstall(context, id) }.getOrDefault(false)) removed++
+        }
+        val selected = selectedIds(context) - removedIds.toSet()
+        prefs(context).edit().putStringSet(KEY_SELECTED, selected).apply()
+        return removed
+    }
+
     /** Reloads previously installed Movie packages after an app restart. */
     fun loadInstalled(context: Context): List<SanyCloudStreamPluginRuntime.LoadResult> =
         installed(context).mapNotNull { item ->
@@ -221,6 +239,8 @@ object SanyMovieExtensionManager {
             if ((0 until types.length()).none { types.optString(it).equals("Movie", true) }) continue
             val name = item.optString("name").trim()
             val internalName = item.optString("internalName").trim().ifBlank { name }
+            // VegaMovies is intentionally retired from the SANY Movies catalogue.
+            if (name.contains("vegamovies", true) || internalName.contains("vegamovies", true)) continue
             val id = internalName.lowercase().replace(Regex("[^a-z0-9._-]"), "-")
                 .trim('-', '.', '_').take(64)
             val packageUrl = item.optString("url").trim()
