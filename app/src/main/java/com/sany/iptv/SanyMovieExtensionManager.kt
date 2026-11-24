@@ -334,9 +334,9 @@ object SanyMovieExtensionManager {
         runCatching { URL(value).protocol.equals("https", true) }.getOrDefault(false)
 
     private fun downloadText(url: String, maxBytes: Int): String {
-        val connection = openHttpsConnection(url).apply {
-            setRequestProperty("Accept", "application/json")
-        }
+        // Headers must be set before openHttpsConnection reads responseCode;
+        // HttpURLConnection is already connected when it returns.
+        val connection = openHttpsConnection(url, mapOf("Accept" to "application/json"))
         try {
             require(connection.responseCode in 200..299) { "Repository HTTP ${connection.responseCode}: $url" }
             val output = ByteArrayOutputStream()
@@ -381,7 +381,10 @@ object SanyMovieExtensionManager {
     }
 
     /** Follow a small number of HTTPS-only redirects (e.g. GitHub release assets). */
-    private fun openHttpsConnection(address: String): HttpURLConnection {
+    private fun openHttpsConnection(
+        address: String,
+        requestHeaders: Map<String, String> = emptyMap()
+    ): HttpURLConnection {
         var current = URL(address)
         repeat(5) {
             require(current.protocol.equals("https", true)) { "Only HTTPS redirects are allowed" }
@@ -390,6 +393,7 @@ object SanyMovieExtensionManager {
                 readTimeout = READ_TIMEOUT_MS
                 instanceFollowRedirects = false
                 requestMethod = "GET"
+                requestHeaders.forEach { (name, value) -> setRequestProperty(name, value) }
             }
             val status = connection.responseCode
             if (status in 300..399) {
