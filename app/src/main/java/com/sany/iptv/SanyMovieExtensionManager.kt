@@ -152,6 +152,71 @@ object SanyMovieExtensionManager {
         prefs(context).edit().putStringSet(KEY_SELECTED, ids.intersect(installedIds)).apply()
     }
 
+    /**
+     * Automatically installs/updates, selects, and loads SANY's pinned MultiMovies
+     * provider. The SANY-owned index is authoritative; no manual repository setup
+     * or manual selection is required.
+     */
+    @Synchronized
+    fun syncBuiltInMultiMovies(context: Context): SanyCloudStreamPluginRuntime.LoadResult {
+        val root = JSONObject(downloadText(SANY_MOVIE_CATALOGUE, MAX_INDEX_BYTES))
+        require(root.optInt("schema") == 1) { "Unsupported SANY Movie catalogue schema" }
+        val entries = root.optJSONArray("extensions") ?: JSONArray()
+        val item = (0 until entries.length())
+            .mapNotNull { entries.optJSONObject(it) }
+            .firstOrNull { it.optString("id").equals("multimovies", true) }
+            ?: error("MultiMovies is missing from the SANY Movie catalogue")
+
+        val extension = Extension(
+            id = item.optString("id").trim(),
+            name = item.optString("name").trim(),
+            version = item.optString("version").trim(),
+            description = item.optString("description"),
+            packageUrl = item.optString("packageUrl").trim(),
+            sha256 = item.optString("sha256").trim().lowercase(),
+            repositoryUrl = SANY_MOVIE_CATALOGUE
+        )
+        require(extension.id == "multimovies" && extension.name.equals("MultiMovies", true)) {
+            "Unexpected built-in Movie provider identity"
+        }
+        require(extension.version.isNotBlank() && isHttps(extension.packageUrl)) {
+            "Invalid built-in MultiMovies version or package URL"
+        }
+        require(extension.sha256.matches(Regex("[a-f0-9]{64}"))) {
+            "Invalid built-in MultiMovies SHA-256"
+        }
+
+        val current = installed(context).firstOrNull { it.id == extension.id }
+        val currentFile = current?.let { File(it.packagePath).canonicalFile }
+        val isCurrent = current != null &&
+            current.version == extension.version &&
+            current.sha256.equals(extension.sha256, true) &&
+            currentFile?.isFile == true &&
+            runCatching { sha256(currentFile) == extension.sha256 }.getOrDefault(false)
+
+        val loaded = if (isCurrent) {
+            SanyCloudStreamPluginRuntime.load(context, currentFile!!)
+        } else {
+            installOrUpdate(context, extension)
+        }
+        if (loaded.success) {
+            setSelectedIds(context, selectedIds(context) + extension.id)
+        }
+        return loaded
+    }
+
+    /** Reload installed Movie packages, optionally skipping packages just loaded by auto-sync. */
+    fun loadInstalled(
+        context: Context,
+        excludeIds: Set<String> = emptySet()
+    ): List<SanyCloudStreamPluginRuntime.LoadResult> =
+        installed(context).filterNot { it.id in excludeIds }.mapNotNull { item ->
+            val packageFile = File(item.packagePath).canonicalFile
+            val expected = File(context.filesDir, "cloudstream_extensions/pending").canonicalFile
+            if (packageFile.parentFile != expected || !packageFile.isFile) null
+            else SanyCloudStreamPluginRuntime.load(context, packageFile)
+        }
+
     /** Removes the retired VegaMovies provider from catalogue and existing installs. */
     @Synchronized
     fun removeVegaMovies(context: Context): Int {
@@ -169,15 +234,6 @@ object SanyMovieExtensionManager {
         prefs(context).edit().putStringSet(KEY_SELECTED, selected).apply()
         return removed
     }
-
-    /** Reloads previously installed Movie packages after an app restart. */
-    fun loadInstalled(context: Context): List<SanyCloudStreamPluginRuntime.LoadResult> =
-        installed(context).mapNotNull { item ->
-            val packageFile = File(item.packagePath).canonicalFile
-            val expected = File(context.filesDir, "cloudstream_extensions/pending").canonicalFile
-            if (packageFile.parentFile != expected || !packageFile.isFile) null
-            else SanyCloudStreamPluginRuntime.load(context, packageFile)
-        }
 
     /** Reads every configured Movie source independently; one broken repository cannot hide others. */
     fun catalogue(context: Context): List<Extension> {
