@@ -2339,23 +2339,11 @@ class MainActivity : AppCompatActivity() {
             }
         )
         aniLightNativeScreen = screen
-        // Keep an always-visible Anime extension entry point even when every
-        // provider homepage is empty or temporarily unavailable.
         val animePage = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
-        val extensionBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-        }
-        extensionBar.addView(
-            actionButton("＋  EXTENSIONS") { showCloudStreamProviderBrowser() },
-            LinearLayout.LayoutParams(-1, dp(44))
-        )
-        animePage.addView(extensionBar, LinearLayout.LayoutParams(-1, -2))
-        animePage.addView(screen.create(), LinearLayout.LayoutParams(-1, 0, 1f))
+        animePage.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
         contentArea.addView(animePage, LinearLayout.LayoutParams(-1, -1))
     }
 
