@@ -57,7 +57,8 @@ class NativeMoviesScreen(
     fun create(): View {
         body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(8), dp(12), dp(24))
+            // Full-bleed Movie catalogue: remove horizontal gutters.
+            setPadding(0, dp(8), 0, dp(24))
             setBackgroundColor(bg)
         }
         val scroll = ScrollView(context).apply {
@@ -257,7 +258,8 @@ class NativeMoviesScreen(
         scroller.addView(rail)
         val screenWidthDp = context.resources.displayMetrics.widthPixels /
             context.resources.displayMetrics.density
-        val cardWidth = (screenWidthDp / 3f).toInt().coerceAtLeast(96)
+        // Fit exactly three poster cards across the available screen width.
+        val cardWidth = ((screenWidthDp - 12f) / 3f).toInt().coerceAtLeast(96)
         val posterHeight = (cardWidth * 1.45f).toInt()
         cards.forEach { item ->
             val tile = LinearLayout(context).apply {
@@ -318,7 +320,7 @@ class NativeMoviesScreen(
 
         val screenWidthDp = context.resources.displayMetrics.widthPixels /
             context.resources.displayMetrics.density
-        val cardWidth = (screenWidthDp / 3f).toInt().coerceAtLeast(96)
+        val cardWidth = ((screenWidthDp - 12f) / 3f).toInt().coerceAtLeast(96)
         val posterHeight = (cardWidth * 1.42f).toInt()
         var gridRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
