@@ -39,6 +39,8 @@ import java.util.zip.ZipFile
 object SanyCloudStreamPluginRuntime {
     private const val TAG = "SanyCSPluginRuntime"
     private val loaded = ConcurrentHashMap<String, LoadedPlugin>()
+    @Volatile private var hostContext: Context? = null
+    private fun providersContext(): Context? = hostContext
 
     data class LoadResult(
         val success: Boolean,
@@ -64,6 +66,8 @@ object SanyCloudStreamPluginRuntime {
             return LoadResult(true, it.instance.javaClass.simpleName, it.providerNames)
         }
 
+        hostContext = context.applicationContext
+        SanyNetworkBypasses.configureCloudStream(context)
         val manifest = readManifest(file)
         val optimized = File(context.codeCacheDir, "cloudstream_dex_opt").apply { mkdirs() }
         require(optimized.isDirectory) { "Unable to create DEX optimization directory" }
@@ -175,6 +179,7 @@ object SanyCloudStreamPluginRuntime {
     private const val PLAYBACK_CACHE_TTL_MS = 60 * 1000L
 
     suspend fun search(providerName: String, query: String): List<SearchResponse> {
+        providersContext()?.let { SanyNetworkBypasses.configureCloudStream(it) }
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         val normalizedQuery = query.trim()
@@ -196,6 +201,7 @@ object SanyCloudStreamPluginRuntime {
 
     /** Fetches and briefly caches the selected provider's real CloudStream homepage shelves. */
     suspend fun homePage(providerName: String, page: Int = 1): List<HomePageList> {
+        providersContext()?.let { SanyNetworkBypasses.configureCloudStream(it) }
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         require(provider.hasMainPage && provider.mainPage.isNotEmpty()) {
@@ -251,6 +257,7 @@ object SanyCloudStreamPluginRuntime {
     }
 
     suspend fun load(providerName: String, url: String): LoadResponse? {
+        providersContext()?.let { SanyNetworkBypasses.configureCloudStream(it) }
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         return provider.load(url)
@@ -261,6 +268,7 @@ object SanyCloudStreamPluginRuntime {
         title: String,
         episodeData: String
     ): List<SanyPlaybackRequest> {
+        providersContext()?.let { SanyNetworkBypasses.configureCloudStream(it) }
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         val cacheKey = provider.name.lowercase() + ":" + episodeData.hashCode() + ":" + episodeData.length
