@@ -1065,7 +1065,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(
                 dp(if (isTvDevice) 18 else if (settingsHeader) 24 else 16),
-                dp(if (isTvDevice) 8 else if (settingsHeader) 18 else 12),
+                dp(if (isTvDevice) 4 else if (settingsHeader) 12 else 6),
                 dp(if (isTvDevice) 18 else if (settingsHeader) 24 else 16),
                 dp(if (isTvDevice) 14 else if (settingsHeader) 22 else 12)
             )
