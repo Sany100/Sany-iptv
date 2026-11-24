@@ -1776,7 +1776,7 @@ class MainActivity : AppCompatActivity() {
                                         val providerShelves = kotlinx.coroutines.withTimeoutOrNull(15_000L) {
                                             SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
                                         }.orEmpty()
-                                        val languageLabel = when (provider.language.lowercase()) {
+                                        val languageLabel = when (provider.lang.lowercase()) {
                                             "bn" -> "Bangla"
                                             "hi" -> "Hindi"
                                             else -> ""
