@@ -382,7 +382,7 @@ class NativeMoviesScreen(
         val screenWidthDp = context.resources.displayMetrics.widthPixels /
             context.resources.displayMetrics.density
         // Fit exactly three poster cards across the available screen width.
-        val cardWidth = ((screenWidthDp - 12f) / 3f).toInt().coerceAtLeast(96)
+        val cardWidth = (screenWidthDp / 3f).toInt().coerceAtLeast(96)
         val posterHeight = (cardWidth * 1.45f).toInt()
         cards.forEach { item ->
             val tile = LinearLayout(context).apply {
@@ -414,7 +414,7 @@ class NativeMoviesScreen(
                 setPadding(dp(3), dp(6), dp(3), 0)
             }, LinearLayout.LayoutParams(dp(cardWidth), dp(44)))
             rail.addView(tile, LinearLayout.LayoutParams(dp(cardWidth), -2).apply {
-                rightMargin = dp(4)
+                rightMargin = dp(2)
             })
         }
         parent.addView(scroller, LinearLayout.LayoutParams(-1, -2).apply {
@@ -456,7 +456,7 @@ class NativeMoviesScreen(
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 isFocusable = true
-                setPadding(dp(4), 0, dp(4), dp(10))
+                setPadding(dp(1), 0, dp(1), dp(8))
                 setOnClickListener { item.onClick() }
             }
             val frame = FrameLayout(context).apply {
