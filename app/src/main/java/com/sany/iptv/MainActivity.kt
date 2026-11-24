@@ -2214,7 +2214,8 @@ class MainActivity : AppCompatActivity() {
                     if (section == "Live Sports" &&
                         playerView != null &&
                         currentChannel?.url == expectedUrl &&
-                        player?.isPlaying == true &&
+                        player?.playWhenReady == true &&
+                        player?.playbackState != Player.STATE_IDLE &&
                         animeFallbackIndex >= 0
                     ) {
                         android.util.Log.w("SANY-LIVE-SPORTS", "No video frame rendered for $provider; trying next source")
@@ -2223,7 +2224,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 liveSportsFirstFrameWatchdog = watchdog
-                playbackRetryHandler.postDelayed(watchdog, 15_000L)
+                // Give slow live hosts time to start, then move on if no frame arrived.
+                playbackRetryHandler.postDelayed(watchdog, 20_000L)
             }
         } catch (error: Exception) {
             showAnimePlaybackLoading("", false)
@@ -5583,6 +5585,11 @@ class MainActivity : AppCompatActivity() {
                             playbackRetryCount = 0
                             animeAutoNextInProgress = false
                             refreshPictureInPictureParams()
+                        } else if (state == Player.STATE_ENDED && section == "Live Sports" &&
+                            animeFallbackIndex >= 0
+                        ) {
+                            // A live provider returning an already-ended item is usually a dead source.
+                            runOnUiThread { tryNextAnimeFallback() }
                         } else if (state == Player.STATE_ENDED && section == "Series" && !animeAutoNextInProgress) {
                             // Advance Anime Series automatically to the next numeric episode.
                             animeAutoNextInProgress = true
