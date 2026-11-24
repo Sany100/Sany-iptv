@@ -5474,6 +5474,8 @@ class MainActivity : AppCompatActivity() {
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         val isAnimeEpisode = section == "Series"
+        // Movies and Anime use the same VOD player controls and overlay behavior.
+        val isVodPlayer = isAnimeEpisode || section == "Movies"
         playerScreen = screen
         isPlayerFullscreen = keepFullscreenMode
         playerHeader = null
@@ -5487,7 +5489,7 @@ class MainActivity : AppCompatActivity() {
             // Retain the last rendered frame during short surface/Activity transitions
             // so the app icon or an empty shutter does not flash before video resumes.
             setKeepContentOnPlayerReset(true)
-            setShowBuffering(if (isAnimeEpisode) PlayerView.SHOW_BUFFERING_NEVER else PlayerView.SHOW_BUFFERING_ALWAYS)
+            setShowBuffering(if (isVodPlayer) PlayerView.SHOW_BUFFERING_NEVER else PlayerView.SHOW_BUFFERING_ALWAYS)
         }
         playerView = view
         updateHomeHeaderVisibility()
@@ -5517,7 +5519,7 @@ class MainActivity : AppCompatActivity() {
             episodePanel.visibility = View.GONE
             screen.addView(episodePanel, FrameLayout.LayoutParams(-1, -1, Gravity.END))
         }
-        if (isAnimeEpisode) {
+        if (isVodPlayer) {
             val animeTitle = TextView(this).apply {
                 text = channel.name
                 textSize = 14f
@@ -5615,21 +5617,21 @@ class MainActivity : AppCompatActivity() {
         }
         val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
         // Anime episodes do not use channel identity or channel-skip controls.
-        channelIdentity.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
-        previousButton.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
-        nextButton.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
-        if (!isAnimeEpisode) transportRow.addView(channelIdentity, LinearLayout.LayoutParams(dp(126), -1))
+        channelIdentity.visibility = if (isVodPlayer) View.GONE else View.VISIBLE
+        previousButton.visibility = if (isVodPlayer) View.GONE else View.VISIBLE
+        nextButton.visibility = if (isVodPlayer) View.GONE else View.VISIBLE
+        if (!isVodPlayer) transportRow.addView(channelIdentity, LinearLayout.LayoutParams(dp(126), -1))
         listOf(previousButton, playPauseButton, nextButton).forEachIndexed { index, button ->
             button.textSize = if (index == 1) 21f else 19f
             button.typeface = if (index == 1) Typeface.create("sans-serif-light", Typeface.NORMAL) else Typeface.DEFAULT
             if (button.visibility == View.VISIBLE) {
                 transportRow.addView(button, LinearLayout.LayoutParams(0, dp(27), 1f).apply {
-                    if (index == 1 && !isAnimeEpisode) { leftMargin = dp(4); rightMargin = dp(4) }
+                    if (index == 1 && !isVodPlayer) { leftMargin = dp(4); rightMargin = dp(4) }
                 })
             }
         }
         controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(27)))
-        if (isAnimeEpisode) {
+        if (isVodPlayer) {
             transportRow.visibility = View.GONE
             transportRow.removeView(playPauseButton)
             playPauseButton.textSize = 34f
@@ -5643,7 +5645,7 @@ class MainActivity : AppCompatActivity() {
 
         // Anime Series-only actions. Live TV and Movies keep their existing player UI.
         val isMoviePlayback = section == "Movies"
-        val showVodActions = isAnimeEpisode || isMoviePlayback
+        val showVodActions = isVodPlayer || isMoviePlayback
         val animeActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -5656,9 +5658,9 @@ class MainActivity : AppCompatActivity() {
                 minHeight = dp(30)
                 setPadding(dp(4), 0, dp(4), 0)
             }
-                val sourceAction = animeAction("☷  Source", "Show current Anime stream source") {
+                val sourceAction = animeAction("☷  Source", "Show current video stream source") {
             val host = try { java.net.URI(channel.url).host ?: "Unknown host" } catch (_: Exception) { "Unknown host" }
-            AlertDialog.Builder(this).setTitle("Anime stream source")
+            AlertDialog.Builder(this).setTitle("Video stream source")
                 .setMessage("Current source: $host")
                 .setPositiveButton("OK", null).show()
         }
@@ -5818,7 +5820,7 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(5)
         })
         // Remove the extra minimize icon beside Settings from the Anime control dock.
-        if (!isAnimeEpisode) {
+        if (!isVodPlayer) {
             infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
                 leftMargin = dp(5)
             })
@@ -5826,18 +5828,18 @@ class MainActivity : AppCompatActivity() {
         // Fit Screen stays in its original bottom control row for Anime as well.
         // Anime gets its Full Screen control in the action strip above;
         // keep the original bottom-row button for non-Anime players only.
-        if (!isAnimeEpisode) {
+        if (!isVodPlayer) {
             infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
                 leftMargin = dp(5)
             })
         }
-        if (isAnimeEpisode) {
-            // Only Pause/Resume is moved to the centre of the video.
+        if (isVodPlayer) {
+            // VOD Pause/Resume is moved to the centre of the video.
             screen.addView(playPauseButton, FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER))
         }
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
-        if (isAnimeEpisode) {
-            // Reference layout order: timeline, action strip, then time / utility controls.
+        if (isVodPlayer) {
+            // Keep the same Anime layout order for Movies: timeline, action strip, utility controls.
             controlsPanel.removeView(animeActions)
             controlsPanel.removeView(progressBar)
             controlsPanel.removeView(infoRow)
@@ -5846,7 +5848,7 @@ class MainActivity : AppCompatActivity() {
             controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(28)))
             controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(34)))
         }
-        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, if (isAnimeEpisode) dp(82) else dp(88), Gravity.TOP).apply {
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, if (isVodPlayer) dp(82) else dp(88), Gravity.TOP).apply {
             topMargin = dp(155)
             leftMargin = dp(8); rightMargin = dp(8)
         })
@@ -5857,8 +5859,8 @@ class MainActivity : AppCompatActivity() {
         // top title, and the complete lower control dock always show/hide together.
         val hideControls = Runnable {
             // Keep the complete control group visible while paused so Resume is accessible.
-            if (isAnimeEpisode && !p.isPlaying) return@Runnable
-            val groupedOverlays = if (isAnimeEpisode)
+            if (isVodPlayer && !p.isPlaying) return@Runnable
+            val groupedOverlays = if (isVodPlayer)
                 listOfNotNull(controlsPanel, playPauseButton, animePlayerTitleOverlay)
             else listOf(controlsPanel)
             groupedOverlays.forEach { overlay ->
@@ -5874,7 +5876,7 @@ class MainActivity : AppCompatActivity() {
                 toast("Player controls unlocked")
             }
             controlsHandler.removeCallbacks(hideControls)
-            val groupedOverlays = if (isAnimeEpisode)
+            val groupedOverlays = if (isVodPlayer)
                 listOfNotNull(controlsPanel, playPauseButton, animePlayerTitleOverlay)
             else listOf(controlsPanel)
             groupedOverlays.forEach { overlay ->
@@ -5882,16 +5884,16 @@ class MainActivity : AppCompatActivity() {
                 overlay.visibility = View.VISIBLE
                 overlay.alpha = 1f
             }
-            if (isAnimeEpisode) {
+            if (isVodPlayer) {
                 playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
             }
-            if (autoHide && (isAnimeEpisode.not() || p.isPlaying)) {
+            if (autoHide && (isVodPlayer.not() || p.isPlaying)) {
                 controlsHandler.postDelayed(
-                    hideControls, if (isAnimeEpisode) animeControlsAutoHideDelay else 2500L
+                    hideControls, if (isVodPlayer) animeControlsAutoHideDelay else 2500L
                 )
             }
         }
-        if (isAnimeEpisode) {
+        if (isVodPlayer) {
             // A pause keeps every overlay visible; resuming restarts the shared 3-second timer.
             p.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -5927,7 +5929,7 @@ class MainActivity : AppCompatActivity() {
                 positionLabel.text = formatPlayerTime(position)
                 durationLabel.text = formatPlayerTime(if (duration > 0) duration else 0L)
                 playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
-                if (isAnimeEpisode) {
+                if (isVodPlayer) {
                     // Hide the large center Play control while running; the compact
                     // Pause/Play action appears only when the control dock is revealed.
                     playPauseButton.visibility = if (p.isPlaying) View.GONE else View.VISIBLE
