@@ -172,7 +172,7 @@ class NativeMoviesScreen(
         }
         if (movies.isEmpty() && extensionProviders.isEmpty()) {
             body.addView(label(
-                "এখনো কোনো Movie link বা active Movie extension নেই।\\nEXTENSIONS চাপ দিয়ে Movie provider install করো।",
+                "এখনো কোনো Movie link বা active Movie extension নেই।\nEXTENSIONS চাপ দিয়ে Movie provider install করো।",
                 14, muted, false
             ).apply {
                 gravity = Gravity.CENTER
@@ -276,7 +276,7 @@ class NativeMoviesScreen(
             }
             frame.addView(poster, FrameLayout.LayoutParams(-1, -1))
             if (item.poster.startsWith("http")) loadPoster(item.poster, poster)
-            else frame.addView(label("SANY\\nMOVIES", 16, muted, true).apply {
+            else frame.addView(label("SANY\nMOVIES", 16, muted, true).apply {
                 gravity = Gravity.CENTER
                 textAlignment = View.TEXT_ALIGNMENT_CENTER
             }, FrameLayout.LayoutParams(-1, -1))
@@ -344,7 +344,7 @@ class NativeMoviesScreen(
             }
             frame.addView(poster, FrameLayout.LayoutParams(-1, -1))
             if (item.poster.startsWith("http")) loadPoster(item.poster, poster)
-            else frame.addView(label("SANY\\nMOVIES", 16, muted, true).apply {
+            else frame.addView(label("SANY\nMOVIES", 16, muted, true).apply {
                 gravity = Gravity.CENTER
                 textAlignment = View.TEXT_ALIGNMENT_CENTER
             }, FrameLayout.LayoutParams(-1, -1))
@@ -374,6 +374,18 @@ class NativeMoviesScreen(
             body.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
         }
         body.addView(View(context), LinearLayout.LayoutParams(1, dp(24)))
+    }
+
+    private fun addSectionTitle(title: String) {
+        val heading = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        heading.addView(label(title, 19, fg, true))
+        body.addView(heading, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(8)
+            bottomMargin = dp(12)
+        })
     }
 
     private fun loadPoster(url: String, target: ImageView) {
