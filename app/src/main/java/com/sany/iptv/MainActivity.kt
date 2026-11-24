@@ -869,14 +869,14 @@ class MainActivity : AppCompatActivity() {
             setupWith(root as BlurTarget).setBlurRadius(7f)
             setOverlayColor(Color.argb(overlayAlpha, 248, 252, 255))
             background = glass(radius)
-            outlineProvider = ViewOutlineProvider.BACKGROUND
+            outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
             clipToOutline = radius > 0
             isClickable = false
             isFocusable = false
         }
         layer.addView(blur, FrameLayout.LayoutParams(-1, -1))
         content.background = null
-        layer.addView(content, FrameLayout.LayoutParams(-1, -1))
+        layer.addView(content, FrameLayout.LayoutParams(-1, -2))
         return layer
     }
 
