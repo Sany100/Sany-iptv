@@ -141,7 +141,7 @@ object SanyLiveSportsExtensionManager {
         }
     }
 
-    /** Only extensions explicitly selected by the user are shown on the Live Sportss page. */
+    /** Only extensions explicitly selected by the user are shown on the Live Sports page. */
     fun selectedIds(context: Context): Set<String> =
         prefs(context).getStringSet(KEY_SELECTED, emptySet())?.toSet() ?: emptySet()
 
@@ -245,7 +245,7 @@ object SanyLiveSportsExtensionManager {
         // Correct the exact previously reported Live Sports typo (lowercase L instead of I).
         normalized = normalized.replace(
             "raw.githubusercontent.com/dipender98/lndflix/",
-            "raw.githubusercontent.com/dipender98/Live Sports/",
+            "raw.githubusercontent.com/dipender98/",
             ignoreCase = true
         )
         return normalized
