@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.CommonActivity
 import com.lagradost.cloudstream3.newEpisode
 
 import android.app.Activity
+import android.content.Context
 import android.animation.ValueAnimator
 import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
