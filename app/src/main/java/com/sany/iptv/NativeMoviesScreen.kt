@@ -330,37 +330,62 @@ class NativeMoviesScreen(
         target.tag = url
         posterExecutor.execute {
             var connection: HttpURLConnection? = null
-            var bitmap: android.graphics.Bitmap? = null
+            var decoded: android.graphics.Bitmap? = null
+            var tempFile: java.io.File? = null
             try {
-                connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 3500
-                    readTimeout = 5000
-                    instanceFollowRedirects = true
-                    useCaches = true
-                    setRequestProperty("User-Agent", "Mozilla/5.0 SANY-IPTV")
-                    setRequestProperty("Accept", "image/avif,image/webp,image/*,*/*;q=0.8")
+                val directory = java.io.File(context.cacheDir, "movie_posters").apply { mkdirs() }
+                val cachedFile = java.io.File(directory, url.hashCode().toString() + ".img")
+                if (!cachedFile.exists() || cachedFile.length() == 0L) {
+                    tempFile = java.io.File(directory, cachedFile.name + ".tmp")
+                    connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 3500
+                        readTimeout = 5000
+                        instanceFollowRedirects = true
+                        useCaches = true
+                        setRequestProperty("User-Agent", "Mozilla/5.0 SANY-IPTV")
+                        setRequestProperty("Accept", "image/avif,image/webp,image/*,*/*;q=0.8")
+                    }
+                    connection.inputStream.use { input ->
+                        tempFile.outputStream().use { output ->
+                            val buffer = ByteArray(16 * 1024)
+                            var total = 0
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                if (total > 8 * 1024 * 1024) throw java.io.IOException("Poster image exceeds 8 MB")
+                                output.write(buffer, 0, count)
+                            }
+                        }
+                    }
+                    connection.disconnect()
+                    connection = null
+                    if (!tempFile.renameTo(cachedFile)) {
+                        tempFile.copyTo(cachedFile, overwrite = true)
+                        tempFile.delete()
+                    }
                 }
-                connection.inputStream.use { stream ->
-                    val bytes = stream.readBytes()
+                if (cachedFile.isFile && cachedFile.length() in 1..(8L * 1024L * 1024L)) {
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
                     var sample = 1
                     while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 640) sample *= 2
                     val options = BitmapFactory.Options().apply {
                         inSampleSize = sample
                         inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
                     }
-                    bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                    decoded = BitmapFactory.decodeFile(cachedFile.absolutePath, options)
                 }
-                val decoded = bitmap
-                if (decoded != null) {
+                val bitmap = decoded
+                if (bitmap != null) {
                     mainHandler.post {
-                        if (target.tag == url && !decoded.isRecycled) target.setImageBitmap(decoded)
-                        else if (!decoded.isRecycled) decoded.recycle()
+                        if (target.tag == url && !bitmap.isRecycled) target.setImageBitmap(bitmap)
+                        else if (!bitmap.isRecycled) bitmap.recycle()
                     }
                 }
             } catch (_: Exception) {
-                bitmap?.takeUnless { it.isRecycled }?.recycle()
+                decoded?.takeUnless { it.isRecycled }?.recycle()
+                tempFile?.delete()
             } finally {
                 connection?.disconnect()
             }
