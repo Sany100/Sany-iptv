@@ -22,7 +22,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.concurrent.thread
+import java.util.concurrent.Executors
 import kotlinx.coroutines.launch
 
 class NativeMoviesScreen(
@@ -42,6 +42,8 @@ class NativeMoviesScreen(
     private val fg = Color.WHITE
     private val muted = Color.rgb(185, 185, 190)
     private val mainHandler = Handler(Looper.getMainLooper())
+    // Reuse a small worker pool; never create one OS thread per poster request.
+    private val posterExecutor = Executors.newFixedThreadPool(3)
     private lateinit var body: LinearLayout
 
     fun create(): View {
@@ -325,19 +327,43 @@ class NativeMoviesScreen(
     }
 
     private fun loadPoster(url: String, target: ImageView) {
-        thread(name = "SANY-Movie-Poster") {
+        target.tag = url
+        posterExecutor.execute {
             var connection: HttpURLConnection? = null
+            var bitmap: android.graphics.Bitmap? = null
             try {
                 connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 7000; readTimeout = 7000; instanceFollowRedirects = true
+                    connectTimeout = 3500
+                    readTimeout = 5000
+                    instanceFollowRedirects = true
+                    useCaches = true
                     setRequestProperty("User-Agent", "Mozilla/5.0 SANY-IPTV")
+                    setRequestProperty("Accept", "image/avif,image/webp,image/*,*/*;q=0.8")
                 }
                 connection.inputStream.use { stream ->
-                    val bitmap = BitmapFactory.decodeStream(stream)
-                    if (bitmap != null) mainHandler.post { target.setImageBitmap(bitmap) }
+                    val bytes = stream.readBytes()
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    var sample = 1
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 640) sample *= 2
+                    val options = BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                    }
+                    bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                }
+                val decoded = bitmap
+                if (decoded != null) {
+                    mainHandler.post {
+                        if (target.tag == url && !decoded.isRecycled) target.setImageBitmap(decoded)
+                        else if (!decoded.isRecycled) decoded.recycle()
+                    }
                 }
             } catch (_: Exception) {
-            } finally { connection?.disconnect() }
+                bitmap?.takeUnless { it.isRecycled }?.recycle()
+            } finally {
+                connection?.disconnect()
+            }
         }
     }
 
