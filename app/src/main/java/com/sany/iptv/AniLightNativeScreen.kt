@@ -136,7 +136,12 @@ class AniLightNativeScreen(
 
     private class FastAnimeScrollView(context: Context) : ScrollView(context) {
         override fun fling(velocityY: Int) {
-            super.fling((velocityY * 1.25f).toInt())
+            super.fling((velocityY * 1.45f).toInt())
+        }
+    }
+    private class FastAnimeHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
+        override fun fling(velocityX: Int) {
+            super.fling((velocityX * 1.45f).toInt())
         }
     }
 
@@ -213,6 +218,7 @@ class AniLightNativeScreen(
         }
         val scroll = FastAnimeScrollView(context).apply {
             isFillViewport = true
+            isNestedScrollingEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             addView(body)
             setOnScrollChangeListener { view: View, _: Int, scrollY: Int, _: Int, _: Int ->
@@ -327,8 +333,9 @@ class AniLightNativeScreen(
         val sidePadding = 12
         val cardWidth = ((screenWidthDp - sidePadding * 2 - 16) / 3f).toInt().coerceAtLeast(88)
         val posterHeight = (cardWidth * 1.42f).toInt()
-        val scroller = HorizontalScrollView(context).apply {
+        val scroller = FastAnimeHorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
+            isNestedScrollingEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             clipToPadding = false
             setPadding(dp(sidePadding), 0, dp(sidePadding), dp(12))
@@ -454,8 +461,9 @@ class AniLightNativeScreen(
         heading.addView(arrow)
         contentHost.addView(heading, bottom(8))
 
-        val scroller = HorizontalScrollView(context).apply {
+        val scroller = FastAnimeHorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
+            isNestedScrollingEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
         }
         val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
