@@ -3440,11 +3440,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun liveTvVisibleCandidates(): List<Channel> {
-        if (!checkerRunning && streamChecks.isEmpty()) return emptyList()
-        val working = channels.filter { streamChecks[it.url]?.first == "Working" }
-        if (!checkerRunning) return working
-        val limit = if (channels.isNotEmpty() && checkerProgressCount.get() * 2 >= channels.size) 60 else 30
-        return working.take(limit)
+        // The Checker is diagnostic only: HEAD/range probes can fail for valid IPTV
+        // streams that require GET, Referer/Cookie headers, or a provider-specific
+        // user agent. Never hide a channel solely because its probe was inconclusive.
+        // Let Media3 make the real playback request when the user selects a channel.
+        return channels
     }
 
     private fun filteredChannels(): List<Channel> {
