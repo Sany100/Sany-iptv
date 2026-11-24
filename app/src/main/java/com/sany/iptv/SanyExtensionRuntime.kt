@@ -276,7 +276,52 @@ object SanyExtensionRepositories {
                 failures += "$internalName: ${error.message ?: error.javaClass.simpleName}"
             }
         }
-        return CloudStreamAutoSyncReport(packages, failures)
+        // Add a curated external Anime repo for Hindi/multilingual and Bangla/Hindi sources.
+        // Only these explicitly reviewed Anime providers are installed; arbitrary repo plugins
+        // are never auto-executed. Every package still passes HTTPS, ZIP, manifest and SHA-256 checks.
+        val phisherRepo = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json"
+        add(context, phisherRepo)
+        val curatedNames = setOf("Animedubhindi", "Animesalt", "Cinefreak")
+        try {
+            val curatedPlugins = fetchCatalog(context)
+                .flatMap { (repoName, plugins) -> plugins.map { repoName to it } }
+                .filter { (_, plugin) ->
+                    plugin.internalName in curatedNames &&
+                        plugin.status != 0 &&
+                        plugin.apiVersion <= SUPPORTED_PLUGIN_API &&
+                        plugin.tvTypes.any { it.equals("Anime", true) || it.equals("AnimeMovie", true) || it.equals("OVA", true) } &&
+                        !plugin.fileHash.isNullOrBlank()
+                }
+                .distinctBy { it.second.internalName }
+            for ((repoName, plugin) in curatedPlugins) {
+                try {
+                    val expectedLanguage = when (plugin.internalName) {
+                        "Cinefreak" -> "bn"
+                        else -> "hi"
+                    }
+                    require(plugin.language.equals(expectedLanguage, ignoreCase = true)) {
+                        "${plugin.internalName}: unexpected repository language metadata"
+                    }
+                    val existing = installedPackages(context).firstOrNull { it.name == "${plugin.internalName}.cs3" }
+                    val expectedDigest = plugin.fileHash!!.removePrefix("sha256-").lowercase()
+                    val installed = if (existing != null &&
+                        sha256(existing).equals(expectedDigest, ignoreCase = true) &&
+                        validatePackage(existing).version == plugin.version
+                    ) existing else downloadAndValidate(context, plugin).file
+                    packages += installed
+                    Log.i("SANY-AnimeRepo", "Verified ${plugin.internalName} from $repoName")
+                } catch (error: Throwable) {
+                    failures += "${plugin.internalName}: ${error.message ?: error.javaClass.simpleName}"
+                }
+            }
+            val foundNames = curatedPlugins.map { it.second.internalName }.toSet()
+            (curatedNames - foundNames).forEach { missing ->
+                failures += "$missing: not present in the current curated repository catalogue"
+            }
+        } catch (error: Throwable) {
+            failures += "Phisher Anime repository: ${error.message ?: error.javaClass.simpleName}"
+        }
+        return CloudStreamAutoSyncReport(packages.distinctBy { it.name }, failures)
     }
 
     @Synchronized
