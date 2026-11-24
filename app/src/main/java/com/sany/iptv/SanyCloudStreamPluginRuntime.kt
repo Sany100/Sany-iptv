@@ -168,6 +168,12 @@ object SanyCloudStreamPluginRuntime {
     private val searchCache = ConcurrentHashMap<String, CachedSearch>()
     private const val SEARCH_CACHE_TTL_MS = 5 * 60 * 1000L
 
+    // Short-lived cache for playback URLs; signed links may expire, so keep TTL small.
+    private data class CachedPlayback(val savedAt: Long, val requests: List<SanyPlaybackRequest>)
+    private val playbackCache = ConcurrentHashMap<String, CachedPlayback>()
+    private val playbackLocks = ConcurrentHashMap<String, Mutex>()
+    private const val PLAYBACK_CACHE_TTL_MS = 60 * 1000L
+
     suspend fun search(providerName: String, query: String): List<SearchResponse> {
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
@@ -258,19 +264,32 @@ object SanyCloudStreamPluginRuntime {
     ): List<SanyPlaybackRequest> {
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
-        val links = mutableListOf<ExtractorLink>()
-        val subtitles = mutableListOf<SubtitleFile>()
-        provider.loadLinks(
-            data = episodeData,
-            isCasting = false,
-            subtitleCallback = { subtitles.add(it) },
-            callback = { links.add(it) }
-        )
-        return links.map { link ->
-            CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles, provider.name)
+        val cacheKey = provider.name.lowercase() + ":" + episodeData.hashCode() + ":" + episodeData.length
+        fun cached(): List<SanyPlaybackRequest>? = playbackCache[cacheKey]?.takeIf {
+            System.currentTimeMillis() - it.savedAt < PLAYBACK_CACHE_TTL_MS
+        }?.requests
+        cached()?.let { return it }
+        val requestLock = playbackLocks.computeIfAbsent(cacheKey) { Mutex() }
+        return requestLock.withLock {
+            cached()?.let { return@withLock it }
+            val links = mutableListOf<ExtractorLink>()
+            val subtitles = mutableListOf<SubtitleFile>()
+            provider.loadLinks(
+                data = episodeData,
+                isCasting = false,
+                subtitleCallback = { subtitles.add(it) },
+                callback = { links.add(it) }
+            )
+            val requests = links.map { link ->
+                CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles, provider.name)
+            }.distinctBy { it.url }
+            if (requests.isNotEmpty()) {
+                if (playbackCache.size > 120) playbackCache.clear()
+                playbackCache[cacheKey] = CachedPlayback(System.currentTimeMillis(), requests)
+            }
+            requests
         }
     }
-
     private fun rollback(path: String, instance: BasePlugin?) {
         if (instance != null) runCatching { instance.beforeUnload() }
         APIHolder.apis.filter { it.sourcePlugin == path }.forEach { APIHolder.removePluginMapping(it) }
