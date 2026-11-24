@@ -2380,6 +2380,8 @@ class MainActivity : AppCompatActivity() {
                     val episodes = when (response) {
                         is com.lagradost.cloudstream3.AnimeLoadResponse ->
                             response.episodes.values.flatten()
+                        // Some Anime providers use CloudStream's standard TV-series response.
+                        is com.lagradost.cloudstream3.TvSeriesLoadResponse -> response.episodes
                         is com.lagradost.cloudstream3.MovieLoadResponse -> {
                             val movieProvider = SanyCloudStreamPluginRuntime.providers()
                                 .firstOrNull { it.name == providerName }
@@ -2502,6 +2504,8 @@ class MainActivity : AppCompatActivity() {
                                     val episodes = when (response) {
                                         is com.lagradost.cloudstream3.AnimeLoadResponse ->
                                             response.episodes.values.flatten()
+                                        // Support providers that expose Anime as a flat TV-series episode list.
+                                        is com.lagradost.cloudstream3.TvSeriesLoadResponse -> response.episodes
                                         is com.lagradost.cloudstream3.MovieLoadResponse -> {
                                             listOfNotNull(response.dataUrl.takeIf { it.isNotBlank() }?.let { data ->
                                                 provider.newEpisode(data) { name = "Movie" }
