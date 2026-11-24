@@ -2479,7 +2479,7 @@ class MainActivity : AppCompatActivity() {
                 else -> !isMovie(channel) && !isSeries(channel)
             }
             if (eligibleForAll) allCount++
-            val group = channel.group
+            val group = if (isSportsChannel(channel)) "Sports" else channel.group
             if (group.isNotBlank() && !groupCounts.containsKey(group)) {
                 groupCounts[group] = 0
             }
@@ -2884,6 +2884,7 @@ class MainActivity : AppCompatActivity() {
                 selectedGroup == "All" -> true
                 section == "Series" && selectedGroup == "Anime" -> isAnime(c)
                 section == "Movies" && selectedGroup in movieCategories -> matchesMovieCategory(c, selectedGroup)
+                section == "Live TV" && selectedGroup.equals("Sports", true) -> isSportsChannel(c)
                 else -> c.group.equals(selectedGroup, true)
             }
             val q = searchQuery.trim().lowercase()
