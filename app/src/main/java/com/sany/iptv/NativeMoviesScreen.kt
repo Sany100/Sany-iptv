@@ -67,6 +67,8 @@ class NativeMoviesScreen(
     private var activeMovieProviders: List<String> = emptyList()
     private var searchResultsHost: LinearLayout? = null
     private lateinit var body: LinearLayout
+    // Shared outer scroll container lets numbered category pages always reopen at the top.
+    private var catalogueScroll: ScrollView? = null
 
     fun create(): View {
         body = LinearLayout(context).apply {
@@ -81,6 +83,7 @@ class NativeMoviesScreen(
             overScrollMode = View.OVER_SCROLL_NEVER
             addView(body)
         }
+        catalogueScroll = scroll
         renderMovies()
         return scroll
     }
@@ -297,7 +300,10 @@ class NativeMoviesScreen(
                 gravity = Gravity.CENTER
                 setPadding(dp(4), dp(10), dp(4), dp(22))
             }
-            pager.addView(button("‹") { renderMovieCategoryPage(host, shelves, page - 1) }.apply {
+            pager.addView(button("‹") {
+                renderMovieCategoryPage(host, shelves, page - 1)
+                catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
+            }.apply {
                 isEnabled = page > 1
                 alpha = if (page > 1) 1f else 0.4f
             })
@@ -306,6 +312,7 @@ class NativeMoviesScreen(
             for (number in first..last) {
                 pager.addView(button(number.toString()) {
                     renderMovieCategoryPage(host, shelves, number)
+                    catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
                 }.apply {
                     alpha = if (number == page) 1f else 0.72f
                 }, LinearLayout.LayoutParams(dp(42), dp(40)).apply {
@@ -313,7 +320,10 @@ class NativeMoviesScreen(
                     rightMargin = dp(3)
                 })
             }
-            pager.addView(button("›") { renderMovieCategoryPage(host, shelves, page + 1) }.apply {
+            pager.addView(button("›") {
+                renderMovieCategoryPage(host, shelves, page + 1)
+                catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
+            }.apply {
                 isEnabled = page < pageCount
                 alpha = if (page < pageCount) 1f else 0.4f
             })
