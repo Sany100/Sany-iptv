@@ -363,6 +363,13 @@ class MainActivity : AppCompatActivity() {
                         android.util.Log.e("SANY-MOVIE", "Movie extension restore failed: ${result.error}")
                     }
                 }
+                SanyLiveSportsExtensionManager.loadInstalled(applicationContext).forEach { result ->
+                    if (result.success) {
+                        android.util.Log.i("SANY-LIVE-SPORTS", "Live Sports extension restored: ${result.pluginName}")
+                    } else {
+                        android.util.Log.e("SANY-LIVE-SPORTS", "Live Sports extension restore failed: ${result.error}")
+                    }
+                }
                 // The Movies screen may have been created before async extension restore finished.
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed && section == "Movies") renderSection()
