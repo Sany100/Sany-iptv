@@ -2724,6 +2724,9 @@ class MainActivity : AppCompatActivity() {
         animeFallbackRequests = ordered
         animeFallbackIndex = selectedIndex
         playSanyPlaybackRequest(ordered[selectedIndex], preserveFallbackQueue = true)
+        // Rebuild the Anime catalogue after selection so its matching provider card
+        // immediately shows the same NOW PLAYING treatment as Live TV.
+        if (section == "Series") renderSection()
     }
 
     private fun tryNextAnimeFallback(): Boolean {
