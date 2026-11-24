@@ -447,6 +447,13 @@ class NativeMoviesScreen(
                     elevation = dp(8).toFloat()
                 }
             }
+            if (isNowPlaying) frame.addView(label("▶ PLAYING", 9, Color.WHITE, true).apply {
+                setPadding(dp(7), dp(4), dp(7), dp(4))
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(0xFF36C5FF.toInt(), 0xFF0875F5.toInt())).apply { cornerRadius = dp(16).toFloat() }
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+                setMargins(dp(6), dp(6), 0, 0)
+            })
             val poster = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundColor(card)
@@ -523,6 +530,13 @@ class NativeMoviesScreen(
                     elevation = dp(8).toFloat()
                 }
             }
+            if (isNowPlaying) frame.addView(label("▶ PLAYING", 9, Color.WHITE, true).apply {
+                setPadding(dp(7), dp(4), dp(7), dp(4))
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(0xFF36C5FF.toInt(), 0xFF0875F5.toInt())).apply { cornerRadius = dp(16).toFloat() }
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+                setMargins(dp(6), dp(6), 0, 0)
+            })
             val poster = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundColor(card)
