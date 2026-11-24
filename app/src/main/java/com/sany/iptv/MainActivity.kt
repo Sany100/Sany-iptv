@@ -1863,16 +1863,24 @@ class MainActivity : AppCompatActivity() {
                             // Plugins are synchronized and loaded once during app startup.
                             // Never repeat repository downloads/hash checks when the user merely
                             // opens this screen; use the already registered curated providers.
-                            val curatedNames = setOf("Animedubhindi", "Animesalt", "Cinefreak")
+                            // The provider display name is not guaranteed to match the
+                            // extension's internalName (some plugins register a differently
+                            // cased or branded MainAPI name). These are the only Anime packages
+                            // loaded by the curated Anime sync path, so select by actual
+                            // CloudStream media capabilities rather than brittle name equality.
                             val animeProviders = SanyCloudStreamPluginRuntime.providers()
                                 .filter { provider ->
-                                    curatedNames.any { it.equals(provider.name, ignoreCase = true) } &&
-                                        provider.supportedTypes.any { type ->
-                                            type == com.lagradost.cloudstream3.TvType.Anime ||
-                                                type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
-                                                type == com.lagradost.cloudstream3.TvType.OVA
-                                        }
+                                    provider.supportedTypes.any { type ->
+                                        type == com.lagradost.cloudstream3.TvType.Anime ||
+                                            type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
+                                            type == com.lagradost.cloudstream3.TvType.OVA
+                                    }
                                 }
+                            android.util.Log.i(
+                                "SANY-Anime-Home",
+                                "Loaded Anime homepage providers: " +
+                                    animeProviders.joinToString { "${it.name}[${it.supportedTypes.joinToString()}]" }
+                            )
                             // Use each provider's real homepage catalogue instead of
                             // one-character searches (many providers reject or return no
                             // results for A-Z queries). Fetch every homepage shelf from all
