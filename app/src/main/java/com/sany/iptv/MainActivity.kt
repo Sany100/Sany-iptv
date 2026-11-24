@@ -1542,6 +1542,8 @@ class MainActivity : AppCompatActivity() {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(14), 0, dp(28))
+            clipChildren = false
+            clipToPadding = false
         }
         page.addView(text("LIVE SPORTS", 22, white, true))
         page.addView(text("Live matches • Football • Cricket • Sports channels", 12, muted)
@@ -1737,7 +1739,7 @@ class MainActivity : AppCompatActivity() {
                                             loadCachedChannelLogo(image, placeholder, it)
                                         }
                                         gridRow.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply {
-                                            setMargins(dp(2), dp(3), dp(2), dp(5))
+                                            setMargins(0, dp(3), 0, dp(5))
                                         })
                                     }
                                     if (pair.size == 1) {
