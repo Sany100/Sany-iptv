@@ -333,12 +333,13 @@ class MainActivity : AppCompatActivity() {
             // Restore the current screen only for Android's in-process Activity recreation
             // (for example, rotation or process recreation with a saved instance state).
             section = savedInstanceState?.getString("ui_section") ?: "Live TV"
-            liveTvSelectedGroup = savedInstanceState?.getString("live_tv_group") ?: "Select category"
+            liveTvSelectedGroup = "All"
             liveTvSearchQuery = savedInstanceState?.getString("live_tv_search") ?: ""
             selectedGroup = savedInstanceState?.getString("ui_group") ?: "All"
             searchQuery = savedInstanceState?.getString("ui_search") ?: ""
             if (section == "Live TV") {
-                selectedGroup = liveTvSelectedGroup
+                selectedGroup = "All"
+                liveTvSelectedGroup = "All"
                 searchQuery = liveTvSearchQuery
             }
             playbackReturnSection = savedInstanceState?.getString("playback_return_section") ?: section
@@ -350,9 +351,9 @@ class MainActivity : AppCompatActivity() {
             // A fresh app launch always opens the Live TV home/category directory.
             // Do not carry the last visited category or section across a full app close.
             section = "Live TV"
-            liveTvSelectedGroup = "Select category"
+            liveTvSelectedGroup = "All"
             liveTvSearchQuery = ""
-            selectedGroup = "Select category"
+            selectedGroup = "All"
             searchQuery = ""
             prefs.edit()
                 .putString("ui_section", "Live TV")
@@ -2994,14 +2995,14 @@ class MainActivity : AppCompatActivity() {
 
         // Full-height category directory inspired by the supplied reference.
         // Channel cards are hidden until the user enters a category.
-        val categoryDirectory = section == "Live TV" && selectedGroup == "Select category"
+        val categoryDirectory = false // Live TV now displays every channel directly; category directory is removed.
         // Movies opens directly to the movie library; category filters are not shown.
         val movieDirectory = section == "Movies"
         if (movieDirectory) selectedGroup = "All"
         // Entering a Live TV category switches to an immersive channel view:
         // hide the branded/title header and playlist selector, then restore them
         // when the user returns to the category directory.
-        val immersiveCategory = section == "Live TV" && !categoryDirectory
+        val immersiveCategory = false // No category drill-down screen in Live TV.
         // Category rendering can run after tab changes or playback refreshes; never
         // let it re-show the branded header while a video player is still attached.
         homeHeaderContainer?.visibility = if (playerView != null || immersiveCategory) View.GONE else View.VISIBLE
@@ -3011,7 +3012,7 @@ class MainActivity : AppCompatActivity() {
             if (section == "Checker" || (section == "Live TV" && !immersiveCategory && !movieDirectory)) View.VISIBLE
             else View.GONE
         // Keep the category back, view-mode and search toolbar visible above channel rows.
-        categoryHeaderContainer.visibility = if (section == "Live TV" && (categoryDirectory || immersiveCategory)) View.VISIBLE else View.GONE
+        categoryHeaderContainer.visibility = View.GONE
         (categoryRow.parent as? ScrollView)?.visibility =
             if (categoryDirectory) View.VISIBLE else View.GONE
         (categoryRow.parent as? ScrollView)?.let { scroll ->
@@ -3277,6 +3278,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderChannelRows(container: LinearLayout) {
         container.removeAllViews()
+        if (section == "Live TV" && selectedGroup == "Select category") selectedGroup = "All"
         val filtered = filteredChannels()
         countLabel.text = if (section == "Live TV" && streamChecks.isNotEmpty() && !checkerRunning) {
             "${filtered.size} WORKING CHANNELS"
@@ -3284,7 +3286,7 @@ class MainActivity : AppCompatActivity() {
             "${filtered.size} ITEMS  •  ${channels.size} IN PLAYLIST"
         }
         if (filtered.isEmpty()) {
-            val message = if (section == "Live TV" && selectedGroup == "Select category") "একটি Category নির্বাচন করুন — সেই Category-র চ্যানেল এখানে দেখাবে" else if (section == "Live TV" && checkerRunning) "Checking channels… ${liveTvProgressLabel()}" else "No working channels found"
+            val message = if (section == "Live TV" && checkerRunning) "Checking channels… ${liveTvProgressLabel()}" else "No working channels found"
             container.addView(text(message, 15, muted, true).apply { gravity = Gravity.CENTER; setPadding(0, dp(35), 0, dp(35)) })
             return
         }
