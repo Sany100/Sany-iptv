@@ -2211,9 +2211,8 @@ class MainActivity : AppCompatActivity() {
             light = isLight,
             accent = accent,
             onPlay = { playbackRequest ->
-                // AniLight resolves the source, request headers, audio language and
-                // all matching subtitle tracks before handing the request to Media3.
-                playSanyPlaybackRequest(playbackRequest)
+                // Show the same source confirmation step used by extension playback.
+                showAnimeSourcePicker(playbackRequest.title.ifBlank { "Anime Sources" }, listOf(playbackRequest))
             },
             onPlaybackLoading = { title, show -> showAnimePlaybackLoading(title, show) },
             onBrowseCloudStreamProviders = { showCloudStreamProviderBrowser() },
