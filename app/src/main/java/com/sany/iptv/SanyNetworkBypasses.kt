@@ -16,8 +16,8 @@ object SanyNetworkBypasses {
     private const val CLONES = "clone_sites"
     private val rawGithub = Regex("^https://raw\\.githubusercontent\\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+)/(.+)$")
 
-    fun githubProxyEnabled(context: Context) = context.getSharedPreferences(PREFS, 0).getBoolean("github_proxy", false)
-    fun dohEnabled(context: Context) = context.getSharedPreferences(PREFS, 0).getBoolean("doh_enabled", false)
+    fun githubProxyEnabled(context: Context) = context.getSharedPreferences(PREFS, 0).getBoolean("github_proxy", true)
+    fun dohEnabled(context: Context) = context.getSharedPreferences(PREFS, 0).getBoolean("doh_enabled", true)
     fun dohProvider(context: Context) = context.getSharedPreferences(PREFS, 0).getString("doh_provider", "Cloudflare") ?: "Cloudflare"
 
     fun cloneMappings(context: Context): Map<String, String> {
