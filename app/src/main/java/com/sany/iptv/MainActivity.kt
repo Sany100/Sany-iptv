@@ -1845,7 +1845,7 @@ class MainActivity : AppCompatActivity() {
                             if (syncReport.failures.isNotEmpty()) {
                                 android.util.Log.w("SANY-Anime-Provider", syncReport.failures.joinToString("; "))
                             }
-                            SanyCloudStreamPluginRuntime.providers()
+                            val animeProviders = SanyCloudStreamPluginRuntime.providers()
                                 .filter { provider ->
                                     provider.name in allowedAnimeProviderNames &&
                                         provider.supportedTypes.any { type ->
@@ -1854,40 +1854,65 @@ class MainActivity : AppCompatActivity() {
                                                 type == com.lagradost.cloudstream3.TvType.OVA
                                         }
                                 }
-                                .flatMap { provider ->
-                                    runCatching {
-                                        val providerShelves = kotlinx.coroutines.withTimeoutOrNull(15_000L) {
-                                            SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
-                                        }.orEmpty()
-                                        val languageLabel = when (provider.lang.lowercase()) {
-                                            "bn" -> "Bangla"
-                                            "hi" -> "Hindi"
-                                            else -> ""
-                                        }
-                                        val visibleShelves = providerShelves.mapNotNull { shelf ->
-                                            val entries = shelf.list.mapNotNull { item ->
-                                                val title = item.name.trim()
-                                                val url = item.url.trim()
-                                                if (title.isBlank() || url.isBlank()) null
-                                                else SanyProviderItem(title, url, item.posterUrl.orEmpty())
+                            val letters = ('A'..'Z').toList()
+                            val requestGate = kotlinx.coroutines.sync.Semaphore(4)
+                            val allResults = kotlinx.coroutines.coroutineScope {
+                                animeProviders.flatMap { provider ->
+                                    letters.map { letter ->
+                                        kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                                            requestGate.withPermit {
+                                                val found = runCatching {
+                                                    kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+                                                        SanyCloudStreamPluginRuntime.search(provider.name, letter.toString())
+                                                    }.orEmpty()
+                                                }.getOrElse { error ->
+                                                    android.util.Log.w(
+                                                        "SANY-Anime-AZ",
+                                                        "${provider.name} [$letter]: ${error.message}"
+                                                    )
+                                                    emptyList()
+                                                }
+                                                found.mapNotNull { item ->
+                                                    val title = item.name.trim()
+                                                    val url = item.url.trim()
+                                                    val firstLetter = title.firstOrNull()?.uppercaseChar()
+                                                    val isAnimeSeries = item.type == com.lagradost.cloudstream3.TvType.Anime ||
+                                                        item.type == com.lagradost.cloudstream3.TvType.OVA
+                                                    val isAnimeMovie = item.type == com.lagradost.cloudstream3.TvType.AnimeMovie
+                                                    if (title.isBlank() || url.isBlank() || firstLetter != letter ||
+                                                        (!isAnimeSeries && !isAnimeMovie)
+                                                    ) null
+                                                    else SanyProviderItem(
+                                                        title = title,
+                                                        url = url,
+                                                        posterUrl = item.posterUrl.orEmpty(),
+                                                        sourceProvider = provider.name
+                                                    ).let { entry -> (if (isAnimeMovie) "MOVIE" else "SERIES") to entry }
+                                                }
                                             }
-                                            if (entries.isEmpty()) null
-                                            else SanyProviderShelf(
-                                                provider.name,
-                                                listOf(languageLabel, shelf.name).filter { it.isNotBlank() }.joinToString(" • "),
-                                                entries
-                                            )
                                         }
-                                        // Always publish a provider tile even when its plugin
-                                        // has no homepage catalogue; users can still search it.
-                                        if (visibleShelves.isEmpty()) {
-                                            listOf(SanyProviderShelf(provider.name, languageLabel, emptyList()))
-                                        } else visibleShelves
-                                    }.getOrElse { error ->
-                                        android.util.Log.w("SANY-Provider-Home", "${provider.name}: ${error.message}")
-                                        emptyList()
                                     }
-                                }
+                                }.awaitAll().flatten()
+                            }
+                            // One A–Z catalogue across all three verified extensions.
+                            // Duplicate titles from multiple providers are collapsed, while
+                            // the selected source provider is retained for opening details.
+                            val series = allResults.filter { it.first == "SERIES" }
+                                .map { it.second }
+                                .distinctBy { it.title.trim().lowercase() }
+                                .sortedBy { it.title.lowercase() }
+                            val movies = allResults.filter { it.first == "MOVIE" }
+                                .map { it.second }
+                                .distinctBy { it.title.trim().lowercase() }
+                                .sortedBy { it.title.lowercase() }
+                            buildList {
+                                if (series.isNotEmpty()) add(
+                                    SanyProviderShelf("SANY Anime", "ANIME SERIES • A–Z", series)
+                                )
+                                if (movies.isNotEmpty()) add(
+                                    SanyProviderShelf("SANY Anime", "ANIME MOVIES • A–Z", movies)
+                                )
+                            }
                         }
                     }.getOrElse { error ->
                         android.util.Log.w("SANY-Provider-Home", "Could not load provider home shelves", error)
