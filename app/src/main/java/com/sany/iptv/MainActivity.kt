@@ -2722,11 +2722,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             runOnUiThread {
+                // Always release the tap lock when resolution completes, including
+                // timeout/error/empty-result cases, so the next episode remains playable.
+                animeEpisodeSourceResolving = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { sources ->
-                    val available = sources.distinctBy { it.url }
+                    val available = sources.distinctBy { it.url }.filter { it.url.isNotBlank() }
                     if (available.isEmpty()) {
-                        toast("এই Episode-এর playable source পাওয়া যায়নি")
+                        toast("এই Episode-এর playable source পাওয়া যায়নি। অন্য Episode চেষ্টা করুন")
                     } else {
                         android.util.Log.i("SANY-CS", "Primary source resolved for $title: ${available.size}")
                         showAnimeSourcePicker("$title — Sources", available)
