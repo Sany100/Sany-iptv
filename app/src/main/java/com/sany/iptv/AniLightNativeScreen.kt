@@ -431,6 +431,7 @@ class AniLightNativeScreen(
                 background = rounded(surface, 9)
                 clipToOutline = true
             }
+            applyProviderNowPlayingHighlight(card, posterFrame, entry, shelf.providerName)
             val poster = ImageView(context).apply {
                 scaleType = ImageView.ScaleType.CENTER_CROP
                 setBackgroundColor(surface)
@@ -488,6 +489,7 @@ class AniLightNativeScreen(
                     }
                 }
                 val posterFrame = FrameLayout(context).apply { background = rounded(surface, 9); clipToOutline = true }
+                applyProviderNowPlayingHighlight(card, posterFrame, entry, shelf.providerName)
                 val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
                 posterFrame.addView(poster, FrameLayout.LayoutParams(-1, -1))
                 if (entry.posterUrl.startsWith("http")) loadImage(entry.posterUrl, poster)
@@ -1672,6 +1674,43 @@ class AniLightNativeScreen(
                 }
             }
         }
+    }
+
+    // Highlight CloudStream Anime catalogue cards using the shared SANY playback identity.
+    // Match both provider and catalogue URL/title so similarly named entries from other providers stay untouched.
+    private fun applyProviderNowPlayingHighlight(
+        card: View,
+        posterFrame: FrameLayout,
+        entry: SanyProviderItem,
+        fallbackProvider: String
+    ) {
+        val prefs = context.getSharedPreferences("sany_iptv", Context.MODE_PRIVATE)
+        if (prefs.getString("sany_last_played_section", "") != "Series") return
+        val playedProvider = prefs.getString("sany_last_played_provider", "").orEmpty()
+        val playedTitle = prefs.getString("sany_last_played_title", "").orEmpty()
+        val playedUrl = prefs.getString("sany_last_played_item_url", "").orEmpty()
+        val itemProvider = entry.sourceProvider.ifBlank { fallbackProvider }
+        val matches = playedProvider.equals(itemProvider, true) && (
+            playedUrl.isNotBlank() && playedUrl == entry.url ||
+                playedTitle.isNotBlank() && playedTitle.equals(entry.title, true)
+            )
+        if (!matches) return
+        card.background = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(3), accent)
+        }
+        card.elevation = dp(8).toFloat()
+        val badge = label("▶ PLAYING", 9, Color.WHITE, true).apply {
+            setPadding(dp(7), dp(4), dp(7), dp(4))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(accent, 0xFF0875F5.toInt())
+            ).apply { cornerRadius = dp(16).toFloat() }
+        }
+        posterFrame.addView(badge, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+            setMargins(dp(5), dp(5), 0, 0)
+        })
     }
 
     // Match the persisted currently-playing episode to the active anime slug.
