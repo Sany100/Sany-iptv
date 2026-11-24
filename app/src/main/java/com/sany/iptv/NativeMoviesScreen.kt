@@ -9,6 +9,8 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.widget.EditText
@@ -52,6 +54,11 @@ class NativeMoviesScreen(
     // Keep homepage jobs attached to this screen and cancel stale work on rerender.
     private val homeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val homeJobs = mutableListOf<Job>()
+    private var movieSearchJob: Job? = null
+    private val searchHandler = Handler(Looper.getMainLooper())
+    private var searchGeneration = 0
+    private var activeMovieProviders: List<String> = emptyList()
+    private var searchResultsHost: LinearLayout? = null
     private lateinit var body: LinearLayout
 
     fun create(): View {
@@ -107,7 +114,35 @@ class NativeMoviesScreen(
             rightMargin = dp(8)
         })
         top.addView(button("+ ADD") { showAddMovieDialog() }, LinearLayout.LayoutParams(dp(82), dp(40)))
-        body.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(20) })
+        body.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+
+        val searchBanner = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(accent, 0xFF172B4D.toInt())).apply { cornerRadius = dp(18).toFloat() }
+        }
+        searchBanner.addView(label("DISCOVER MOVIES", 20, Color.WHITE, true))
+        searchBanner.addView(label("Search all selected providers at once", 12, 0xFFE5ECF7.toInt(), false),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+        val searchField = EditText(context).apply {
+            hint = "Movie name লিখুন…"
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT
+            setTextColor(Color.WHITE)
+            setHintTextColor(0xFFD5DFEF.toInt())
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = GradientDrawable().apply {
+                setColor(0x33202020)
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), 0x88FFFFFF.toInt())
+            }
+        }
+        searchBanner.addView(searchField, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(12) })
+        body.addView(searchBanner, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
+        val liveResults = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        searchResultsHost = liveResults
+        body.addView(liveResults, LinearLayout.LayoutParams(-1, -2))
 
         // Only manually selected, installed Movie extensions are rendered here.
         val installedExtensions = SanyMovieExtensionManager.installed(context)
@@ -134,23 +169,19 @@ class NativeMoviesScreen(
             .distinctBy { it.name.lowercase() }
             .sortedBy { it.name.lowercase() }
 
-        if (extensionProviders.isNotEmpty()) {
-            addSectionTitle("SELECTED MOVIE EXTENSIONS")
-            extensionProviders.forEach { provider ->
-                val entry = button("▶   ${provider.name}   •   SEARCH MOVIES") {
-                    onOpenExtensionProvider(provider.name)
-                }
-                entry.gravity = Gravity.CENTER_VERTICAL
-                entry.textSize = 14f
-                body.addView(entry, LinearLayout.LayoutParams(-1, dp(52)).apply {
-                    bottomMargin = dp(8)
-                })
-                val homeHost = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-                body.addView(homeHost, LinearLayout.LayoutParams(-1, -2).apply {
-                    bottomMargin = dp(14)
-                })
-                loadExtensionHome(provider.name, homeHost)
+        activeMovieProviders = extensionProviders.map { it.name }
+        searchField.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                scheduleMovieSearch(s?.toString().orEmpty())
             }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+        if (extensionProviders.isNotEmpty()) {
+            addSectionTitle("MOVIE CATEGORIES")
+            val homeHost = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            body.addView(homeHost, LinearLayout.LayoutParams(-1, -2))
+            loadMergedExtensionHome(extensionProviders.map { it.name }, homeHost)
         } else {
             body.addView(label(
                 "কোনো Movie Extension নির্বাচন করা হয়নি। ADD / SELECT চাপ দিয়ে ইনস্টল করা Movie provider নির্বাচন করুন।",
@@ -182,45 +213,117 @@ class NativeMoviesScreen(
         }
     }
 
-    /** Load the selected provider's shelves as large, swipeable three-card rails. */
-    private fun loadExtensionHome(providerName: String, host: LinearLayout) {
+    /** Merge selected providers into category shelves and remove duplicate titles. */
+    private fun loadMergedExtensionHome(providerNames: List<String>, host: LinearLayout) {
         host.removeAllViews()
-        host.addView(label("Loading $providerName movies…", 13, muted, false))
+        host.addView(label("Loading movie categories…", 13, muted, false))
         val job = homeScope.launch {
             val result = runCatching {
-                kotlinx.coroutines.withTimeout(25_000L) {
-                    SanyCloudStreamPluginRuntime.homePage(providerName, 1)
+                kotlinx.coroutines.withTimeout(30_000L) {
+                    kotlinx.coroutines.coroutineScope {
+                        providerNames.map { providerName ->
+                            kotlinx.coroutines.async(Dispatchers.IO) {
+                                providerName to runCatching {
+                                    SanyCloudStreamPluginRuntime.homePage(providerName, 1)
+                                }.getOrDefault(emptyList())
+                            }
+                        }.map { it.await() }
+                    }
                 }
             }
             mainHandler.post {
                 if (host.parent == null) return@post
                 host.removeAllViews()
-                result.onSuccess { shelves ->
-                    val visibleShelves = shelves.filter { it.list.isNotEmpty() }
-                    if (visibleShelves.isEmpty()) {
-                        host.addView(label(
-                            "$providerName-এর homepage catalogue নেই। SEARCH MOVIES দিয়ে খুঁজুন।",
-                            13, muted, false
-                        ))
-                    } else {
-                        visibleShelves.forEach { shelf ->
-                            val cards = shelf.list.map { item ->
-                                MovieShelfCard(item.name, item.posterUrl.orEmpty()) {
-                                    onOpenExtensionTitle(providerName, item.url, item.name)
+                result.onSuccess { providerShelves ->
+                    val categoryItems = LinkedHashMap<String, LinkedHashMap<String, MovieShelfCard>>()
+                    providerShelves.forEach { (providerName, shelves) ->
+                        shelves.forEach shelfLoop@{ shelf ->
+                            val category = shelf.name.trim().ifBlank { "Movies" }
+                            val bucket = categoryItems.getOrPut(category) { LinkedHashMap() }
+                            shelf.list.forEach itemLoop@{ item ->
+                                val title = item.name.trim()
+                                val url = item.url.trim()
+                                if (title.isBlank() || url.isBlank()) return@itemLoop
+                                val key = title.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+                                if (key.isBlank() || bucket.containsKey(key)) return@itemLoop
+                                bucket[key] = MovieShelfCard(title, item.posterUrl.orEmpty()) {
+                                    onOpenExtensionTitle(providerName, url, title)
                                 }
                             }
-                            addMovieShelf(shelf.name, cards, host)
                         }
                     }
+                    val mergedShelves = categoryItems.entries.sortedBy { it.key.lowercase() }
+                        .filter { it.value.isNotEmpty() }
+                    if (mergedShelves.isEmpty()) {
+                        host.addView(label("Homepage category পাওয়া যায়নি। উপরের search ব্যবহার করুন।", 13, muted, false))
+                    } else {
+                        mergedShelves.forEach { (category, cards) ->
+                            addMovieShelf(category, cards.values.toList(), host)
+                        }
+                    }
+                    val errors = providerShelves.filter { it.second.isEmpty() }.map { it.first }
+                    if (errors.isNotEmpty()) host.addView(label(
+                        "কিছু provider-এর homepage পাওয়া যায়নি: ${errors.joinToString()}", 11, muted, false))
                 }.onFailure { error ->
-                    host.addView(label(
-                        "Movie catalogue load failed: ${error.message ?: error.javaClass.simpleName}",
-                        13, muted, false
-                    ))
+                    host.addView(label("Movie catalogue load failed: ${error.message ?: error.javaClass.simpleName}", 13, muted, false))
                 }
             }
         }
         homeJobs.add(job)
+    }
+
+    /** Debounced live search across every selected Movie provider. */
+    private fun scheduleMovieSearch(rawQuery: String) {
+        searchHandler.removeCallbacksAndMessages("movie-search")
+        val query = rawQuery.trim()
+        val host = searchResultsHost ?: return
+        searchGeneration += 1
+        val generation = searchGeneration
+        movieSearchJob?.cancel()
+        host.removeAllViews()
+        if (query.isBlank()) return
+        host.addView(label("Searching all providers…", 13, muted, false))
+        val searchTask = Runnable {
+            movieSearchJob = homeScope.launch {
+                val result = runCatching {
+                    kotlinx.coroutines.withTimeout(20_000L) {
+                        kotlinx.coroutines.coroutineScope {
+                            activeMovieProviders.map { providerName ->
+                                kotlinx.coroutines.async(Dispatchers.IO) {
+                                    providerName to runCatching {
+                                        SanyCloudStreamPluginRuntime.search(providerName, query)
+                                    }.getOrDefault(emptyList())
+                                }
+                            }.map { it.await() }
+                        }
+                    }
+                }
+                mainHandler.post {
+                    if (generation != searchGeneration || host.parent == null) return@post
+                    host.removeAllViews()
+                    result.onSuccess { providerResults ->
+                        val unique = LinkedHashMap<String, Triple<String, String, String>>()
+                        providerResults.forEach { (providerName, items) ->
+                            items.forEach { item ->
+                                val title = item.name.trim()
+                                val url = item.url.trim()
+                                val key = title.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+                                if (title.isNotBlank() && url.isNotBlank() && key.isNotBlank() && !unique.containsKey(key)) {
+                                    unique[key] = Triple(providerName, url, title)
+                                }
+                            }
+                        }
+                        if (unique.isEmpty()) host.addView(label("কোনো Movie পাওয়া যায়নি।", 13, muted, false))
+                        else addMovieShelf("SEARCH RESULTS • ${unique.size}", unique.values.map { (provider, url, title) ->
+                            MovieShelfCard(title, "") { onOpenExtensionTitle(provider, url, title) }
+                        }, host, showMore = false)
+                    }.onFailure { error ->
+                        host.addView(label("Search failed: ${error.message ?: error.javaClass.simpleName}", 13, muted, false))
+                    }
+                }
+            }
+        }
+        searchHandler.postAtTime(searchTask, "movie-search", android.os.SystemClock.uptimeMillis() + 450L)
     }
 
     /** Anime-style category rail: three large posters visible, swipe sideways for the rest. */
