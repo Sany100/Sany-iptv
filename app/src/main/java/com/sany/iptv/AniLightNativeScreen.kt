@@ -313,7 +313,9 @@ class AniLightNativeScreen(
     /** Show exactly six Anime categories per numbered homepage page. */
     private fun renderHomeCategoryPage() {
         if (!isHomePage || !::contentHost.isInitialized) return
-        contentHost.removeViews(1, (contentHost.childCount - 1).coerceAtLeast(0))
+        // Page rendering can be called after the async loader has already cleared the host.
+        // removeViews(1, 0) is still invalid on Android when childCount is 0 or 1.
+        contentHost.removeAllViews()
         val pageCount = ((cachedProviderShelves.size + homeCategoriesPerPage - 1) / homeCategoriesPerPage).coerceAtLeast(1)
         homeCategoryPage = homeCategoryPage.coerceIn(1, pageCount)
         val from = (homeCategoryPage - 1) * homeCategoriesPerPage
