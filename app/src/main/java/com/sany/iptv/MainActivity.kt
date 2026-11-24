@@ -3597,6 +3597,7 @@ class MainActivity : AppCompatActivity() {
         val value = group.trim()
         return when {
             value.equals("Hindi", true) -> "Hindi"
+            value.equals("Indian Bangla", true) -> "Indian Bangla"
             value.equals("Bangla", true) ||
             value.equals("Bangladesh", true) ||
             value.equals("Akash Go", true) -> "Bangla"
