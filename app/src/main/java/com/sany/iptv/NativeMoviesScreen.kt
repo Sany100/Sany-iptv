@@ -116,14 +116,6 @@ class NativeMoviesScreen(
         homeJobs.clear()
         body.removeAllViews()
         val movies = readMovies()
-        val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(label("MY MOVIES", 23, fg, true), LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(button("ADD / SELECT") { onManageExtensions() }, LinearLayout.LayoutParams(dp(112), dp(40)).apply {
-            rightMargin = dp(8)
-        })
-        top.addView(button("+ ADD") { showAddMovieDialog() }, LinearLayout.LayoutParams(dp(82), dp(40)))
-        body.addView(top, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
-
         val searchBanner = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(16))
