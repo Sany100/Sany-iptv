@@ -22,7 +22,8 @@ permissions:
   contents: read
 concurrency:
   group: cloudstream-toolchain-migration
-  cancel-in-progress: true
+  # Keep the newest source revision's validation run from being cancelled by a follow-up commit.
+  cancel-in-progress: false
 jobs:
   sany-debug:
     runs-on: ubuntu-latest
