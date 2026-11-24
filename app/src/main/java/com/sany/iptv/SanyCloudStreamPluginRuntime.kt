@@ -240,7 +240,6 @@ object SanyCloudStreamPluginRuntime {
                     }
                     .awaitAll()
                     .flatten()
-                    .filter { it.list.isNotEmpty() }
                     .sortedBy { it.name.trim().lowercase() }
             }
             if (shelves.isEmpty()) {
