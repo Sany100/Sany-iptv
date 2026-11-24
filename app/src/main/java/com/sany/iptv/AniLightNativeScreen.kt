@@ -246,17 +246,9 @@ class AniLightNativeScreen(
             }
         }
         catalogueScroll = scroll
-        // Render from memory/API immediately. Domain discovery must never block first paint.
+        // Anime Series is now exclusively CloudStream-extension driven.
+        // Do not contact AniLight, its API, or its legacy catalogue.
         home()
-        thread(name = "AniLight-Domain") {
-            val previousApi = api
-            refreshDomainBlocking()
-            if (previousApi != api) {
-                ui.post {
-                    if (isHomePage) home()
-                }
-            }
-        }
         return scroll
     }
 
@@ -266,117 +258,41 @@ class AniLightNativeScreen(
         showingFilterResults = false
         filterHasNext = false
         body.removeAllViews()
+        pageHistory.clear()
 
-        // CloudStream-style catalogue: one vertical page with a featured hero
-        // followed by independently horizontally-scrolling category shelves.
         contentHost = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(24))
+            setPadding(dp(0), dp(10), dp(0), dp(24))
             clipChildren = false
             clipToPadding = false
         }
         body.addView(contentHost, bottom(12))
-        contentHost.addView(label("Loading AniLight catalogue…", 14, muted, false).apply {
+        contentHost.addView(label("Anime Series • Extension Providers", 18, fg, true).apply {
+            setPadding(dp(14), dp(12), dp(14), dp(14))
+        })
+        val loading = label("নতুন Bangla ও Hindi Anime Extension লোড হচ্ছে…", 14, muted, false).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(55), dp(10), dp(55))
-        })
-
-        val requestVersion = ++homeRequestVersion
-        val cached = homepageCache ?: sharedHomepageCache
-        val cachedAt = if (homepageCache != null) homepageCheckedAt else sharedHomepageCheckedAt
-        if (cached != null && System.currentTimeMillis() - cachedAt < 10 * 60_000L) {
-            renderFullHome(cached)
-            // Refresh stale catalogue in the background while cached shelves stay visible.
-            if (System.currentTimeMillis() - cachedAt > 60_000L) {
-                request("$api/homepage") { fresh ->
-                    if (requestVersion != homeRequestVersion || !isHomePage || fresh == null) return@request
-                    homepageCache = fresh
-                    homepageCheckedAt = System.currentTimeMillis()
-                    sharedHomepageCache = fresh
-                    sharedHomepageCheckedAt = homepageCheckedAt
-                    // Existing visible content is retained; new data is used on next entry.
-                }
-            }
-        } else {
-            request("$api/homepage") { data ->
-                if (requestVersion != homeRequestVersion || !isHomePage) return@request
-                if (data != null) {
-                    homepageCache = data
-                    homepageCheckedAt = System.currentTimeMillis()
-                    sharedHomepageCache = data
-                    sharedHomepageCheckedAt = homepageCheckedAt
-                }
-                renderFullHome(data ?: homepageCache ?: sharedHomepageCache)
-            }
+            setPadding(dp(12), dp(36), dp(12), dp(36))
         }
-    }
+        contentHost.addView(loading)
 
-    private fun renderFullHome(data: JSONObject?) {
-        if (!isHomePage) return
-        contentHost.removeAllViews()
-        if (data == null) {
-            contentHost.addView(label("AniLight catalogue load হয়নি। আবার চেষ্টা করো।", 14, muted, false), bottom(12))
-            contentHost.addView(button("RETRY") { home() })
-            return
-        }
-
-        // Keep Watch Later at the top; omit the featured hero/banner section.
-        val trending = items(data.optJSONObject("trending")?.optJSONArray("media"))
-            .filterNot { it.optBoolean("isAdult", false) }
-
-        renderWatchLaterShelf()
-
-        // A dedicated paginated entry exposes the complete public Anime catalogue,
-        // rather than limiting browsing to the homepage's curated shelves.
-        val catalogueActions = row().apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(4), dp(12), dp(18))
-        }
-        val allAnimeButton = button("✦  BROWSE ALL ANIME  →") {
-            openAllAnimeCatalogue()
-        }
-        catalogueActions.addView(allAnimeButton, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-            rightMargin = dp(8)
-        })
-        catalogueActions.addView(button("⌕") {
-            openAnimeSearch()
-        }.apply {
-            textSize = 23f
-            contentDescription = "Search Anime"
-        }, LinearLayout.LayoutParams(dp(52), dp(48)))
-        contentHost.addView(catalogueActions)
-        val shelves = listOf(
-            Triple("Trending Now", "trending", items(data.optJSONObject("trending")?.optJSONArray("media"))),
-            Triple("Most Popular", "popular", items(data.optJSONObject("popular")?.optJSONArray("media"))),
-            Triple("This Season", "seasonal", items(data.optJSONObject("seasonal")?.optJSONArray("media"))),
-            Triple("Previous Season", "previousSeason", items(data.optJSONObject("previousSeason")?.optJSONArray("media"))),
-            Triple("Popular Movies", "movies", items(data.optJSONObject("popularMovies")?.optJSONArray("media"))),
-            Triple("Top Rated", "topRated", emptyList<JSONObject>()),
-            Triple("Recently Added", "recent", items(data.optJSONArray("recentlyAddedEpisodes"))),
-            Triple("Upcoming", "upcoming", items(data.optJSONObject("upcoming")?.optJSONArray("media")))
-        )
-        shelves.forEach { (title, key, entries) ->
-            if (key == "topRated") {
-                loadHomeShelf(title, key, null)
-            } else if (entries.isNotEmpty()) {
-                addAnimeShelf(title, key, entries.filterNot { it.optBoolean("isAdult", false) })
-            }
-        }
-
-        val genres = listOf(
-            "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
-            "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi",
-            "Slice of Life", "Sports", "Supernatural", "Thriller"
-        )
-        genres.forEach { genre -> loadHomeShelf(genre, "genre:$genre", genre) }
-
-        // Automatically merge every loaded CloudStream provider's homepage shelves
-        // into the main Anime home. A slow or empty provider does not block others.
-        val homeVersion = homeRequestVersion
         onLoadProviderShelves { providerShelves ->
             ui.post {
-                if (!isHomePage || homeVersion != homeRequestVersion) return@post
-                providerShelves.forEach { shelf -> addProviderShelf(shelf) }
+                if (!isHomePage || !::contentHost.isInitialized) return@post
+                contentHost.removeView(loading)
+                contentHost.removeViews(1, (contentHost.childCount - 1).coerceAtLeast(0))
+                if (providerShelves.isEmpty()) {
+                    contentHost.addView(label(
+                        "নতুন Anime Extension পাওয়া যায়নি। Internet connection ও Extension sync পরীক্ষা করো।",
+                        14, muted, false
+                    ).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(dp(18), dp(28), dp(18), dp(28))
+                    })
+                    contentHost.addView(button("RETRY") { home() })
+                } else {
+                    providerShelves.forEach { shelf -> addProviderShelf(shelf) }
+                }
             }
         }
     }
