@@ -1857,32 +1857,25 @@ class MainActivity : AppCompatActivity() {
                                                 type == com.lagradost.cloudstream3.TvType.OVA
                                         }
                                 }
-                            val letters = ('A'..'Z').toList()
-                            val requestGate = kotlinx.coroutines.sync.Semaphore(4)
-                            val allResults = kotlinx.coroutines.coroutineScope {
-                                animeProviders.flatMap { provider ->
-                                    letters.map { letter ->
-                                        async(kotlinx.coroutines.Dispatchers.IO) {
-                                            requestGate.withPermit {
-                                                val found = runCatching {
-                                                    kotlinx.coroutines.withTimeoutOrNull(12_000L) {
-                                                        SanyCloudStreamPluginRuntime.search(provider.name, letter.toString())
-                                                    }.orEmpty()
-                                                }.getOrElse { error ->
-                                                    android.util.Log.w(
-                                                        "SANY-Anime-AZ",
-                                                        "${provider.name} [$letter]: ${error.message}"
-                                                    )
-                                                    emptyList()
-                                                }
-                                                found.mapNotNull { item ->
+                            // Use each provider's real homepage catalogue instead of
+                            // one-character searches (many providers reject or return no
+                            // results for A-Z queries). Fetch every homepage shelf from all
+                            // three allowlisted providers, then merge and sort the results.
+                            val providerResults = kotlinx.coroutines.coroutineScope {
+                                animeProviders.map { provider ->
+                                    async(kotlinx.coroutines.Dispatchers.IO) {
+                                        runCatching {
+                                            SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
+                                                .flatMap { shelf -> shelf.list }
+                                                .mapNotNull { item ->
                                                     val title = item.name.trim()
                                                     val url = item.url.trim()
-                                                    val firstLetter = title.firstOrNull()?.uppercaseChar()
-                                                    val isAnimeSeries = item.type == com.lagradost.cloudstream3.TvType.Anime ||
+                                                    val isAnimeSeries =
+                                                        item.type == com.lagradost.cloudstream3.TvType.Anime ||
                                                         item.type == com.lagradost.cloudstream3.TvType.OVA
-                                                    val isAnimeMovie = item.type == com.lagradost.cloudstream3.TvType.AnimeMovie
-                                                    if (title.isBlank() || url.isBlank() || firstLetter != letter ||
+                                                    val isAnimeMovie =
+                                                        item.type == com.lagradost.cloudstream3.TvType.AnimeMovie
+                                                    if (title.isBlank() || url.isBlank() ||
                                                         (!isAnimeSeries && !isAnimeMovie)
                                                     ) null
                                                     else SanyProviderItem(
@@ -1890,16 +1883,23 @@ class MainActivity : AppCompatActivity() {
                                                         url = url,
                                                         posterUrl = item.posterUrl.orEmpty(),
                                                         sourceProvider = provider.name
-                                                    ).let { entry -> (if (isAnimeMovie) "MOVIE" else "SERIES") to entry }
+                                                    ).let { entry ->
+                                                        (if (isAnimeMovie) "MOVIE" else "SERIES") to entry
+                                                    }
                                                 }
-                                            }
-                                        }
+                                        }.onFailure { error ->
+                                            android.util.Log.w(
+                                                "SANY-Anime-Home",
+                                                "${provider.name} homepage failed: ${error.message}",
+                                                error
+                                            )
+                                        }.getOrDefault(emptyList())
                                     }
-                                }.awaitAll().flatten()
+                                }.awaitAll()
                             }
-                            // One A–Z catalogue across all three verified extensions.
-                            // Duplicate titles from multiple providers are collapsed, while
-                            // the selected source provider is retained for opening details.
+                            val allResults = providerResults.flatten()
+                            // Merge the three curated providers into one A–Z catalogue.
+                            // Keep the source provider on each item for detail/playback.
                             val series = allResults.filter { it.first == "SERIES" }
                                 .map { it.second }
                                 .distinctBy { it.title.trim().lowercase() }
@@ -1908,8 +1908,7 @@ class MainActivity : AppCompatActivity() {
                                 .map { it.second }
                                 .distinctBy { it.title.trim().lowercase() }
                                 .sortedBy { it.title.lowercase() }
-                            // Render one horizontal category rail per alphabet letter.
-                            // Keep Series and Movies as separate A–Z category groups.
+                            val letters = ('A'..'Z').toList()
                             buildList {
                                 for (letter in letters) {
                                     val letterSeries = series.filter {
