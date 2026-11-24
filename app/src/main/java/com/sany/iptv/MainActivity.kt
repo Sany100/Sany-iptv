@@ -363,7 +363,22 @@ class MainActivity : AppCompatActivity() {
                 if (removedVegaMovies > 0) {
                     android.util.Log.i("SANY-MOVIE", "Removed $removedVegaMovies retired VegaMovies extension(s)")
                 }
-                SanyMovieExtensionManager.loadInstalled(applicationContext).forEach { result ->
+                val multiMoviesAutoSync = runCatching {
+                    SanyMovieExtensionManager.syncBuiltInMultiMovies(applicationContext)
+                }.onFailure { error ->
+                    android.util.Log.e("SANY-MOVIE", "Built-in MultiMovies auto-install/update failed", error)
+                }.getOrNull()
+                if (multiMoviesAutoSync != null) {
+                    if (multiMoviesAutoSync.success) {
+                        android.util.Log.i("SANY-MOVIE", "Built-in MultiMovies v51+ auto-installed/updated, selected and loaded")
+                    } else {
+                        android.util.Log.e("SANY-MOVIE", "Built-in MultiMovies auto-load failed: ${multiMoviesAutoSync.error}")
+                    }
+                }
+                SanyMovieExtensionManager.loadInstalled(
+                    applicationContext,
+                    if (multiMoviesAutoSync?.success == true) setOf("multimovies") else emptySet()
+                ).forEach { result ->
                     if (result.success) {
                         android.util.Log.i("SANY-MOVIE", "Movie extension restored: ${result.pluginName}")
                     } else {
