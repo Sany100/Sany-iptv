@@ -80,6 +80,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.9.3")
     implementation("androidx.media3:media3-exoplayer-dash:1.9.3")
     implementation("androidx.media3:media3-ui:1.9.3")
+    implementation("androidx.media3:media3-datasource-okhttp:1.9.3")
     implementation("commons-net:commons-net:3.11.1")
     implementation("com.github.Blatzar:NiceHttp:0.4.18")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
