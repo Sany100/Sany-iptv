@@ -196,49 +196,56 @@ class NativeMoviesScreen(
                                 LinearLayout.LayoutParams(-1, -2).apply {
                                     topMargin = dp(8); bottomMargin = dp(8)
                                 })
-                            val row = LinearLayout(context).apply {
-                                orientation = LinearLayout.HORIZONTAL
-                            }
-                            shelf.list.forEach { item ->
-                                val tile = FrameLayout(context).apply {
-                                    background = rounded(card, 14)
-                                    clipToOutline = true
-                                    isFocusable = true
-                                    setOnClickListener {
-                                        onOpenExtensionTitle(providerName, item.url, item.name)
+                            // Three-column grid; cap first paint to keep large catalogues smooth.
+                            val screenWidthDp = (context.resources.displayMetrics.widthPixels /
+                                context.resources.displayMetrics.density).toInt()
+                            val tileWidth = ((screenWidthDp - 24 - 16) / 3).coerceAtLeast(88)
+                            val tileHeight = (tileWidth * 1.45f).toInt()
+                            shelf.list.take(15).chunked(3).forEach { itemsRow ->
+                                val row = LinearLayout(context).apply {
+                                    orientation = LinearLayout.HORIZONTAL
+                                    gravity = Gravity.TOP
+                                }
+                                itemsRow.forEach { item ->
+                                    val tile = FrameLayout(context).apply {
+                                        background = rounded(card, 14)
+                                        clipToOutline = true
+                                        isFocusable = true
+                                        setOnClickListener {
+                                            onOpenExtensionTitle(providerName, item.url, item.name)
+                                        }
                                     }
+                                    val poster = ImageView(context).apply {
+                                        scaleType = ImageView.ScaleType.CENTER_CROP
+                                        setBackgroundColor(card)
+                                    }
+                                    tile.addView(poster, FrameLayout.LayoutParams(-1, -1))
+                                    item.posterUrl?.takeIf { isHttpUrl(it) }?.let { loadPoster(it, poster) }
+                                    val shade = View(context).apply {
+                                        background = GradientDrawable(
+                                            GradientDrawable.Orientation.TOP_BOTTOM,
+                                            intArrayOf(0x00000000, 0xDD000000.toInt())
+                                        )
+                                    }
+                                    tile.addView(shade, FrameLayout.LayoutParams(-1, dp(76), Gravity.BOTTOM))
+                                    tile.addView(label(item.name, 11, Color.WHITE, true).apply {
+                                        gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                                        textAlignment = View.TEXT_ALIGNMENT_CENTER
+                                        maxLines = 2
+                                        setPadding(dp(5), dp(6), dp(5), dp(8))
+                                    }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+                                    row.addView(tile, LinearLayout.LayoutParams(tileWidth, tileHeight).apply {
+                                        rightMargin = dp(8)
+                                        bottomMargin = dp(10)
+                                    })
                                 }
-                                val poster = ImageView(context).apply {
-                                    scaleType = ImageView.ScaleType.CENTER_CROP
-                                    setBackgroundColor(card)
+                                repeat(3 - itemsRow.size) {
+                                    row.addView(View(context), LinearLayout.LayoutParams(tileWidth, tileHeight).apply {
+                                        rightMargin = dp(8)
+                                    })
                                 }
-                                tile.addView(poster, FrameLayout.LayoutParams(dp(142), dp(206)))
-                                item.posterUrl?.takeIf { isHttpUrl(it) }?.let { loadPoster(it, poster) }
-                                val shade = View(context).apply {
-                                    background = GradientDrawable(
-                                        GradientDrawable.Orientation.TOP_BOTTOM,
-                                        intArrayOf(0x00000000, 0xDD000000.toInt())
-                                    )
-                                }
-                                tile.addView(shade, FrameLayout.LayoutParams(-1, dp(86), Gravity.BOTTOM))
-                                tile.addView(label(item.name, 12, Color.WHITE, true).apply {
-                                    gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                                    textAlignment = View.TEXT_ALIGNMENT_CENTER
-                                    maxLines = 3
-                                    setPadding(dp(8), dp(8), dp(8), dp(10))
-                                }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
-                                row.addView(tile, LinearLayout.LayoutParams(dp(142), dp(206)).apply {
-                                    rightMargin = dp(9)
-                                })
+                                host.addView(row, LinearLayout.LayoutParams(-1, -2))
                             }
-                            val horizontal = HorizontalScrollView(context).apply {
-                                isHorizontalScrollBarEnabled = false
-                                overScrollMode = View.OVER_SCROLL_NEVER
-                                addView(row)
-                            }
-                            host.addView(horizontal, LinearLayout.LayoutParams(-1, -2).apply {
-                                bottomMargin = dp(10)
-                            })
                         }
                     }
                 }.onFailure { error ->
@@ -339,8 +346,8 @@ class NativeMoviesScreen(
                     val temp = java.io.File(directory, cachedFile.name + ".tmp")
                     tempFile = temp
                     connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                        connectTimeout = 3500
-                        readTimeout = 5000
+                        connectTimeout = 2500
+                        readTimeout = 3500
                         instanceFollowRedirects = true
                         useCaches = true
                         setRequestProperty("User-Agent", "Mozilla/5.0 SANY-IPTV")
@@ -370,7 +377,7 @@ class NativeMoviesScreen(
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
                     var sample = 1
-                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 640) sample *= 2
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 420) sample *= 2
                     val options = BitmapFactory.Options().apply {
                         inSampleSize = sample
                         inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
