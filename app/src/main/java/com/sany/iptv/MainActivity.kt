@@ -826,14 +826,12 @@ class MainActivity : AppCompatActivity() {
         }, 900L)
     }
     private fun applySystemBars() {
-        // Keep the Activity window itself in sync with the selected theme; this
-        // prevents dark gaps showing through behind transparent/scrolling views.
+        // Draw the app edge-to-edge and permanently hide the top Android status bar
+        // across every SANY IPTV page. Keep the bottom navigation bar available.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
-        // Android 15+ enforces edge-to-edge for targetSdk 35. Explicitly color
-        // the decor and system-bar surfaces so Day mode never reveals black gaps.
         window.decorView.setBackgroundColor(bg)
-        // Use fully opaque system bars in both Day and Night themes.
-        window.statusBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
+        window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             window.navigationBarDividerColor = bg
@@ -843,15 +841,23 @@ class MainActivity : AppCompatActivity() {
             window.isStatusBarContrastEnforced = false
         }
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = isLight
             isAppearanceLightNavigationBars = isLight
+            systemBarsBehavior =
+                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
         }
-        if (android.os.Build.VERSION.SDK_INT >= 23) {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = if (isLight) {
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                    (if (android.os.Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
-            } else 0
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && !isFinishing && !isDestroyed) {
+            // Re-hide the status bar after returning from dialogs or system overlays.
+            window.decorView.post {
+                if (hasFocus && !isFinishing && !isDestroyed) {
+                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                        .hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+                }
+            }
         }
     }
 
