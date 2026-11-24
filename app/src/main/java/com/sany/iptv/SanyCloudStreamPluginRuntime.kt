@@ -168,19 +168,25 @@ object SanyCloudStreamPluginRuntime {
         return provider.search(query).orEmpty()
     }
 
-    /** Fetches the selected provider's real CloudStream homepage shelves. */
+    private data class CachedHomePage(val savedAt: Long, val shelves: List<HomePageList>)
+    private val homePageCache = ConcurrentHashMap<String, CachedHomePage>()
+    private val HOME_PAGE_CACHE_TTL_MS = 10 * 60 * 1000L
+
+    /** Fetches and briefly caches the selected provider's real CloudStream homepage shelves. */
     suspend fun homePage(providerName: String, page: Int = 1): List<HomePageList> {
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         require(provider.hasMainPage && provider.mainPage.isNotEmpty()) {
             "$providerName does not publish a homepage catalogue"
         }
-        // Query every homepage shelf independently. One unavailable category must
-        // not prevent the remaining MultiMovies sections from appearing.
+        val cacheKey = "${provider.name.lowercase()}:$page"
+        homePageCache[cacheKey]?.takeIf {
+            System.currentTimeMillis() - it.savedAt < HOME_PAGE_CACHE_TTL_MS
+        }?.let { return it.shelves }
+
         val failedShelves = java.util.Collections.synchronizedList(mutableListOf<String>())
-        // Fetch homepage categories concurrently with a small limit. A slow shelf
-        // no longer makes every later category wait in a long serial queue.
-        val shelfGate = Semaphore(2)
+        // Four concurrent requests reduce total wait without flooding provider servers.
+        val shelfGate = Semaphore(4)
         val shelves = coroutineScope {
             provider.mainPage
                 .sortedBy { it.name.trim().lowercase() }
@@ -188,13 +194,17 @@ object SanyCloudStreamPluginRuntime {
                     async(Dispatchers.IO) {
                         shelfGate.withPermit {
                             try {
-                                val response = provider.getMainPage(
-                                    page,
-                                    MainPageRequest(data.name, data.data, data.horizontalImages)
-                                )
+                                val response = kotlinx.coroutines.withTimeout(9_000L) {
+                                    provider.getMainPage(
+                                        page,
+                                        MainPageRequest(data.name, data.data, data.horizontalImages)
+                                    )
+                                }
                                 val items = response?.items.orEmpty()
                                 if (items.isEmpty()) failedShelves.add(data.name)
                                 items
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
                             } catch (error: Throwable) {
                                 failedShelves.add("${data.name}: ${error.cause?.message ?: error.message ?: error.javaClass.simpleName}")
                                 emptyList()
@@ -210,6 +220,7 @@ object SanyCloudStreamPluginRuntime {
         if (shelves.isEmpty()) {
             error("Homepage returned no items for ${provider.mainUrl}. Failed/empty categories: ${failedShelves.joinToString("; ")}")
         }
+        homePageCache[cacheKey] = CachedHomePage(System.currentTimeMillis(), shelves)
         return shelves
     }
 
