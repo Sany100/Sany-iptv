@@ -206,82 +206,39 @@ object SanyExtensionRepositories {
      */
     @Synchronized
     fun syncOfficialAnimePlugins(context: Context): CloudStreamAutoSyncReport {
-        val indexUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
-        val packageBase = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/"
-        val index = JSONArray(readHttps(indexUrl, MAX_JSON_BYTES))
+        // Anime Series now uses only the curated Bangla/Hindi provider set below.
+        // Remove legacy Anime packages shipped by the old SANY builds index, but
+        // leave Movie/TV packages and unrelated user-installed extensions untouched.
+        val legacyIndexUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
+        val curatedNames = setOf("Animedubhindi", "Animesalt", "Cinefreak")
         val packages = mutableListOf<File>()
         val failures = mutableListOf<String>()
-        // Discover every active, supported Anime provider in the trusted SANY index.
-        // New providers published to this index are picked up on the next sync.
-        val animePlugins = (0 until index.length())
-            .mapNotNull { index.optJSONObject(it) }
-            .filter { item ->
-                val types = item.optJSONArray("tvTypes")
-                val isAnime = types != null && (0 until types.length()).any { i ->
-                    types.optString(i).equals("Anime", true) ||
-                        types.optString(i).equals("AnimeMovie", true) ||
-                        types.optString(i).equals("OVA", true)
+        val legacyAnimeNames = runCatching {
+            val index = JSONArray(readHttps(legacyIndexUrl, MAX_JSON_BYTES))
+            (0 until index.length()).mapNotNull { index.optJSONObject(it) }
+                .filter { item ->
+                    val types = item.optJSONArray("tvTypes")
+                    types != null && (0 until types.length()).any { i ->
+                        types.optString(i).equals("Anime", true) ||
+                            types.optString(i).equals("AnimeMovie", true) ||
+                            types.optString(i).equals("OVA", true)
+                    }
                 }
-                val name = item.optString("internalName")
-                isAnime && item.optInt("status", 1) != 0 &&
-                    item.optInt("apiVersion", 1) <= SUPPORTED_PLUGIN_API &&
-                    name.matches(Regex("[A-Za-z0-9_.-]{1,100}"))
-            }
-
-        for (item in animePlugins) {
-            val internalName = item.optString("internalName")
-            try {
-                val expectedUrl = packageBase + "$internalName.cs3"
-                require(item.optString("url") == expectedUrl) {
-                    "$internalName: package URL is not on the trusted SANY builds branch"
-                }
-                val expectedHash = item.optString("fileHash")
-                require(expectedHash.startsWith("sha256-", ignoreCase = true)) {
-                    "$internalName: trusted SHA-256 metadata is missing"
-                }
-                val authors = item.optJSONArray("authors")
-                val tvTypes = item.optJSONArray("tvTypes")
-                val plugin = CloudStreamPluginInfo(
-                    name = item.optString("name").ifBlank { internalName },
-                    internalName = internalName,
-                    version = item.optInt("version", 0),
-                    apiVersion = item.optInt("apiVersion", 1),
-                    status = item.optInt("status", 1),
-                    description = item.optString("description"),
-                    authors = authors?.let { a -> (0 until a.length()).joinToString(", ") { a.optString(it) } }
-                        ?: item.optString("authors"),
-                    language = item.optString("language"),
-                    tvTypes = tvTypes?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                    fileSize = if (item.has("fileSize") && !item.isNull("fileSize")) item.optLong("fileSize") else null,
-                    fileHash = expectedHash,
-                    downloadUrl = expectedUrl
-                )
-                require(plugin.tvTypes.any { it.equals("Anime", true) || it.equals("AnimeMovie", true) || it.equals("OVA", true) }) {
-                    "$internalName: index does not identify an Anime provider"
-                }
-                require(plugin.status != 0) { "$internalName: provider is marked offline" }
-
-                val expectedDigest = expectedHash.removePrefix("sha256-").lowercase()
-                val existing = installedPackages(context).firstOrNull { it.name == "$internalName.cs3" }
-                val installed = if (existing != null &&
-                    sha256(existing).equals(expectedDigest, ignoreCase = true) &&
-                    validatePackage(existing).version == plugin.version
-                ) {
-                    existing
-                } else {
-                    downloadAndValidate(context, plugin).file
-                }
-                packages += installed
-            } catch (error: Throwable) {
-                failures += "$internalName: ${error.message ?: error.javaClass.simpleName}"
+                .map { it.optString("internalName") }
+                .filter { it.matches(Regex("[A-Za-z0-9_.-]{1,100}")) }
+                .toSet()
+        }.getOrElse { error ->
+            failures += "Legacy Anime cleanup index: ${error.message ?: error.javaClass.simpleName}"
+            emptySet()
+        }
+        (legacyAnimeNames - curatedNames).forEach { oldName ->
+            if (!removeInstalledPackage(context, "$oldName.cs3")) {
+                failures += "$oldName: could not remove legacy Anime package"
             }
         }
-        // Add a curated external Anime repo for Hindi/multilingual and Bangla/Hindi sources.
-        // Only these explicitly reviewed Anime providers are installed; arbitrary repo plugins
-        // are never auto-executed. Every package still passes HTTPS, ZIP, manifest and SHA-256 checks.
+
         val phisherRepo = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json"
         add(context, phisherRepo)
-        val curatedNames = setOf("Animedubhindi", "Animesalt", "Cinefreak")
         try {
             val curatedPlugins = fetchCatalog(context)
                 .flatMap { (repoName, plugins) -> plugins.map { repoName to it } }
@@ -289,7 +246,11 @@ object SanyExtensionRepositories {
                     plugin.internalName in curatedNames &&
                         plugin.status != 0 &&
                         plugin.apiVersion <= SUPPORTED_PLUGIN_API &&
-                        plugin.tvTypes.any { it.equals("Anime", true) || it.equals("AnimeMovie", true) || it.equals("OVA", true) } &&
+                        plugin.tvTypes.any {
+                            it.equals("Anime", true) ||
+                                it.equals("AnimeMovie", true) ||
+                                it.equals("OVA", true)
+                        } &&
                         !plugin.fileHash.isNullOrBlank()
                 }
                 .distinctBy { it.second.internalName }
@@ -300,10 +261,10 @@ object SanyExtensionRepositories {
                         else -> "hi"
                     }
                     require(plugin.language.equals(expectedLanguage, ignoreCase = true)) {
-                        "${plugin.internalName}: unexpected repository language metadata"
+                        "${plugin.internalName}: repository language metadata is not $expectedLanguage"
                     }
-                    val existing = installedPackages(context).firstOrNull { it.name == "${plugin.internalName}.cs3" }
                     val expectedDigest = plugin.fileHash!!.removePrefix("sha256-").lowercase()
+                    val existing = installedPackages(context).firstOrNull { it.name == "${plugin.internalName}.cs3" }
                     val installed = if (existing != null &&
                         sha256(existing).equals(expectedDigest, ignoreCase = true) &&
                         validatePackage(existing).version == plugin.version
