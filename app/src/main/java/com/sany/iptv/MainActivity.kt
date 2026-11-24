@@ -7247,9 +7247,11 @@ class MainActivity : AppCompatActivity() {
     private fun glass(radius: Int) = GradientDrawable(
         GradientDrawable.Orientation.TL_BR,
         if (isLight) intArrayOf(
-            Color.argb(224, 255, 255, 255),
-            Color.argb(188, 226, 239, 255),
-            Color.argb(205, 248, 252, 255)
+            // Brighter milky-white Liquid Glass with a soft cool reflection near the base.
+            Color.argb(246, 255, 255, 255),
+            Color.argb(232, 255, 255, 255),
+            Color.argb(216, 239, 247, 255),
+            Color.argb(236, 255, 255, 255)
         ) else intArrayOf(
             Color.argb(166, 100, 145, 205),
             Color.argb(132, 20, 38, 68),
@@ -7259,7 +7261,7 @@ class MainActivity : AppCompatActivity() {
         cornerRadius = dp(radius).toFloat()
         setStroke(
             dp(1),
-            if (isLight) Color.argb(230, 255, 255, 255)
+            if (isLight) Color.argb(250, 255, 255, 255)
             else Color.argb(205, 174, 211, 255)
         )
     }
