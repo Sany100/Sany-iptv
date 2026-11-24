@@ -2478,16 +2478,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Android TV gets a two-column, remote-friendly card grid. Phone rows remain unchanged.
+    // Render channel cards in a compact three-column grid on supported grid mode.
     private fun renderTvChannelCards(container: LinearLayout, filtered: List<Channel>) {
         val visible = filtered.take(displayedLimit)
-        visible.chunked(2).forEachIndexed { rowIndex, pair ->
+        visible.chunked(3).forEachIndexed { rowIndex, rowItems ->
             val cardRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            pair.forEachIndexed { columnIndex, channel ->
-                val itemIndex = rowIndex * 2 + columnIndex
+            rowItems.forEachIndexed { columnIndex, channel ->
+                val itemIndex = rowIndex * 3 + columnIndex
                 val isPlayingChannel = currentChannel?.url == channel.url
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
@@ -2556,11 +2556,11 @@ class MainActivity : AppCompatActivity() {
                     setPadding(0, dp(5), 0, 0)
                 })
                 cardRow.addView(card, LinearLayout.LayoutParams(0, dp(if (isTvDevice) 158 else 166), 1f).apply {
-                    if (columnIndex == 0) rightMargin = dp(8) else leftMargin = dp(8)
+                    when (columnIndex) { 0 -> rightMargin = dp(6); 1 -> { leftMargin = dp(3); rightMargin = dp(3) }; else -> leftMargin = dp(6) }
                 })
             }
-            if (pair.size == 1) {
-                cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(if (isTvDevice) 158 else 166), 1f).apply { leftMargin = dp(8) })
+            if (rowItems.size < 3) {
+                repeat(3 - rowItems.size) { cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(if (isTvDevice) 158 else 166), 1f)) }
             }
             container.addView(cardRow, LinearLayout.LayoutParams(-1, -2).apply {
                 bottomMargin = dp(if (isTvDevice) 7 else 12)
