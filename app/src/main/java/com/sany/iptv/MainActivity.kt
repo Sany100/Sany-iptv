@@ -348,7 +348,7 @@ class MainActivity : AppCompatActivity() {
         // Automatically sync and load every allowlisted Anime provider from the
         // SANY builds index. Each package is hash-verified and failures are isolated.
         thread(name = "SANY-Anime-Plugins-AutoSync") {
-            runCatching {
+            try {
                 val report = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
                 report.packages.forEach { packageFile ->
                     val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
@@ -373,12 +373,17 @@ class MainActivity : AppCompatActivity() {
                         android.util.Log.e("SANY-LIVE-SPORTS", "Live Sports extension restore failed: ${result.error}")
                     }
                 }
-                // The Movies screen may have been created before async extension restore finished.
-                runOnUiThread {
-                    if (!isFinishing && !isDestroyed && section == "Movies") renderSection()
-                }
-            }.onFailure { error ->
+            } catch (error: Throwable) {
                 android.util.Log.e("SANY-CS", "Anime plugin auto-sync failed", error)
+            } finally {
+                // Anime Series can open while the background sync is still running.
+                // Rebuild it after the verified plugins have either loaded or failed,
+                // so its first catalogue request never races the startup sync.
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed &&
+                        (section == "Series" || section == "Movies")
+                    ) renderSection()
+                }
             }
         }
         // If the previous playback attempt crashed the Activity, surface the saved
