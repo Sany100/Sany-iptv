@@ -386,7 +386,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 val playZtvAutoSync = runCatching {
-                    SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
+                    SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(this@MainActivity)
                 }.onFailure { error ->
                     android.util.Log.e("SANY-LIVE-SPORTS", "Built-in PlayZTVProvider auto-install/update failed", error)
                 }.getOrNull()
@@ -398,7 +398,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 SanyLiveSportsExtensionManager.loadInstalled(
-                    applicationContext,
+                    this@MainActivity,
                     if (playZtvAutoSync?.success == true) setOf("playztvprovider") else emptySet()
                 ).forEach { result ->
                     if (result.success) {
