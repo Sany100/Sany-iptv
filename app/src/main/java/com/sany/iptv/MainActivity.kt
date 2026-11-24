@@ -3737,6 +3737,26 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
         }
+        box.addView(text("ISP BYPASSES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        settingsCard(box, "Clone Site", "Save an alternate HTTPS URL for an extension/repository host") {
+            showCloneSiteDialog()
+        }
+        settingsToggleCard(box, "DNS over HTTPS", "Encrypted DNS for SANY extension repository and package downloads", "bypass_doh_enabled", false) { enabled ->
+            getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putBoolean("doh_enabled", enabled).apply()
+        }
+        settingsCard(box, "DNS Provider", "Choose Cloudflare, Google or Quad9") {
+            val labels = arrayOf("Cloudflare", "Google", "Quad9")
+            val current = getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).getString("doh_provider", "Cloudflare")
+            AlertDialog.Builder(this).setTitle("DNS over HTTPS provider")
+                .setSingleChoiceItems(labels, labels.indexOf(current).coerceAtLeast(0)) { dialog, which ->
+                    getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putString("doh_provider", labels[which]).apply()
+                    dialog.dismiss()
+                    toast("DNS provider saved")
+                }.setNegativeButton("CANCEL", null).show()
+        }
+        settingsToggleCard(box, "GitHub Proxy", "Load raw GitHub extension files through jsDelivr CDN", "bypass_github_proxy", false) { enabled ->
+            getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putBoolean("github_proxy", enabled).apply()
+        }
         box.addView(text("PLAYBACK SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsToggleCard(
             box,
@@ -4211,6 +4231,40 @@ class MainActivity : AppCompatActivity() {
             try { receiver?.let { unregisterReceiver(it) } } catch (_: Exception) { }
             toast("Download failed: " + (e.message ?: "unknown error"))
         }
+    }
+
+    private fun showCloneSiteDialog() {
+        val bypassPrefs = getSharedPreferences("sany_network_bypasses", MODE_PRIVATE)
+        val mappings = SanyNetworkBypasses.cloneMappings(this)
+        val hostInput = EditText(this).apply {
+            hint = "Original host (e.g. raw.githubusercontent.com)"
+            setSingleLine(true); setTextColor(white); setHintTextColor(muted)
+        }
+        val mirrorInput = EditText(this).apply {
+            hint = "Mirror base URL (https://...)"
+            setSingleLine(true); setTextColor(white); setHintTextColor(muted)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(hostInput, LinearLayout.LayoutParams(-1, dp(50)))
+            addView(mirrorInput, LinearLayout.LayoutParams(-1, dp(50)))
+            if (mappings.isNotEmpty()) addView(text("Saved:\\n" + mappings.entries.joinToString("\\n") { "${it.key} → ${it.value}" }, 12, muted).apply {
+                setPadding(0, dp(10), 0, dp(10))
+            })
+        }
+        AlertDialog.Builder(this).setTitle("Clone Site")
+            .setMessage("Original host-এর বিকল্প HTTPS mirror URL দিন। এটি SANY extension repository/catalogue ও package request-এ প্রয়োগ হবে।")
+            .setView(content)
+            .setPositiveButton("SAVE") { _, _ ->
+                if (SanyNetworkBypasses.saveClone(this, hostInput.text.toString(), mirrorInput.text.toString())) toast("Clone site saved")
+                else toast("সঠিক host এবং HTTPS mirror URL দিন")
+            }
+            .setNeutralButton("REMOVE ALL") { _, _ ->
+                bypassPrefs.edit().putString("clone_sites", "{}").apply()
+                toast("Clone site mappings removed")
+            }
+            .setNegativeButton("CANCEL", null).show()
     }
 
     private fun settingsToggleCard(
