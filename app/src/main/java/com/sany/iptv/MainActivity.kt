@@ -1136,6 +1136,10 @@ class MainActivity : AppCompatActivity() {
             renderNativeMovies(false)
             return
         }
+        if (section == "Live Sports") {
+            renderLiveSportsExtensions()
+            return
+        }
         if (section == "Checker") {
             renderCheckerSection()
             return
@@ -1377,6 +1381,77 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("CANCEL", null).show()
     }
 
+    private fun showLiveSportsExtensionManager() {
+        val actions = arrayOf("Browse Live Sports extensions", "Add Live Sports repository", "Manage installed extensions")
+        AlertDialog.Builder(this).setTitle("Live Sports Extension Manager").setItems(actions) { _, which ->
+            when (which) {
+                0 -> loadLiveSportsExtensionCatalogue()
+                1 -> {
+                    val field = EditText(this).apply { hint = "CloudStream repo URL (HTTPS or cloudstreamrepo://)"; setSingleLine(true) }
+                    AlertDialog.Builder(this).setTitle("Add Live Sports repository").setView(field)
+                        .setNegativeButton("CANCEL", null)
+                        .setPositiveButton("ADD") { _, _ ->
+                            runCatching { SanyLiveSportsExtensionManager.addRepository(this, field.text.toString().trim()) }
+                                .onSuccess { toast("Repository added"); loadLiveSportsExtensionCatalogue() }
+                                .onFailure { toast("Repository error: " + it.message) }
+                        }.show()
+                }
+                2 -> showInstalledLiveSportsExtensions()
+            }
+        }.setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun loadLiveSportsExtensionCatalogue() {
+        thread(name = "SANY-LiveSports-Catalogue") {
+            val result = runCatching { SanyLiveSportsExtensionManager.catalogue(applicationContext) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { entries ->
+                    val installed = SanyLiveSportsExtensionManager.installed(this).associateBy { it.id }
+                    if (entries.isEmpty()) toast("কোনো Live provider পাওয়া যায়নি")
+                    else AlertDialog.Builder(this).setTitle("Live Sports Extension Catalogue")
+                        .setItems(entries.map { it.name + " • " + it.version + if (installed.containsKey(it.id)) " • UPDATE" else " • INSTALL" }.toTypedArray()) { _, index ->
+                            val item = entries[index]
+                            AlertDialog.Builder(this).setTitle(item.name).setMessage(item.description)
+                                .setPositiveButton(if (installed.containsKey(item.id)) "UPDATE" else "INSTALL") { _, _ ->
+                                    thread(name = "SANY-LiveSports-Install") {
+                                        val result2 = runCatching { SanyLiveSportsExtensionManager.installOrUpdate(applicationContext, item) }
+                                        runOnUiThread { result2.onSuccess { loaded -> if (loaded.success) { if (section == "Live Sports") renderSection(); toast("Installed: " + loaded.providerNames.joinToString()) } else toast("Install failed: " + loaded.error) }.onFailure { toast("Install failed: " + it.message) } }
+                                    }
+                                }.setNegativeButton("CANCEL", null).show()
+                        }.setNegativeButton("CLOSE", null).show()
+                }.onFailure { toast("Repository error: " + it.message) }
+            }
+        }
+    }
+
+    private fun showInstalledLiveSportsExtensions() {
+        val installed = SanyLiveSportsExtensionManager.installed(this)
+        if (installed.isEmpty()) { toast("No Live Sports extensions installed"); loadLiveSportsExtensionCatalogue(); return }
+        AlertDialog.Builder(this).setTitle("Manage Live Sports Extensions")
+            .setItems(installed.map { it.name + " • " + it.version }.toTypedArray()) { _, index ->
+                val item = installed[index]
+                AlertDialog.Builder(this).setTitle(item.name).setMessage("Version " + item.version)
+                    .setPositiveButton("UNINSTALL") { _, _ ->
+                        val removed = runCatching { SanyLiveSportsExtensionManager.uninstall(this, item.id) }.getOrDefault(false)
+                        if (section == "Live Sports") renderSection()
+                        toast(if (removed) "Extension removed" else "Remove failed")
+                    }.setNegativeButton("CLOSE", null).show()
+            }.setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun renderLiveSportsExtensions() {
+        contentArea.removeAllViews()
+        val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)) }
+        page.addView(text("LIVE SPORTS", 22, white, true))
+        page.addView(text("CloudStream Live provider extensions", 12, muted).apply { setPadding(0, dp(4), 0, dp(14)) })
+        page.addView(actionButton("＋  EXTENSIONS") { showLiveSportsExtensionManager() }, LinearLayout.LayoutParams(-1, dp(48)))
+        val installed = SanyLiveSportsExtensionManager.installed(this)
+        val providers = SanyCloudStreamPluginRuntime.providers().filter { p -> p.supportedTypes.any { it == com.lagradost.cloudstream3.TvType.Live } && installed.any { item -> runCatching { java.io.File(p.sourcePlugin).canonicalPath == java.io.File(item.packagePath).canonicalPath }.getOrDefault(false) } }
+        if (providers.isEmpty()) page.addView(text("কোনো Live Sports extension ইনস্টল নেই। EXTENSIONS থেকে Repository যোগ করে Install করো।", 14, muted).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(28)) })
+        else providers.forEach { p -> page.addView(text(p.name, 16, white, true).apply { setPadding(dp(10), dp(16), dp(10), dp(16)) }) }
+        contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
+    }
     private fun showMovieExtensionSearch(providerName: String) {
         val field = EditText(this).apply { hint = "Search movie title"; setSingleLine(true) }
         AlertDialog.Builder(this).setTitle("Search • $providerName").setView(field)
@@ -2794,7 +2869,7 @@ class MainActivity : AppCompatActivity() {
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
-                "Live Sports" -> isSportsChannel(c)
+                "Live Sports" -> false
                 else -> !isMovie(c) && !isSeries(c)
             }
             val groupMatch = when {
