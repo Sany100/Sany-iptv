@@ -327,7 +327,7 @@ class AniLightNativeScreen(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.TOP
         }
-        scroller.addView(rail, HorizontalScrollView.LayoutParams(-2, -2))
+        scroller.addView(rail, ViewGroup.LayoutParams(-2, -2))
 
         shelf.items.forEachIndexed { index, entry ->
             val card = LinearLayout(context).apply {
