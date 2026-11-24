@@ -2139,17 +2139,28 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAnimeSourcePicker(title: String, requests: List<SanyPlaybackRequest>) {
         if (requests.isEmpty() || isFinishing || isDestroyed) return
-        // Direct Play: start the first resolved stream immediately. Keep the
-        // remaining links in order and try them only if Media3 reports an error.
         val ordered = requests.distinctBy { it.url }.filter { it.url.isNotBlank() }
         if (ordered.isEmpty()) {
             toast("কোনো valid video source পাওয়া যায়নি")
             return
         }
-        animeFallbackRequests = ordered
-        animeFallbackIndex = 0
-        android.util.Log.i("SANY-PLAYER", "Direct Play: starting source 1/${ordered.size} for $title")
-        playSanyPlaybackRequest(ordered.first(), preserveFallbackQueue = true)
+
+        // Let the user choose a source before playback in both Movies and Anime.
+        val labels = ordered.mapIndexed { index, request ->
+            val provider = request.provider.ifBlank { "Source ${index + 1}" }
+            val quality = request.quality?.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty()
+            val type = request.streamMimeType?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?.let { " • ${it.uppercase()}" }.orEmpty()
+            "$provider$quality$type"
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(labels) { _, selectedIndex ->
+                startAnimeSourceFallback(ordered, selectedIndex)
+            }
+            .setNegativeButton("বন্ধ", null)
+            .show()
     }
 
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
