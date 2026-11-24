@@ -1749,26 +1749,55 @@ class MainActivity : AppCompatActivity() {
                 thread(name = "SANY-Provider-Home-Shelves") {
                     val shelves = runCatching {
                         kotlinx.coroutines.runBlocking {
-                            SanyCloudStreamPluginRuntime.providers().flatMap { provider ->
-                                runCatching {
-                                    val providerShelves = kotlinx.coroutines.withTimeoutOrNull(15_000L) {
-                                        SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
-                                    }.orEmpty()
-                                    providerShelves.mapNotNull { shelf ->
-                                        val entries = shelf.list.mapNotNull { item ->
-                                            val title = item.name.trim()
-                                            val url = item.url.trim()
-                                            if (title.isBlank() || url.isBlank()) null
-                                            else SanyProviderItem(title, url, item.posterUrl.orEmpty())
-                                        }
-                                        if (entries.isEmpty()) null
-                                        else SanyProviderShelf(provider.name, shelf.name, entries)
-                                    }
-                                }.getOrElse { error ->
-                                    android.util.Log.w("SANY-Provider-Home", "${provider.name}: ${error.message}")
-                                    emptyList()
+                            // Sync SANY's verified Anime packages plus the curated Hindi/Bangla
+                            // providers. Do this off the UI thread; each package is SHA-256 checked.
+                            val syncReport = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
+                            syncReport.packages.forEach { packageFile ->
+                                val loaded = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                                if (!loaded.success) {
+                                    android.util.Log.w("SANY-Anime-Provider", "${packageFile.name}: ${loaded.error}")
                                 }
                             }
+                            if (syncReport.failures.isNotEmpty()) {
+                                android.util.Log.w("SANY-Anime-Provider", syncReport.failures.joinToString("; "))
+                            }
+                            SanyCloudStreamPluginRuntime.providers()
+                                .filter { provider ->
+                                    provider.supportedTypes.any { type ->
+                                        type == com.lagradost.cloudstream3.TvType.Anime ||
+                                            type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
+                                            type == com.lagradost.cloudstream3.TvType.OVA
+                                    }
+                                }
+                                .flatMap { provider ->
+                                    runCatching {
+                                        val providerShelves = kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                                            SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
+                                        }.orEmpty()
+                                        val languageLabel = when (provider.language.lowercase()) {
+                                            "bn" -> "Bangla"
+                                            "hi" -> "Hindi"
+                                            else -> ""
+                                        }
+                                        providerShelves.mapNotNull { shelf ->
+                                            val entries = shelf.list.mapNotNull { item ->
+                                                val title = item.name.trim()
+                                                val url = item.url.trim()
+                                                if (title.isBlank() || url.isBlank()) null
+                                                else SanyProviderItem(title, url, item.posterUrl.orEmpty())
+                                            }
+                                            if (entries.isEmpty()) null
+                                            else SanyProviderShelf(
+                                                provider.name,
+                                                listOf(languageLabel, shelf.name).filter { it.isNotBlank() }.joinToString(" • "),
+                                                entries
+                                            )
+                                        }
+                                    }.getOrElse { error ->
+                                        android.util.Log.w("SANY-Provider-Home", "${provider.name}: ${error.message}")
+                                        emptyList()
+                                    }
+                                }
                         }
                     }.getOrElse { error ->
                         android.util.Log.w("SANY-Provider-Home", "Could not load provider home shelves", error)
