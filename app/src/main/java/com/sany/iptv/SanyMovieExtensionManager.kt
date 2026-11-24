@@ -69,11 +69,24 @@ object SanyMovieExtensionManager {
             store.edit().putString(KEY_REPOSITORIES, array.toString())
                 .putBoolean(KEY_DEFAULT_REPOSITORY_SEEDED, true).commit()
         }
-        return (0 until array.length()).mapNotNull { i ->
+        val normalized = (0 until array.length()).mapNotNull { i ->
             val item = array.optJSONObject(i) ?: return@mapNotNull null
-            val url = item.optString("url").trim()
-            if (!isHttps(url)) null else Repository(url, item.optString("name", url))
+            val rawUrl = item.optString("url")
+            val url = normalizeRepositoryUrl(rawUrl)
+            if (!isHttps(url)) null else Repository(
+                url,
+                item.optString("name", url).takeIf { it.isNotBlank() } ?: url
+            )
+        }.distinctBy { it.url.lowercase() }
+
+        // Repair the known Indflix URL typo from older/manual entries and persist
+        // the canonical repository URL so it does not keep failing on every open.
+        val normalizedArray = JSONArray()
+        normalized.forEach { normalizedArray.put(JSONObject().put("url", it.url).put("name", it.name)) }
+        if (normalizedArray.toString() != array.toString()) {
+            store.edit().putString(KEY_REPOSITORIES, normalizedArray.toString()).commit()
         }
+        return normalized
     }
 
     @Synchronized
@@ -187,10 +200,18 @@ object SanyMovieExtensionManager {
     }
 
     private fun normalizeRepositoryUrl(value: String): String {
-        val trimmed = value.trim()
-        val normalized = if (trimmed.startsWith("cloudstreamrepo://", true)) {
+        // Some Android keyboards/paste actions insert spaces into long URLs.
+        val trimmed = value.trim().replace(Regex("\\s+"), "")
+        var normalized = if (trimmed.startsWith("cloudstreamrepo://", true)) {
             "https://" + trimmed.substringAfter("://")
         } else trimmed
+
+        // Correct the exact previously reported Indflix typo (lowercase L instead of I).
+        normalized = normalized.replace(
+            "raw.githubusercontent.com/dipender98/lndflix/",
+            "raw.githubusercontent.com/dipender98/Indflix/",
+            ignoreCase = true
+        )
         return normalized
     }
 
