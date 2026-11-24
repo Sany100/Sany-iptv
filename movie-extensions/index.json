@@ -6,7 +6,7 @@
       "name": "MultiMovies",
       "version": "51",
       "description": "Indflix MultiMovies provider — Hindi, English, Tamil, Telugu, Kannada, Malayalam, Bengali and dual-audio; Movie and TV catalogue; multi-server source resolution and 720p+ quality filtering. Select manually after installation.",
-      "packageUrl": "https://raw.githubusercontent.com/dipender98/Indflix/builds/Multimovies.cs3",
+      "packageUrl": "https://raw.githubusercontent.com/Sany100/Sany-iptv/migration/cloudstream-runtime-toolchain/movie-extensions/packages/Multimovies-v51.cs3",
       "sha256": "8838683cd8b26612d57c23af5036789f57a4baf125d61eb926f29933ff7a514c",
       "sourceUrl": "https://github.com/dipender98/Indflix/tree/main/Multimovies",
       "license": "GPL-3.0"
