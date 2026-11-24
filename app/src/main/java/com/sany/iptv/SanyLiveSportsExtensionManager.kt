@@ -69,8 +69,7 @@ object SanyLiveSportsExtensionManager {
         // Keep the SANY curated Live Sports catalogue and upstream Live Sports repository
         // available on both fresh installs and existing installs upgraded in place.
         val defaultRepositories = listOf(
-            Repository(SANY_LIVE_SPORTS_CATALOGUE, "SANY Live Sports Catalogue"),
-            Repository(DEFAULT_LIVE_SPORTS_REPOSITORY, "Live Sports")
+            Repository(SANY_LIVE_SPORTS_CATALOGUE, "SANY Live Sports Catalogue")
         )
         val knownUrls = (0 until array.length()).mapNotNull { array.optJSONObject(it)?.optString("url") }
             .map { normalizeRepositoryUrl(it).lowercase() }.toMutableSet()
