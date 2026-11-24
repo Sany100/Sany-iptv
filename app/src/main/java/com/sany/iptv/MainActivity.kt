@@ -1642,21 +1642,64 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         results.addView(text("SPORTS CHANNELS & EVENTS  •  ${items.size}", 12, muted, true)
                             .apply { setPadding(0, dp(12), 0, dp(8)) })
-                        items.forEach { item ->
-                            val row = TextView(this).apply {
-                                text = "▶  ${item.name}"
-                                textSize = 14f
-                                setTextColor(white)
-                                setPadding(dp(12), dp(13), dp(12), dp(13))
-                                setBackgroundColor(0xFF202D43.toInt())
-                                isClickable = true
-                                isFocusable = true
-                                setOnClickListener { playLiveSportsItem(providerName, item.name, item.url) }
-                            }
-                            results.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
-                                topMargin = dp(6)
-                            })
+
+                        // Two large poster/banner cards per vertical column. The row itself
+                        // scrolls horizontally so users can swipe right through the catalogue.
+                        val horizontal = HorizontalScrollView(this).apply {
+                            isHorizontalScrollBarEnabled = false
+                            overScrollMode = View.OVER_SCROLL_NEVER
                         }
+                        val columns = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                        }
+                        items.chunked(2).forEach { pair ->
+                            val column = LinearLayout(this).apply {
+                                orientation = LinearLayout.VERTICAL
+                            }
+                            pair.forEach { item ->
+                                val card = LinearLayout(this).apply {
+                                    orientation = LinearLayout.VERTICAL
+                                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                                    background = GradientDrawable().apply {
+                                        setColor(0xFF202D43.toInt())
+                                        cornerRadius = dp(12).toFloat()
+                                    }
+                                    isClickable = true
+                                    isFocusable = true
+                                    setOnClickListener { playLiveSportsItem(providerName, item.name, item.url) }
+                                }
+                                val image = ImageView(this).apply {
+                                    scaleType = ImageView.ScaleType.CENTER_CROP
+                                    setBackgroundColor(0xFF111B2B.toInt())
+                                }
+                                val placeholder = TextView(this).apply {
+                                    text = "▶  LIVE SPORTS"
+                                    textSize = 12f
+                                    gravity = Gravity.CENTER
+                                    setTextColor(white)
+                                    setBackgroundColor(0xFF111B2B.toInt())
+                                }
+                                val banner = FrameLayout(this).apply {
+                                    addView(image, FrameLayout.LayoutParams(-1, -1))
+                                    addView(placeholder, FrameLayout.LayoutParams(-1, -1))
+                                }
+                                card.addView(banner, LinearLayout.LayoutParams(-1, dp(112)))
+                                card.addView(text(item.name, 13, white, true).apply {
+                                    maxLines = 2
+                                    ellipsize = android.text.TextUtils.TruncateAt.END
+                                    setPadding(dp(2), dp(8), dp(2), dp(2))
+                                })
+                                item.posterUrl?.takeIf { it.isNotBlank() }?.let {
+                                    loadCachedChannelLogo(image, placeholder, it)
+                                }
+                                column.addView(card, LinearLayout.LayoutParams(dp(196), dp(166)).apply {
+                                    setMargins(dp(4), dp(4), dp(8), dp(8))
+                                })
+                            }
+                            columns.addView(column, LinearLayout.LayoutParams(dp(212), -2))
+                        }
+                        horizontal.addView(columns)
+                        results.addView(horizontal, LinearLayout.LayoutParams(-1, -2))
                     }
                 }
             }
