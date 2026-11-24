@@ -1827,6 +1827,7 @@ class MainActivity : AppCompatActivity() {
             onCloudStreamResult = { providerName, url, title ->
                 showCloudStreamDetails(providerName, url, title)
             },
+            onSearchProvider = { providerName -> showCloudStreamSearch(providerName) },
             onLoadProviderShelves = { onLoaded ->
                 thread(name = "SANY-Provider-Home-Shelves") {
                     val shelves = runCatching {
@@ -1863,7 +1864,7 @@ class MainActivity : AppCompatActivity() {
                                             "hi" -> "Hindi"
                                             else -> ""
                                         }
-                                        providerShelves.mapNotNull { shelf ->
+                                        val visibleShelves = providerShelves.mapNotNull { shelf ->
                                             val entries = shelf.list.mapNotNull { item ->
                                                 val title = item.name.trim()
                                                 val url = item.url.trim()
@@ -1877,6 +1878,11 @@ class MainActivity : AppCompatActivity() {
                                                 entries
                                             )
                                         }
+                                        // Always publish a provider tile even when its plugin
+                                        // has no homepage catalogue; users can still search it.
+                                        if (visibleShelves.isEmpty()) {
+                                            listOf(SanyProviderShelf(provider.name, languageLabel, emptyList()))
+                                        } else visibleShelves
                                     }.getOrElse { error ->
                                         android.util.Log.w("SANY-Provider-Home", "${provider.name}: ${error.message}")
                                         emptyList()
