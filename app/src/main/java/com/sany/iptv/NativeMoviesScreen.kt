@@ -222,7 +222,7 @@ class NativeMoviesScreen(
                 kotlinx.coroutines.withTimeout(30_000L) {
                     kotlinx.coroutines.coroutineScope {
                         providerNames.map { providerName ->
-                            kotlinx.coroutines.async(Dispatchers.IO) {
+                            this.async(Dispatchers.IO) {
                                 providerName to runCatching {
                                     SanyCloudStreamPluginRuntime.homePage(providerName, 1)
                                 }.getOrDefault(emptyList())
@@ -289,7 +289,7 @@ class NativeMoviesScreen(
                     kotlinx.coroutines.withTimeout(20_000L) {
                         kotlinx.coroutines.coroutineScope {
                             activeMovieProviders.map { providerName ->
-                                kotlinx.coroutines.async(Dispatchers.IO) {
+                                this.async(Dispatchers.IO) {
                                     providerName to runCatching {
                                         SanyCloudStreamPluginRuntime.search(providerName, query)
                                     }.getOrDefault(emptyList())
