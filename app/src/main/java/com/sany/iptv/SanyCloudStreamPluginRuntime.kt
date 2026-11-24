@@ -169,12 +169,20 @@ object SanyCloudStreamPluginRuntime {
         require(provider.hasMainPage && provider.mainPage.isNotEmpty()) {
             "$providerName does not publish a homepage catalogue"
         }
-        return provider.mainPage.flatMap { data ->
-            provider.getMainPage(
-                page,
-                MainPageRequest(data.name, data.data, data.horizontalImages)
-            )?.items.orEmpty()
-        }.filter { it.list.isNotEmpty() }
+        // Query every homepage shelf independently. One unavailable category must
+        // not prevent the remaining MultiMovies sections from appearing.
+        return provider.mainPage
+            .sortedBy { it.name.trim().lowercase() }
+            .flatMap { data ->
+                runCatching {
+                    provider.getMainPage(
+                        page,
+                        MainPageRequest(data.name, data.data, data.horizontalImages)
+                    )?.items.orEmpty()
+                }.getOrDefault(emptyList())
+            }
+            .filter { it.list.isNotEmpty() }
+            .sortedBy { it.name.trim().lowercase() }
     }
 
     suspend fun load(providerName: String, url: String): LoadResponse? {
