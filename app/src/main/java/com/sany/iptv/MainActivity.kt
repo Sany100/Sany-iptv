@@ -10,10 +10,14 @@ import android.animation.ValueAnimator
 import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
+import android.app.PendingIntent
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
 import android.content.Intent
 import android.net.Uri
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.drawable.Icon
 import android.graphics.BitmapFactory
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -66,6 +70,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withPermit
 import java.io.PrintWriter
 import java.io.StringWriter
+
+private const val ACTION_PIP_TOGGLE_PLAYBACK = "com.sany.iptv.action.PIP_TOGGLE_PLAYBACK"
+
+class PipPlaybackActionReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
+        if (intent?.action == ACTION_PIP_TOGGLE_PLAYBACK) {
+            MainActivity.dispatchPipPlaybackAction()
+        }
+    }
+}
 
 class MainActivity : AppCompatActivity() {
     /** Higher-velocity fling without changing normal finger tracking. */
@@ -244,6 +258,14 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CommonActivity.setActivityInstance(this)
+        pipPlaybackActionHandler = {
+            runOnUiThread {
+                player?.let { activePlayer ->
+                    if (activePlayer.isPlaying) activePlayer.pause() else activePlayer.play()
+                    refreshPictureInPictureParams()
+                }
+            }
+        }
 
         // Global host policy: suppress third-party donation/support dialogs from
         // dynamically loaded CloudStream plugins, regardless of the plugin's own
@@ -6614,6 +6636,7 @@ class MainActivity : AppCompatActivity() {
         }
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
+        pipPlaybackActionHandler = null
         playerView?.player = null
         // Release codec, audio and renderer resources as soon as playback is closed.
         player?.release()
@@ -6702,6 +6725,23 @@ class MainActivity : AppCompatActivity() {
         // paused, stopped, or empty-player states.
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(16, 9))
+        if (playerView != null && player != null) {
+            val isPlaying = player?.isPlaying == true
+            val actionIntent = Intent(this, PipPlaybackActionReceiver::class.java)
+                .setAction(ACTION_PIP_TOGGLE_PLAYBACK)
+            val pendingAction = PendingIntent.getBroadcast(
+                this,
+                7101,
+                actionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val actionIcon = Icon.createWithResource(
+                this,
+                if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            )
+            val actionLabel = if (isPlaying) "Pause" else "Resume"
+            builder.setActions(listOf(RemoteAction(actionIcon, actionLabel, actionLabel, pendingAction)))
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Always update this flag, including false, so a previous video
             // cannot leave stale auto-enter enabled after pause/stop.
@@ -6833,6 +6873,11 @@ class MainActivity : AppCompatActivity() {
     private var lastBackPressedAt = 0L
 
     companion object {
+        @Volatile private var pipPlaybackActionHandler: (() -> Unit)? = null
+
+        internal fun dispatchPipPlaybackAction() {
+            pipPlaybackActionHandler?.invoke()
+        }
     }
 
     private fun currentNavigationSnapshot() = NavigationSnapshot(
