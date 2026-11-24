@@ -171,18 +171,29 @@ object SanyCloudStreamPluginRuntime {
         }
         // Query every homepage shelf independently. One unavailable category must
         // not prevent the remaining MultiMovies sections from appearing.
-        return provider.mainPage
+        val failedShelves = mutableListOf<String>()
+        val shelves = provider.mainPage
             .sortedBy { it.name.trim().lowercase() }
             .flatMap { data ->
-                runCatching {
-                    provider.getMainPage(
+                try {
+                    val response = provider.getMainPage(
                         page,
                         MainPageRequest(data.name, data.data, data.horizontalImages)
-                    )?.items.orEmpty()
-                }.getOrDefault(emptyList())
+                    )
+                    val items = response?.items.orEmpty()
+                    if (items.isEmpty()) failedShelves += data.name
+                    items
+                } catch (error: Throwable) {
+                    failedShelves += "${data.name}: ${error.cause?.message ?: error.message ?: error.javaClass.simpleName}"
+                    emptyList()
+                }
             }
             .filter { it.list.isNotEmpty() }
             .sortedBy { it.name.trim().lowercase() }
+        if (shelves.isEmpty()) {
+            error("Homepage returned no items for ${provider.mainUrl}. Failed/empty categories: ${failedShelves.joinToString("; ")}")
+        }
+        return shelves
     }
 
     suspend fun load(providerName: String, url: String): LoadResponse? {
