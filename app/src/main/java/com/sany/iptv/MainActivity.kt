@@ -397,7 +397,10 @@ class MainActivity : AppCompatActivity() {
                         android.util.Log.e("SANY-LIVE-SPORTS", "Built-in PlayZTVProvider auto-load failed: ${playZtvAutoSync.error}")
                     }
                 }
-                SanyLiveSportsExtensionManager.loadInstalled(applicationContext).forEach { result ->
+                SanyLiveSportsExtensionManager.loadInstalled(
+                    applicationContext,
+                    if (playZtvAutoSync?.success == true) setOf("playztvprovider") else emptySet()
+                ).forEach { result ->
                     if (result.success) {
                         android.util.Log.i("SANY-LIVE-SPORTS", "Live Sports extension restored: ${result.pluginName}")
                     } else {
