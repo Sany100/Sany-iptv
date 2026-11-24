@@ -139,6 +139,7 @@ class MainActivity : AppCompatActivity() {
     private var animeFallbackRequests: List<SanyPlaybackRequest> = emptyList()
     private var animeFallbackIndex = -1
     private var animeAutoNextInProgress = false
+    private var liveSportsFirstFrameWatchdog: Runnable? = null
     private var playerView: PlayerView? = null
     private var moviesWebView: WebView? = null
     private var moviesSiteLoaded = false
@@ -1828,9 +1829,11 @@ class MainActivity : AppCompatActivity() {
                     if (sources.isEmpty()) {
                         toast("এই Sports item-এর কোনো playable source পাওয়া যায়নি")
                     } else {
-                        // Prefer the first returned source, while preserving the app's
-                        // normal Media3 playback pipeline and source selector.
-                        playSanyPlaybackRequest(sources.first())
+                        // Keep every returned Sports stream as a fallback. Some hosts
+                        // resolve successfully but return a stream that never renders video.
+                        animeFallbackRequests = sources
+                        animeFallbackIndex = 0
+                        playSanyPlaybackRequest(sources.first(), preserveFallbackQueue = true)
                     }
                 }.onFailure {
                     android.util.Log.e("SANY-LIVE-SPORTS", "Resolve failed for $title", it)
@@ -2186,6 +2189,24 @@ class MainActivity : AppCompatActivity() {
                 qualityHint = request.quality,
                 externalAudioTracks = request.audioTracks
             )
+            if (section == "Live Sports" && animeFallbackIndex >= 0) {
+                liveSportsFirstFrameWatchdog?.let(playbackRetryHandler::removeCallbacks)
+                val expectedUrl = request.url.trim()
+                val watchdog = Runnable {
+                    if (section == "Live Sports" &&
+                        playerView != null &&
+                        currentChannel?.url == expectedUrl &&
+                        player?.isPlaying == true &&
+                        animeFallbackIndex >= 0
+                    ) {
+                        android.util.Log.w("SANY-LIVE-SPORTS", "No video frame rendered for $provider; trying next source")
+                        toast("ভিডিও দেখা যাচ্ছে না। অন্য Sports source চেষ্টা হচ্ছে…")
+                        tryNextAnimeFallback()
+                    }
+                }
+                liveSportsFirstFrameWatchdog = watchdog
+                playbackRetryHandler.postDelayed(watchdog, 15_000L)
+            }
         } catch (error: Exception) {
             showAnimePlaybackLoading("", false)
             android.util.Log.e("SANY-PLAYER", "Could not initialize provider player", error)
@@ -5383,7 +5404,9 @@ class MainActivity : AppCompatActivity() {
                         }
                         runOnUiThread {
                             if (section == "Series") showAnimePlaybackLoading("", false)
-                            if ((section == "Series" || section == "Movies") && tryNextAnimeFallback()) {
+                            if ((section == "Series" || section == "Movies" || section == "Live Sports") &&
+                                tryNextAnimeFallback()
+                            ) {
                                 return@runOnUiThread
                             }
                             if (httpStatus != null) {
@@ -5458,6 +5481,12 @@ class MainActivity : AppCompatActivity() {
                         output: Any,
                         renderTimeMs: Long
                     ) {
+                        if (section == "Live Sports") {
+                            liveSportsFirstFrameWatchdog?.let(playbackRetryHandler::removeCallbacks)
+                            liveSportsFirstFrameWatchdog = null
+                            animeFallbackRequests = emptyList()
+                            animeFallbackIndex = -1
+                        }
                         if (section == "Series") {
                             runOnUiThread {
                                 animeFirstFrameRendered = true
