@@ -330,8 +330,8 @@ class AniLightNativeScreen(
         // remaining titles, matching the Movie homepage shelf interaction.
         val screenWidthDp = context.resources.displayMetrics.widthPixels /
             context.resources.displayMetrics.density
-        val sidePadding = 12
-        val cardWidth = ((screenWidthDp - sidePadding * 2 - 16) / 3f).toInt().coerceAtLeast(88)
+        val sidePadding = 0
+        val cardWidth = (screenWidthDp / 3f).toInt().coerceAtLeast(88)
         val posterHeight = (cardWidth * 1.42f).toInt()
         val scroller = FastAnimeHorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
@@ -351,7 +351,7 @@ class AniLightNativeScreen(
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
                 background = rounded(surface, 12)
-                setPadding(dp(4), dp(4), dp(4), dp(7))
+                setPadding(dp(2), dp(3), dp(2), dp(6))
                 setOnClickListener {
                     onCloudStreamResult(entry.sourceProvider.ifBlank { shelf.providerName }, entry.url, entry.title)
                 }
@@ -374,7 +374,7 @@ class AniLightNativeScreen(
                 setPadding(dp(2), dp(6), dp(2), 0)
             }, LinearLayout.LayoutParams(-1, -2))
             rail.addView(card, LinearLayout.LayoutParams(dp(cardWidth), -2).apply {
-                if (index > 0) leftMargin = dp(8)
+                if (index > 0) leftMargin = dp(2)
             })
         }
         contentHost.addView(scroller, LinearLayout.LayoutParams(-1, -2))
