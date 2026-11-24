@@ -1404,7 +1404,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openMovieExtensionTitle(providerName: String, url: String, fallbackTitle: String) {
-        toast("Loading movie details…")
+        toast("Loading details…")
         thread(name = "SANY-Movie-Details") {
             val result = runCatching {
                 kotlinx.coroutines.runBlocking { SanyCloudStreamPluginRuntime.load(providerName, url) }
@@ -1412,44 +1412,172 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { response ->
-                    when (response) {
-                        is com.lagradost.cloudstream3.MovieLoadResponse -> {
-                            resolveMovieExtensionPlayback(
-                                providerName,
-                                response.name.ifBlank { fallbackTitle },
-                                response.dataUrl
-                            )
-                        }
-                        is com.lagradost.cloudstream3.TvSeriesLoadResponse -> {
-                            val episodes = response.episodes
-                            if (episodes.isEmpty()) {
-                                toast("এই Series-এ কোনো episode পাওয়া যায়নি")
-                            } else {
-                                val choices = episodes.map { episode ->
-                                    buildString {
-                                        episode.season?.let { append("S").append(it).append(" ") }
-                                        episode.episode?.let { append("E").append(it).append("  ") }
-                                        append(episode.name?.takeIf { it.isNotBlank() } ?: "Episode")
-                                    }
-                                }.toTypedArray()
-                                AlertDialog.Builder(this)
-                                    .setTitle(response.name.ifBlank { fallbackTitle })
-                                    .setItems(choices) { _, index ->
-                                        val episode = episodes[index]
-                                        resolveMovieExtensionPlayback(
-                                            providerName,
-                                            "${response.name.ifBlank { fallbackTitle }} • ${choices[index]}",
-                                            episode.data
-                                        )
-                                    }
-                                    .setNegativeButton("CLOSE", null)
-                                    .show()
-                            }
-                        }
-                        null -> toast("Extension থেকে Movie details পাওয়া যায়নি")
-                        else -> toast("এই result টি Movie/Series নয়: ${response.javaClass.simpleName}")
+                    if (response == null) {
+                        toast("Extension থেকে Movie details পাওয়া যায়নি")
+                    } else {
+                        showMovieExtensionDetails(providerName, response, fallbackTitle)
                     }
                 }.onFailure { toast("Movie details failed: ${it.message}") }
+            }
+        }
+    }
+
+    /** Anime-style details page: select an episode first, then choose its source before playback. */
+    private fun showMovieExtensionDetails(
+        providerName: String,
+        response: com.lagradost.cloudstream3.LoadResponse,
+        fallbackTitle: String
+    ) {
+        val title = response.name.ifBlank { fallbackTitle }
+        val episodes = (response as? com.lagradost.cloudstream3.TvSeriesLoadResponse)
+            ?.episodes.orEmpty()
+        val movieData = (response as? com.lagradost.cloudstream3.MovieLoadResponse)?.dataUrl
+        val posterUrl = response.posterUrl.orEmpty()
+        val plot = response.plot.orEmpty()
+
+        contentArea.removeAllViews()
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(24))
+            setBackgroundColor(Color.BLACK)
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(page)
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val back = TextView(this).apply {
+            text = "‹  BACK"
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = rounded(0xFF242832.toInt(), 12)
+            setOnClickListener { renderNativeMovies(false) }
+        }
+        header.addView(back)
+        header.addView(text("MOVIE DETAILS", 14, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f).apply {
+            leftMargin = dp(12)
+        })
+        page.addView(header, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+
+        val hero = FrameLayout(this).apply {
+            background = rounded(0xFF20242C.toInt(), 18)
+            clipToOutline = true
+        }
+        val heroImage = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(0xFF20242C.toInt())
+            tag = posterUrl
+        }
+        hero.addView(heroImage, FrameLayout.LayoutParams(-1, -1))
+        if (posterUrl.startsWith("http", true)) loadMovieDetailImage(posterUrl, heroImage)
+        val shade = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0x00000000, 0xCC000000.toInt(), 0xF5000000.toInt())
+            )
+        }
+        hero.addView(shade, FrameLayout.LayoutParams(-1, -1))
+        val heroTitle = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
+        heroTitle.addView(text(if (episodes.isNotEmpty()) "SERIES" else "MOVIE", 11, 0xFFB9D7FF.toInt(), true))
+        heroTitle.addView(text(title, 23, Color.WHITE, true).apply {
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        hero.addView(heroTitle, FrameLayout.LayoutParams(-1, -1))
+        page.addView(hero, LinearLayout.LayoutParams(-1, dp(224)).apply { bottomMargin = dp(14) })
+
+        if (plot.isNotBlank()) {
+            page.addView(text(plot, 13, 0xFFD0D0D0.toInt()).apply {
+                setPadding(dp(4), dp(2), dp(4), dp(12))
+            })
+        }
+
+        if (episodes.isNotEmpty()) {
+            page.addView(text("EPISODES  •  ${episodes.size}", 17, Color.WHITE, true),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); bottomMargin = dp(10) })
+            episodes.forEachIndexed { index, episode ->
+                val episodeName = episode.name?.takeIf { it.isNotBlank() } ?: "Episode ${index + 1}"
+                val episodeLabel = buildString {
+                    episode.season?.let { append("S").append(it).append("  ") }
+                    episode.episode?.let { append("E").append(it).append("  ") }
+                    append(episodeName)
+                }
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(14), dp(13), dp(14), dp(13))
+                    background = rounded(0xFF1D222B.toInt(), 13)
+                    isFocusable = true
+                    setOnClickListener {
+                        resolveMovieExtensionPlayback(providerName, "$title • $episodeLabel", episode.data)
+                    }
+                }
+                val playIcon = TextView(this).apply {
+                    text = "▶"
+                    textSize = 17f
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    background = rounded(0xFF315E9E.toInt(), 30)
+                }
+                row.addView(playIcon, LinearLayout.LayoutParams(dp(42), dp(42)))
+                row.addView(text(episodeLabel, 14, Color.WHITE, true).apply {
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(dp(12), 0, 0, 0)
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(text("›", 25, 0xFFB9D7FF.toInt(), true))
+                page.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+            }
+        } else if (!movieData.isNullOrBlank()) {
+            page.addView(text("PLAYBACK", 17, Color.WHITE, true),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); bottomMargin = dp(10) })
+            val chooseSource = TextView(this).apply {
+                text = "▶   SELECT SOURCE"
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = rounded(accent, 14)
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                setOnClickListener { resolveMovieExtensionPlayback(providerName, title, movieData) }
+            }
+            page.addView(chooseSource, LinearLayout.LayoutParams(-1, dp(54)))
+        } else {
+            page.addView(text("এই কনটেন্টে কোনো Episode বা playable Movie data পাওয়া যায়নি।", 13, 0xFFBDBDBD.toInt()))
+        }
+        contentArea.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun loadMovieDetailImage(imageUrl: String, target: ImageView) {
+        target.tag = imageUrl
+        thread(name = "SANY-Movie-Detail-Image") {
+            val bitmap = runCatching {
+                val connection = (URL(imageUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 3500
+                    readTimeout = 4500
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "Mozilla/5.0 SANY-IPTV")
+                }
+                try {
+                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+            if (bitmap != null) runOnUiThread {
+                if (target.tag == imageUrl && !isFinishing && !isDestroyed) target.setImageBitmap(bitmap)
+                else if (!bitmap.isRecycled) bitmap.recycle()
             }
         }
     }
