@@ -2032,7 +2032,9 @@ class MainActivity : AppCompatActivity() {
         thread(name = "SANY-Movie-Resolve") {
             val links = runCatching {
                 kotlinx.coroutines.runBlocking {
-                    SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
+                    kotlinx.coroutines.withTimeout(12_000L) {
+                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
+                    }
                 }
             }
             runOnUiThread {
