@@ -191,7 +191,8 @@ object SanyMovieExtensionManager {
         val isCurrent = current != null &&
             current.version == extension.version &&
             current.sha256.equals(extension.sha256, true) &&
-            currentFile?.isFile == true &&
+            currentFile != null &&
+            currentFile.isFile &&
             runCatching { sha256(currentFile) == extension.sha256 }.getOrDefault(false)
 
         val loaded = if (isCurrent) {
