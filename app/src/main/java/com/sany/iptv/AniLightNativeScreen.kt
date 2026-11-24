@@ -409,9 +409,9 @@ class AniLightNativeScreen(
             setPadding(dp(3), 0, dp(3), dp(8))
         }
         val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
-        val cardWidth = ((screenWidthDp - 12f) / 3f).toInt().coerceAtLeast(88)
+        val cardWidth = ((screenWidthDp - 12f) / 2f).toInt().coerceAtLeast(140)
         val posterHeight = (cardWidth * 1.42f).toInt()
-        shelf.items.drop((safePage - 1) * pageSize).take(pageSize).chunked(3).forEach { entries ->
+        shelf.items.drop((safePage - 1) * pageSize).take(pageSize).chunked(2).forEach { entries ->
             val line = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
             entries.forEach { entry ->
                 val card = LinearLayout(context).apply {
@@ -434,7 +434,7 @@ class AniLightNativeScreen(
                     leftMargin = dp(2); rightMargin = dp(2); bottomMargin = dp(8)
                 })
             }
-            while (line.childCount < 3) line.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            while (line.childCount < 2) line.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
             grid.addView(line, LinearLayout.LayoutParams(-1, -2))
         }
         body.addView(grid, LinearLayout.LayoutParams(-1, -2))
