@@ -6298,13 +6298,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Live Sports playback returns to its own list before normal section navigation.
-        if (section == "Live Sports" && playerView != null) {
-            closePlayer()
-            lastBackPressedAt = 0L
-            return
-        }
-
+        // Live Sports follows the same Back sequence as every other section:
+        // unwind one page at a time, keep playback alive until the Live TV home,
+        // then let the next Back explicitly close the player.
         // Live TV Back flow is deliberately isolated from Movies and Anime Series.
         // First Back from fullscreen is handled above and only changes the player to FIT.
         // While inline, unwind one navigation-history page at a time without touching playback.
