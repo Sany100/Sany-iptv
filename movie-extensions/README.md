@@ -44,5 +44,4 @@ preferences are intentionally separate.
 The app-side repository catalogue, checksum-verified installer/updater,
 rollback-on-load-failure, installed-extension list, uninstall action, Movie
 search entry point, MovieLoadResponse validation, and handoff to SANY's existing
-player are implemented. The official catalogue is initially empty until a
-Movie provider package is published and added here.
+player are implemented. The built-in catalogue currently includes **MultiMovies v51** from Indflix. Its `.cs3` package is pinned by SHA-256 and downloaded from the upstream builds branch at install time. The complete upstream source, tests, GPL-3.0 license, and third-party notices are preserved under `cloudstream-original/Indflix-Multimovies/`. The provider is not auto-selected; users must install and select it manually.
