@@ -3595,7 +3595,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun normalizeLiveTvCategory(group: String): String {
         val value = group.trim()
-        return if (value.equals("Bangla", true) || value.equals("Bangladesh", true)) "Bangla" else value
+        return if (
+            value.equals("Bangla", true) ||
+            value.equals("Bangladesh", true) ||
+            value.equals("Akash Go", true)
+        ) "Bangla" else value
     }
 
     private fun isAnime(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
