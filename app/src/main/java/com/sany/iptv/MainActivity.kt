@@ -1906,13 +1906,25 @@ class MainActivity : AppCompatActivity() {
                                 .map { it.second }
                                 .distinctBy { it.title.trim().lowercase() }
                                 .sortedBy { it.title.lowercase() }
+                            // Render one horizontal category rail per alphabet letter.
+                            // Keep Series and Movies as separate A–Z category groups.
                             buildList {
-                                if (series.isNotEmpty()) add(
-                                    SanyProviderShelf("SANY Anime", "ANIME SERIES • A–Z", series)
-                                )
-                                if (movies.isNotEmpty()) add(
-                                    SanyProviderShelf("SANY Anime", "ANIME MOVIES • A–Z", movies)
-                                )
+                                for (letter in letters) {
+                                    val letterSeries = series.filter {
+                                        it.title.firstOrNull()?.uppercaseChar() == letter
+                                    }
+                                    if (letterSeries.isNotEmpty()) add(
+                                        SanyProviderShelf("SANY Anime", "ANIME SERIES • $letter", letterSeries)
+                                    )
+                                }
+                                for (letter in letters) {
+                                    val letterMovies = movies.filter {
+                                        it.title.firstOrNull()?.uppercaseChar() == letter
+                                    }
+                                    if (letterMovies.isNotEmpty()) add(
+                                        SanyProviderShelf("SANY Anime", "ANIME MOVIES • $letter", letterMovies)
+                                    )
+                                }
                             }
                         }
                     }.getOrElse { error ->
