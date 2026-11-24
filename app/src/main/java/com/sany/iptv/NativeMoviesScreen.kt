@@ -42,6 +42,12 @@ class NativeMoviesScreen(
     private val onOpenExtensionProvider: (String) -> Unit = {},
     private val onOpenExtensionTitle: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
+    private class FastMovieScrollView(context: Context) : ScrollView(context) {
+        override fun fling(velocityY: Int) { super.fling((velocityY * 1.45f).toInt()) }
+    }
+    private class FastMovieHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
+        override fun fling(velocityX: Int) { super.fling((velocityX * 1.45f).toInt()) }
+    }
     private data class Movie(val title: String, val url: String, val category: String, val poster: String)
     private data class MovieShelfCard(val title: String, val poster: String, val onClick: () -> Unit)
     private val prefs = context.getSharedPreferences("sany_iptv", Context.MODE_PRIVATE)
@@ -69,8 +75,9 @@ class NativeMoviesScreen(
             setPadding(0, dp(8), 0, dp(24))
             setBackgroundColor(bg)
         }
-        val scroll = ScrollView(context).apply {
+        val scroll = FastMovieScrollView(context).apply {
             isFillViewport = true
+            isNestedScrollingEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             addView(body)
         }
@@ -365,8 +372,9 @@ class NativeMoviesScreen(
             bottomMargin = dp(8)
         })
 
-        val scroller = HorizontalScrollView(context).apply {
+        val scroller = FastMovieHorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
+            isNestedScrollingEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
         }
         val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
