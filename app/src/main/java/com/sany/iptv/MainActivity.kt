@@ -1747,14 +1747,21 @@ class MainActivity : AppCompatActivity() {
                                     addView(rail, ViewGroup.LayoutParams(-2, -2))
                                 }
                                 categoryItems.forEach { item ->
+                                    val isNowPlaying =
+                                        prefs.getString("sany_last_played_section", "") == "Live Sports" &&
+                                        prefs.getString("sany_last_played_provider", "").equals(providerName, true) &&
+                                        (prefs.getString("sany_last_played_item_url", "") == item.url ||
+                                            prefs.getString("sany_last_played_title", "").equals(item.name, true))
                                     val card = FrameLayout(this).apply {
                                         background = GradientDrawable().apply {
-                                            setColor(0xFF202D43.toInt())
+                                            setColor(if (isNowPlaying) 0xFF123E70.toInt() else 0xFF202D43.toInt())
                                             cornerRadius = dp(8).toFloat()
+                                            if (isNowPlaying) setStroke(dp(3), 0xFF35B8FF.toInt())
                                         }
                                         clipToOutline = true
                                         isClickable = true
                                         isFocusable = true
+                                        if (isNowPlaying) elevation = dp(9).toFloat()
                                         setOnClickListener { playLiveSportsItem(providerName, item.name, item.url) }
                                     }
                                     val image = ImageView(this).apply {
@@ -1787,6 +1794,14 @@ class MainActivity : AppCompatActivity() {
                                         )
                                     }
                                     card.addView(titleOverlay, FrameLayout.LayoutParams(-1, dp(42), Gravity.BOTTOM))
+                                    if (isNowPlaying) {
+                                        card.addView(text("▶ PLAYING", 9, Color.WHITE, true).apply {
+                                            setPadding(dp(7), dp(4), dp(7), dp(4))
+                                            background = rounded(0xFF0875F5.toInt(), 14)
+                                        }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+                                            setMargins(dp(6), dp(6), 0, 0)
+                                        })
+                                    }
                                     rail.addView(card, LinearLayout.LayoutParams(dp(cardWidth), dp(bannerHeight)).apply {
                                         // Small gutters separate compact banner cards.
                                         marginEnd = dp(8)
@@ -1861,11 +1876,20 @@ class MainActivity : AppCompatActivity() {
                     if (sources.isEmpty()) {
                         toast("এই Sports item-এর কোনো playable source পাওয়া যায়নি")
                     } else {
+                        // Remember the catalogue identity (not the resolved stream URL),
+                        // so the same Sports poster can be highlighted after playback starts.
+                        prefs.edit()
+                            .putString("sany_last_played_section", "Live Sports")
+                            .putString("sany_last_played_provider", providerName)
+                            .putString("sany_last_played_title", title)
+                            .putString("sany_last_played_item_url", data)
+                            .apply()
                         // Keep every returned Sports stream as a fallback. Some hosts
                         // resolve successfully but return a stream that never renders video.
                         animeFallbackRequests = sources
                         animeFallbackIndex = 0
                         playSanyPlaybackRequest(sources.first(), preserveFallbackQueue = true)
+                        if (section == "Live Sports") renderSection()
                     }
                 }.onFailure {
                     android.util.Log.e("SANY-LIVE-SPORTS", "Resolve failed for $title", it)
@@ -2165,6 +2189,8 @@ class MainActivity : AppCompatActivity() {
     private var animeEpisodeSourceResolving = false
     private var animeSourcePickerDialog: AlertDialog? = null
     private var subtitleTrackDialog: android.app.Dialog? = null
+    // The catalogue item that opened the current CloudStream Anime details page.
+    private var pendingCloudStreamAnimeItem: Triple<String, String, String>? = null
 
     private fun showAnimeSourcePicker(title: String, requests: List<SanyPlaybackRequest>) {
         if (requests.isEmpty() || isFinishing || isDestroyed || animeSourcePickerDialog?.isShowing == true) return
@@ -2206,6 +2232,19 @@ class MainActivity : AppCompatActivity() {
         val title = request.title.ifBlank { "AniLight" }
         val provider = request.provider.ifBlank { "Extension" }
         showAnimePlaybackLoading(title, true)
+        if (section == "Series") {
+            val pending = pendingCloudStreamAnimeItem
+            val playedTitle = pending?.third ?: title.substringBefore(" • ").trim()
+            val playedProvider = pending?.first ?: provider
+            val playedItemUrl = pending?.second ?: request.url.trim()
+            prefs.edit()
+                .putString("sany_last_played_section", "Series")
+                .putString("sany_last_played_provider", playedProvider)
+                .putString("sany_last_played_title", playedTitle)
+                .putString("sany_last_played_item_url", playedItemUrl)
+                .apply()
+            pendingCloudStreamAnimeItem = null
+        }
         val parsedUrl = runCatching { Uri.parse(request.url.trim()) }.getOrNull()
         if (parsedUrl?.scheme !in setOf("http", "https")) {
             showAnimePlaybackLoading("", false)
@@ -2509,6 +2548,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCloudStreamDetails(providerName: String, url: String, fallbackTitle: String) {
+        pendingCloudStreamAnimeItem = Triple(providerName, url, fallbackTitle)
         toast("Loading $fallbackTitle…")
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val result = runCatching { SanyCloudStreamPluginRuntime.load(providerName, url) }
@@ -5432,7 +5472,20 @@ class MainActivity : AppCompatActivity() {
         closePlayer(keepOrientation = true)
         currentChannel = channel
         if (section == "Movies") {
-            prefs.edit().putString("movies_now_playing_title", channel.name.trim()).apply()
+            prefs.edit()
+                .putString("movies_now_playing_title", channel.name.trim())
+                .putString("sany_last_played_section", "Movies")
+                .putString("sany_last_played_provider", channel.group)
+                .putString("sany_last_played_title", channel.name.trim())
+                .putString("sany_last_played_item_url", channel.url.trim())
+                .apply()
+        } else if (section == "Live TV") {
+            prefs.edit()
+                .putString("sany_last_played_section", "Live TV")
+                .putString("sany_last_played_provider", channel.group)
+                .putString("sany_last_played_title", channel.name.trim())
+                .putString("sany_last_played_item_url", channel.url.trim())
+                .apply()
         }
         // Move the single active-channel highlight immediately when playback selection changes.
         if (::listContainer.isInitialized && (section == "Live TV" || section == "Live Sports")) {
