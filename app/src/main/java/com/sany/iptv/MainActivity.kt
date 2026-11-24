@@ -1541,7 +1541,7 @@ class MainActivity : AppCompatActivity() {
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(28))
+            setPadding(0, dp(14), 0, dp(28))
         }
         page.addView(text("LIVE SPORTS", 22, white, true))
         page.addView(text("Live matches • Football • Cricket • Sports channels", 12, muted)
@@ -1689,29 +1689,24 @@ class MainActivity : AppCompatActivity() {
                                     text("$category  •  ${categoryItems.size}", 16, white, true)
                                         .apply { setPadding(0, dp(18), 0, dp(8)) }
                                 )
-                                // Each category has its own horizontally swipeable banner shelf.
-                                // Two large banners are stacked in each vertical column.
-                                val horizontal = FastSportsHorizontalScrollView(this).apply {
-                                    isHorizontalScrollBarEnabled = false
-                                    isNestedScrollingEnabled = false
-                                    overScrollMode = View.OVER_SCROLL_NEVER
-                                    setFadingEdgeLength(dp(18))
-                                    isHorizontalFadingEdgeEnabled = true
-                                }
-                                val columns = LinearLayout(this).apply {
-                                    orientation = LinearLayout.HORIZONTAL
-                                }
+                                // Full-width two-column banner grid for every sports category.
+                                val screenWidthDp = resources.displayMetrics.widthPixels /
+                                    resources.displayMetrics.density
+                                val cardWidth = (screenWidthDp / 2f).toInt().coerceAtLeast(140)
+                                val posterHeight = (cardWidth * 0.82f).toInt().coerceAtLeast(132)
                                 categoryItems.chunked(2).forEach { pair ->
-                                    val column = LinearLayout(this).apply {
-                                        orientation = LinearLayout.VERTICAL
+                                    val gridRow = LinearLayout(this).apply {
+                                        orientation = LinearLayout.HORIZONTAL
+                                        clipChildren = false
+                                        clipToPadding = false
                                     }
                                     pair.forEach { item ->
                                         val card = LinearLayout(this).apply {
                                             orientation = LinearLayout.VERTICAL
-                                            setPadding(dp(8), dp(8), dp(8), dp(8))
+                                            setPadding(dp(3), dp(3), dp(3), dp(7))
                                             background = GradientDrawable().apply {
                                                 setColor(0xFF202D43.toInt())
-                                                cornerRadius = dp(12).toFloat()
+                                                cornerRadius = dp(10).toFloat()
                                             }
                                             isClickable = true
                                             isFocusable = true
@@ -1732,23 +1727,24 @@ class MainActivity : AppCompatActivity() {
                                             addView(image, FrameLayout.LayoutParams(-1, -1))
                                             addView(placeholder, FrameLayout.LayoutParams(-1, -1))
                                         }
-                                        card.addView(banner, LinearLayout.LayoutParams(-1, dp(112)))
+                                        card.addView(banner, LinearLayout.LayoutParams(-1, dp(posterHeight)))
                                         card.addView(text(item.name, 13, white, true).apply {
                                             maxLines = 2
                                             ellipsize = android.text.TextUtils.TruncateAt.END
-                                            setPadding(dp(2), dp(8), dp(2), dp(2))
-                                        })
+                                            setPadding(dp(3), dp(8), dp(3), dp(2))
+                                        }, LinearLayout.LayoutParams(-1, dp(44)))
                                         item.posterUrl?.takeIf { it.isNotBlank() }?.let {
                                             loadCachedChannelLogo(image, placeholder, it)
                                         }
-                                        column.addView(card, LinearLayout.LayoutParams(dp(196), dp(166)).apply {
-                                            setMargins(dp(4), dp(4), dp(8), dp(8))
+                                        gridRow.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                                            setMargins(dp(2), dp(3), dp(2), dp(5))
                                         })
                                     }
-                                    columns.addView(column, LinearLayout.LayoutParams(dp(212), -2))
+                                    if (pair.size == 1) {
+                                        gridRow.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+                                    }
+                                    results.addView(gridRow, LinearLayout.LayoutParams(-1, -2))
                                 }
-                                horizontal.addView(columns)
-                                results.addView(horizontal, LinearLayout.LayoutParams(-1, -2))
                             }
                         }
                     }
