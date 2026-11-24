@@ -205,8 +205,11 @@ object SanyLiveSportsExtensionManager {
     }
 
     /** Reloads previously installed Live Sports packages after an app restart. */
-    fun loadInstalled(context: Context): List<SanyCloudStreamPluginRuntime.LoadResult> =
-        installed(context).mapNotNull { item ->
+    fun loadInstalled(
+        context: Context,
+        excludeIds: Set<String> = emptySet()
+    ): List<SanyCloudStreamPluginRuntime.LoadResult> =
+        installed(context).filterNot { it.id in excludeIds }.mapNotNull { item ->
             val packageFile = File(item.packagePath).canonicalFile
             val expected = File(context.filesDir, "cloudstream_extensions/pending").canonicalFile
             if (packageFile.parentFile != expected || !packageFile.isFile) null
