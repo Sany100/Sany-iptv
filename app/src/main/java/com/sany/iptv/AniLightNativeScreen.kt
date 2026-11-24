@@ -353,7 +353,7 @@ class AniLightNativeScreen(
                         if (targetPage in 1..pageCount && targetPage != homeCategoryPage) {
                             homeCategoryPage = targetPage
                             renderHomeCategoryPage()
-                            catalogueScroll?.post { catalogueScroll?.smoothScrollTo(0, 0) }
+                            catalogueScroll?.post { catalogueScroll?.scrollTo(0, 0) }
                         }
                     }
                 }
