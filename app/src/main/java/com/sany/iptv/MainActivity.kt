@@ -1960,7 +1960,7 @@ class MainActivity : AppCompatActivity() {
                             val providerResults = kotlinx.coroutines.coroutineScope {
                                 animeProviders.map { provider ->
                                     async(kotlinx.coroutines.Dispatchers.IO) {
-                                        suspend fun mapItems(items: List<com.lagradost.cloudstream3.SearchResponse>): List<Pair<String, SanyProviderItem>> =
+                                        fun mapItems(items: List<com.lagradost.cloudstream3.SearchResponse>): List<Pair<String, SanyProviderItem>> =
                                             items.mapNotNull { item ->
                                                 val title = item.name.trim()
                                                 val url = item.url.trim()
