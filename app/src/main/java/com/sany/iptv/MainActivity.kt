@@ -1971,7 +1971,65 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 }.awaitAll()
                             }
-                            val allResults = providerResults.flatten()
+                            var allResults = providerResults.flatten()
+
+                            // Some valid Anime extensions expose search but no usable
+                            // CloudStream homepage shelves. If every homepage is empty,
+                            // seed the same catalogue from real provider search results.
+                            // This keeps the Series page useful instead of showing a blank
+                            // state merely because a provider omitted mainPage().
+                            if (allResults.isEmpty() && animeProviders.isNotEmpty()) {
+                                val fallbackQueries = listOf(
+                                    "One Piece",
+                                    "Naruto",
+                                    "Demon Slayer",
+                                    "Jujutsu Kaisen",
+                                    "Solo Leveling",
+                                    "Attack on Titan"
+                                )
+                                val fallbackResults = kotlinx.coroutines.coroutineScope {
+                                    animeProviders.map { provider ->
+                                        async(kotlinx.coroutines.Dispatchers.IO) {
+                                            fallbackQueries.flatMap { query ->
+                                                runCatching {
+                                                    SanyCloudStreamPluginRuntime.search(provider.name, query)
+                                                        .mapNotNull { item ->
+                                                            val title = item.name.trim()
+                                                            val url = item.url.trim()
+                                                            if (title.isBlank() || url.isBlank()) null
+                                                            else {
+                                                                val isAnimeMovie =
+                                                                    item.type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
+                                                                    item.type == com.lagradost.cloudstream3.TvType.Movie
+                                                                val isAnimeSeries =
+                                                                    item.type == com.lagradost.cloudstream3.TvType.Anime ||
+                                                                    item.type == com.lagradost.cloudstream3.TvType.OVA ||
+                                                                    (!isAnimeMovie && provider.supportedTypes.any { type ->
+                                                                        type == com.lagradost.cloudstream3.TvType.Anime ||
+                                                                            type == com.lagradost.cloudstream3.TvType.OVA
+                                                                    })
+                                                                if (!isAnimeSeries && !isAnimeMovie) null
+                                                                else (if (isAnimeMovie) "MOVIE" else "SERIES") to
+                                                                    SanyProviderItem(
+                                                                        title = title,
+                                                                        url = url,
+                                                                        posterUrl = item.posterUrl.orEmpty(),
+                                                                        sourceProvider = provider.name
+                                                                    )
+                                                            }
+                                                        }
+                                                }.getOrDefault(emptyList())
+                                            }
+                                        }
+                                    }.awaitAll()
+                                }
+                                allResults = fallbackResults.flatten()
+                                android.util.Log.i(
+                                    "SANY-Anime-Home",
+                                    "Homepage fallback search returned ${allResults.size} Anime titles"
+                                )
+                            }
+
                             // Merge the three curated providers into one A–Z catalogue.
                             // Keep the source provider on each item for detail/playback.
                             val series = allResults.filter { it.first == "SERIES" }
