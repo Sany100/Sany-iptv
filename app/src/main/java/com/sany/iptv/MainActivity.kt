@@ -66,6 +66,13 @@ import java.io.PrintWriter
 import java.io.StringWriter
 
 class MainActivity : AppCompatActivity() {
+    /** Higher-velocity fling without changing normal finger tracking. */
+    private class FastSportsScrollView(context: Context) : ScrollView(context) {
+        override fun fling(velocityY: Int) { super.fling((velocityY * 1.45f).toInt()) }
+    }
+    private class FastSportsHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
+        override fun fling(velocityX: Int) { super.fling((velocityX * 1.45f).toInt()) }
+    }
     private val isTvDevice: Boolean
         get() = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
             (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
@@ -1526,7 +1533,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderLiveSportsExtensions() {
         contentArea.removeAllViews()
-        val scroll = ScrollView(this)
+        val scroll = FastSportsScrollView(this).apply {
+            isFillViewport = true
+            isNestedScrollingEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(14), dp(16), dp(28))
@@ -1645,9 +1656,12 @@ class MainActivity : AppCompatActivity() {
 
                         // Two large poster/banner cards per vertical column. The row itself
                         // scrolls horizontally so users can swipe right through the catalogue.
-                        val horizontal = HorizontalScrollView(this).apply {
+                        val horizontal = FastSportsHorizontalScrollView(this).apply {
                             isHorizontalScrollBarEnabled = false
+                            isNestedScrollingEnabled = false
                             overScrollMode = View.OVER_SCROLL_NEVER
+                            setFadingEdgeLength(dp(18))
+                            isHorizontalFadingEdgeEnabled = true
                         }
                         val columns = LinearLayout(this).apply {
                             orientation = LinearLayout.HORIZONTAL
