@@ -1526,16 +1526,211 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderLiveSportsExtensions() {
         contentArea.removeAllViews()
-        val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)) }
+        val scroll = ScrollView(this)
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(28))
+        }
         page.addView(text("LIVE SPORTS", 22, white, true))
-        page.addView(text("CloudStream Live provider extensions", 12, muted).apply { setPadding(0, dp(4), 0, dp(14)) })
-        page.addView(actionButton("INSTALL / REPAIR PLAYZTV") { installBuiltInPlayZTV() }, LinearLayout.LayoutParams(-1, dp(48)))
-        page.addView(actionButton("＋  EXTENSIONS") { showLiveSportsExtensionManager() }, LinearLayout.LayoutParams(-1, dp(48)))
+        page.addView(text("Live matches • Football • Cricket • Sports channels", 12, muted)
+            .apply { setPadding(0, dp(4), 0, dp(14)) })
+        page.addView(actionButton("INSTALL / REPAIR PLAYZTV") { installBuiltInPlayZTV() },
+            LinearLayout.LayoutParams(-1, dp(48)))
+        page.addView(actionButton("＋  EXTENSIONS") { showLiveSportsExtensionManager() },
+            LinearLayout.LayoutParams(-1, dp(48)))
+
         val installed = SanyLiveSportsExtensionManager.installed(this)
-        val providers = SanyCloudStreamPluginRuntime.providers().filter { p -> p.supportedTypes.any { it == com.lagradost.cloudstream3.TvType.Live } && installed.any { item -> runCatching { java.io.File(p.sourcePlugin).canonicalPath == java.io.File(item.packagePath).canonicalPath }.getOrDefault(false) } }
-        if (providers.isEmpty()) page.addView(text("কোনো Live Sports extension ইনস্টল নেই। EXTENSIONS থেকে Repository যোগ করে Install করো।", 14, muted).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(28)) })
-        else providers.forEach { p -> page.addView(text(p.name, 16, white, true).apply { setPadding(dp(10), dp(16), dp(10), dp(16)) }) }
-        contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
+        // The curated package is the source of truth. Do not hide its provider just
+        // because an extension build omits or mislabels TvType.Live in its metadata.
+        val installedPaths = installed.mapNotNull { item ->
+            runCatching { java.io.File(item.packagePath).canonicalPath }.getOrNull()
+        }.toSet()
+        val providers = SanyCloudStreamPluginRuntime.providers().filter { provider ->
+            runCatching { java.io.File(provider.sourcePlugin).canonicalPath in installedPaths }
+                .getOrDefault(false)
+        }.distinctBy { it.name.lowercase() }.sortedBy { it.name.lowercase() }
+
+        if (providers.isEmpty()) {
+            page.addView(text(
+                "PlayZTVProvider এখনো লোড হয়নি। INSTALL / REPAIR PLAYZTV চাপুন; ইনস্টল সফল হলে এখানে Sports catalogue দেখাবে।",
+                14, muted
+            ).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(28)) })
+        } else {
+            providers.forEach { provider ->
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(12), dp(12), dp(12), dp(12))
+                    setBackgroundColor(0xFF182235.toInt())
+                }
+                card.addView(text(provider.name, 17, white, true))
+                card.addView(text("Live Sports provider", 12, muted).apply {
+                    setPadding(0, dp(3), 0, dp(10))
+                })
+                val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                actions.addView(actionButton("LOAD HOME") { loadLiveSportsHome(provider.name, card) },
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+                actions.addView(actionButton("SEARCH") { showLiveSportsSearch(provider.name, card) },
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(6) })
+                card.addView(actions)
+                page.addView(card, LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = dp(14)
+                })
+                // Load automatically so opening Live Sports never shows an empty shell.
+                loadLiveSportsHome(provider.name, card)
+            }
+        }
+        scroll.addView(page)
+        contentArea.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun loadLiveSportsHome(providerName: String, host: LinearLayout) {
+        val old = host.findViewWithTag<View>("sports-results-$providerName")
+        if (old != null) host.removeView(old)
+        val results = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "sports-results-$providerName"
+            addView(text("Loading $providerName sports catalogue…", 13, muted)
+                .apply { setPadding(0, dp(12), 0, dp(8)) })
+        }
+        host.addView(results)
+        thread(name = "SANY-LiveSports-Home") {
+            val outcome = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    val provider = SanyCloudStreamPluginRuntime.providers()
+                        .firstOrNull { it.name.equals(providerName, true) }
+                        ?: error("Provider is not loaded")
+                    val homeItems = if (provider.hasMainPage && provider.mainPage.isNotEmpty()) {
+                        runCatching {
+                            kotlinx.coroutines.withTimeout(18_000L) {
+                                SanyCloudStreamPluginRuntime.homePage(providerName, 1)
+                                    .flatMap { shelf -> shelf.list }
+                            }
+                        }.getOrDefault(emptyList())
+                    } else emptyList()
+                    val collected = homeItems.toMutableList()
+                    if (collected.isEmpty()) {
+                        // Many live providers expose search but no homepage shelves.
+                        for (query in listOf("sports", "football", "cricket", "live", "wwe")) {
+                            val matches = runCatching {
+                                kotlinx.coroutines.withTimeout(8_000L) {
+                                    SanyCloudStreamPluginRuntime.search(providerName, query)
+                                }
+                            }.getOrDefault(emptyList())
+                            collected.addAll(matches)
+                            if (collected.size >= 40) break
+                        }
+                    }
+                    collected.distinctBy { it.url.trim().lowercase() }
+                        .filter { it.name.isNotBlank() && it.url.isNotBlank() }
+                        .take(60)
+                }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || section != "Live Sports") return@runOnUiThread
+                results.removeAllViews()
+                if (outcome.isFailure) {
+                    val message = outcome.exceptionOrNull()?.message ?: "Unknown provider error"
+                    android.util.Log.e("SANY-LIVE-SPORTS", "$providerName catalogue failed: $message", outcome.exceptionOrNull())
+                    results.addView(text("Catalogue load failed: $message", 13, muted)
+                        .apply { setPadding(0, dp(12), 0, dp(8)) })
+                } else {
+                    val items = outcome.getOrDefault(emptyList())
+                    android.util.Log.i("SANY-LIVE-SPORTS", "$providerName returned ${items.size} homepage/search items")
+                    if (items.isEmpty()) {
+                        results.addView(text("এখন কোনো Live Sports item পাওয়া যায়নি। SEARCH দিয়ে Football / Cricket লিখে চেষ্টা করুন।", 13, muted)
+                            .apply { setPadding(0, dp(12), 0, dp(8)) })
+                    } else {
+                        results.addView(text("SPORTS CHANNELS & EVENTS  •  ${items.size}", 12, muted, true)
+                            .apply { setPadding(0, dp(12), 0, dp(8)) })
+                        items.forEach { item ->
+                            val row = TextView(this).apply {
+                                text = "▶  ${item.name}"
+                                textSize = 14f
+                                setTextColor(white)
+                                setPadding(dp(12), dp(13), dp(12), dp(13))
+                                setBackgroundColor(0xFF202D43.toInt())
+                                isClickable = true
+                                isFocusable = true
+                                setOnClickListener { playLiveSportsItem(providerName, item.name, item.url) }
+                            }
+                            results.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
+                                topMargin = dp(6)
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showLiveSportsSearch(providerName: String, host: LinearLayout) {
+        val field = EditText(this).apply {
+            hint = "Football, Cricket, WWE…"
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Search • $providerName")
+            .setView(field)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("SEARCH") { _, _ ->
+                val query = field.text?.toString()?.trim().orEmpty()
+                if (query.isBlank()) return@setPositiveButton
+                thread(name = "SANY-LiveSports-Search") {
+                    val result = runCatching {
+                        kotlinx.coroutines.runBlocking {
+                            kotlinx.coroutines.withTimeout(18_000L) {
+                                SanyCloudStreamPluginRuntime.search(providerName, query)
+                            }
+                        }
+                    }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed || section != "Live Sports") return@runOnUiThread
+                        val resultHost = host.findViewWithTag<LinearLayout>("sports-results-$providerName")
+                        if (resultHost != null) {
+                            resultHost.removeAllViews()
+                            result.onSuccess { items ->
+                                if (items.isEmpty()) {
+                                    resultHost.addView(text("কোনো ফলাফল পাওয়া যায়নি: $query", 13, muted))
+                                } else {
+                                    items.distinctBy { it.url.trim().lowercase() }.forEach { item ->
+                                        resultHost.addView(actionButton("▶  ${item.name}") {
+                                            playLiveSportsItem(providerName, item.name, item.url)
+                                        }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(6) })
+                                    }
+                                }
+                            }.onFailure { resultHost.addView(text("Search failed: ${it.message}", 13, muted)) }
+                        }
+                    }
+                }
+            }.show()
+    }
+
+    private fun playLiveSportsItem(providerName: String, title: String, data: String) {
+        toast("Loading $title…")
+        thread(name = "SANY-LiveSports-Resolve") {
+            val result = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeout(25_000L) {
+                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
+                    }
+                }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { sources ->
+                    if (sources.isEmpty()) {
+                        toast("এই Sports item-এর কোনো playable source পাওয়া যায়নি")
+                    } else {
+                        // Prefer the first returned source, while preserving the app's
+                        // normal Media3 playback pipeline and source selector.
+                        playSanyPlaybackRequest(sources.first())
+                    }
+                }.onFailure {
+                    android.util.Log.e("SANY-LIVE-SPORTS", "Resolve failed for $title", it)
+                    toast("Sports playback failed: ${it.message ?: it.javaClass.simpleName}")
+                }
+            }
+        }
     }
     private fun showMovieExtensionSearch(providerName: String) {
         val field = EditText(this).apply { hint = "Search movie title"; setSingleLine(true) }
