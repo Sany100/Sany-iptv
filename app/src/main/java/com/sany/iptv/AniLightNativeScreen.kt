@@ -101,6 +101,7 @@ class AniLightNativeScreen(
     private var isAnimeSearchPage = false
     private var animeSearchResultsHost: LinearLayout? = null
     private var animeSearchRequestVersion = 0
+    private var homeLoadGeneration = 0
     private var animeSearchDebounce: Runnable? = null
 
     private data class UnifiedAnimeSource(
@@ -263,6 +264,7 @@ class AniLightNativeScreen(
     }
 
     private fun home() {
+        val requestGeneration = ++homeLoadGeneration
         isHomePage = true
         isShelfCategoryPage = false
         showingFilterResults = false
@@ -285,9 +287,11 @@ class AniLightNativeScreen(
 
         onLoadProviderShelves { providerShelves ->
             ui.post {
-                if (!isHomePage || !::contentHost.isInitialized) return@post
-                contentHost.removeView(loading)
-                contentHost.removeViews(1, (contentHost.childCount - 1).coerceAtLeast(0))
+                // Ignore stale async homepage responses after retry/navigation.
+                if (!isHomePage || requestGeneration != homeLoadGeneration || !::contentHost.isInitialized) return@post
+                // The loading view may already have been detached; clear safely rather than
+                // calling removeViews() with an invalid start index on an empty container.
+                contentHost.removeAllViews()
                 if (providerShelves.isEmpty()) {
                     contentHost.addView(label(
                         "নতুন Anime Extension পাওয়া যায়নি। Internet connection ও Extension sync পরীক্ষা করো।",
