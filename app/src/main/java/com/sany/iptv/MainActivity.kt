@@ -58,6 +58,7 @@ import java.net.HttpURLConnection
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.concurrent.thread
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withPermit
@@ -1861,7 +1862,7 @@ class MainActivity : AppCompatActivity() {
                             val allResults = kotlinx.coroutines.coroutineScope {
                                 animeProviders.flatMap { provider ->
                                     letters.map { letter ->
-                                        kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                                        async(kotlinx.coroutines.Dispatchers.IO) {
                                             requestGate.withPermit {
                                                 val found = runCatching {
                                                     kotlinx.coroutines.withTimeoutOrNull(12_000L) {
