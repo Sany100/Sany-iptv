@@ -359,6 +359,10 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 report.failures.forEach { android.util.Log.e("SANY-CS", "Anime plugin sync failed: $it") }
+                val removedVegaMovies = SanyMovieExtensionManager.removeVegaMovies(applicationContext)
+                if (removedVegaMovies > 0) {
+                    android.util.Log.i("SANY-MOVIE", "Removed $removedVegaMovies retired VegaMovies extension(s)")
+                }
                 SanyMovieExtensionManager.loadInstalled(applicationContext).forEach { result ->
                     if (result.success) {
                         android.util.Log.i("SANY-MOVIE", "Movie extension restored: ${result.pluginName}")
