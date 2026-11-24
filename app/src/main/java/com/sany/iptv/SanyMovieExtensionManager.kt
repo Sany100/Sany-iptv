@@ -32,6 +32,7 @@ object SanyMovieExtensionManager {
     private const val PREFS = "sany_movie_extensions"
     private const val KEY_REPOSITORIES = "repositories"
     private const val KEY_INSTALLED = "installed"
+    private const val KEY_SELECTED = "selected_movie_extension_ids"
     private const val KEY_DEFAULT_REPOSITORY_SEEDED = "default_repository_seeded"
     private const val DEFAULT_MOVIE_REPOSITORY = "https://raw.githubusercontent.com/dipender98/Indflix/builds/repo.json"
     private const val CONNECT_TIMEOUT_MS = 12_000
@@ -123,6 +124,16 @@ object SanyMovieExtensionManager {
                 path, item.optString("sha256")
             )
         }
+    }
+
+    /** Only extensions explicitly selected by the user are shown on the Movies page. */
+    fun selectedIds(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_SELECTED, emptySet())?.toSet() ?: emptySet()
+
+    @Synchronized
+    fun setSelectedIds(context: Context, ids: Set<String>) {
+        val installedIds = installed(context).map { it.id }.toSet()
+        prefs(context).edit().putStringSet(KEY_SELECTED, ids.intersect(installedIds)).apply()
     }
 
     /** Reloads previously installed Movie packages after an app restart. */
