@@ -2203,14 +2203,10 @@ class MainActivity : AppCompatActivity() {
                             // cased or branded MainAPI name). These are the only Anime packages
                             // loaded by the curated Anime sync path, so select by actual
                             // CloudStream media capabilities rather than brittle name equality.
+                            // Inspect every installed extension. Some mixed-content providers
+                            // expose Anime entries even when their declared supportedTypes are broad.
+                            // The strict per-result type filter below decides what may enter Anime.
                             var animeProviders = SanyCloudStreamPluginRuntime.providers()
-                                .filter { provider ->
-                                    provider.supportedTypes.any { type ->
-                                        type == com.lagradost.cloudstream3.TvType.Anime ||
-                                            type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
-                                            type == com.lagradost.cloudstream3.TvType.OVA
-                                    }
-                                }
                             // Recover if the user opens Anime before the startup sync has
                             // registered the curated extensions, or if Android cleared process state.
                             if (animeProviders.isEmpty()) {
@@ -2225,13 +2221,6 @@ class MainActivity : AppCompatActivity() {
                                     android.util.Log.e("SANY-Anime-Home", "Retry sync: $it")
                                 }
                                 animeProviders = SanyCloudStreamPluginRuntime.providers()
-                                    .filter { provider ->
-                                        provider.supportedTypes.any { type ->
-                                            type == com.lagradost.cloudstream3.TvType.Anime ||
-                                                type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
-                                                type == com.lagradost.cloudstream3.TvType.OVA
-                                        }
-                                    }
                             }
                             android.util.Log.i(
                                 "SANY-Anime-Home",
@@ -2251,18 +2240,16 @@ class MainActivity : AppCompatActivity() {
                                                 val url = item.url.trim()
                                                 if (title.isBlank() || url.isBlank()) null
                                                 else {
-                                                    val isMovie =
-                                                        item.type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
-                                                            item.type == com.lagradost.cloudstream3.TvType.Movie
+                                                    // Never infer that every result from an Anime-capable
+                                                    // extension is Anime. Mixed providers can return regular
+                                                    // movies/TV; accept only explicitly typed Anime content.
+                                                    val isAnimeMovie =
+                                                        item.type == com.lagradost.cloudstream3.TvType.AnimeMovie
                                                     val isAnimeSeries =
                                                         item.type == com.lagradost.cloudstream3.TvType.Anime ||
-                                                            item.type == com.lagradost.cloudstream3.TvType.OVA ||
-                                                            provider.supportedTypes.any { type ->
-                                                                type == com.lagradost.cloudstream3.TvType.Anime ||
-                                                                    type == com.lagradost.cloudstream3.TvType.OVA
-                                                            }
-                                                    if (!isMovie && !isAnimeSeries) null
-                                                    else (if (isMovie) "MOVIE" else "SERIES") to SanyProviderItem(
+                                                            item.type == com.lagradost.cloudstream3.TvType.OVA
+                                                    if (!isAnimeMovie && !isAnimeSeries) null
+                                                    else (if (isAnimeMovie) "MOVIE" else "SERIES") to SanyProviderItem(
                                                         title = title,
                                                         url = url,
                                                         posterUrl = item.posterUrl.orEmpty(),
