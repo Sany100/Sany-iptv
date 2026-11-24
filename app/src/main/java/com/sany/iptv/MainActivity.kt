@@ -44,7 +44,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
@@ -5272,7 +5272,13 @@ class MainActivity : AppCompatActivity() {
             putAll(requestHeaders)
         }
         val highSpeedStreaming = prefs.getBoolean("high_speed_streaming", false)
-        val httpFactory = DefaultHttpDataSource.Factory()
+        val httpFactory = OkHttpDataSource.Factory(
+            SanyNetworkBypasses.client(
+                this,
+                connectTimeoutMs = if (highSpeedStreaming) 10_000 else 5_000,
+                readTimeoutMs = if (highSpeedStreaming) 30_000 else 15_000
+            )
+        )
             // Keep standard IPTV headers, and add provider-specific headers only
             // for AniLight playback (including HLS segments and subtitle requests).
             .setUserAgent(
@@ -5280,9 +5286,6 @@ class MainActivity : AppCompatActivity() {
                     ?: "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36"
             )
             .setDefaultRequestProperties(mediaHeaders)
-            .setConnectTimeoutMs(if (highSpeedStreaming) 10000 else 5000)
-            .setReadTimeoutMs(if (highSpeedStreaming) 30000 else 15000)
-            .setAllowCrossProtocolRedirects(true)
 
         val subtitleRequestHeaders = buildMap<String, Map<String, String>> {
             if (!subtitleUrl.isNullOrBlank() && requestHeaders.isNotEmpty()) {
