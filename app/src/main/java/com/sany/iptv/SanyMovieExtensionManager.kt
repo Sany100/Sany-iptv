@@ -161,7 +161,7 @@ object SanyMovieExtensionManager {
             else SanyCloudStreamPluginRuntime.load(context, packageFile)
         }
 
-    /** Reads SANY schema-1 indexes and native CloudStream manifest-v1 repositories. */
+    /** Reads every configured Movie source independently; one broken repository cannot hide others. */
     fun catalogue(context: Context): List<Extension> {
         val result = LinkedHashMap<String, Extension>()
         val failures = mutableListOf<String>()
