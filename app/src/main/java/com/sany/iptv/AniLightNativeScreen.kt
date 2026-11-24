@@ -54,6 +54,9 @@ class AniLightNativeScreen(
     @Volatile private var homepageCache: JSONObject? = null
     @Volatile private var homepageCheckedAt = 0L
     private var homeRequestVersion = 0
+    private var homeCategoryPage = 1
+    private var cachedProviderShelves: List<SanyProviderShelf> = emptyList()
+    private val homeCategoriesPerPage = 6
     // Bounded poster pipeline: memory LRU + disk cache + in-flight de-duplication.
     // This avoids decoding full-size artwork repeatedly and prevents a burst of requests
     // when a long catalogue page is rendered on a mobile device.
@@ -308,9 +311,63 @@ class AniLightNativeScreen(
                     })
                     contentHost.addView(button("RETRY") { home() })
                 } else {
-                    providerShelves.forEach { shelf -> addProviderShelf(shelf) }
+                    cachedProviderShelves = providerShelves.filter { it.items.isNotEmpty() }
+                    homeCategoryPage = 1
+                    renderHomeCategoryPage()
                 }
             }
+        }
+    }
+
+    /** Show exactly six Anime categories per numbered homepage page. */
+    private fun renderHomeCategoryPage() {
+        if (!isHomePage || !::contentHost.isInitialized) return
+        contentHost.removeViews(1, (contentHost.childCount - 1).coerceAtLeast(0))
+        val pageCount = ((cachedProviderShelves.size + homeCategoriesPerPage - 1) / homeCategoriesPerPage).coerceAtLeast(1)
+        homeCategoryPage = homeCategoryPage.coerceIn(1, pageCount)
+        val from = (homeCategoryPage - 1) * homeCategoriesPerPage
+        cachedProviderShelves.drop(from).take(homeCategoriesPerPage).forEach { shelf ->
+            addProviderShelf(shelf)
+        }
+        if (pageCount > 1) {
+            val pagination = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(14), dp(8), dp(24))
+            }
+            fun addPageButton(text: String, targetPage: Int, selected: Boolean = false) {
+                val item = TextView(context).apply {
+                    this.text = text
+                    gravity = Gravity.CENTER
+                    textSize = 13f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(Color.WHITE)
+                    background = rounded(if (selected) accent else surface, 9)
+                    setPadding(dp(13), dp(10), dp(13), dp(10))
+                    isEnabled = targetPage in 1..pageCount && targetPage != homeCategoryPage
+                    alpha = if (isEnabled || selected) 1f else 0.38f
+                    setOnClickListener {
+                        if (targetPage in 1..pageCount && targetPage != homeCategoryPage) {
+                            homeCategoryPage = targetPage
+                            renderHomeCategoryPage()
+                            catalogueScroll?.post { catalogueScroll?.smoothScrollTo(0, 0) }
+                        }
+                    }
+                }
+                pagination.addView(item, LinearLayout.LayoutParams(-2, dp(40)).apply {
+                    leftMargin = dp(3); rightMargin = dp(3)
+                })
+            }
+            addPageButton("‹", homeCategoryPage - 1)
+            (1..pageCount).forEach { number ->
+                addPageButton(number.toString(), number, selected = number == homeCategoryPage)
+            }
+            addPageButton("›", homeCategoryPage + 1)
+            contentHost.addView(pagination, bottom(10))
+            contentHost.addView(label("Page $homeCategoryPage of $pageCount • প্রতি পেজে ৬টি ক্যাটাগরি", 11, muted, false).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(14))
+            })
         }
     }
 
