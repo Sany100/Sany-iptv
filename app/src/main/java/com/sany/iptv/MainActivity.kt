@@ -1546,12 +1546,6 @@ class MainActivity : AppCompatActivity() {
             clipToPadding = false
         }
         page.addView(text("LIVE SPORTS", 22, white, true))
-        page.addView(text("Live matches • Football • Cricket • Sports channels", 12, muted)
-            .apply { setPadding(0, dp(4), 0, dp(14)) })
-        page.addView(actionButton("INSTALL / REPAIR PLAYZTV") { installBuiltInPlayZTV() },
-            LinearLayout.LayoutParams(-1, dp(48)))
-        page.addView(actionButton("＋  EXTENSIONS") { showLiveSportsExtensionManager() },
-            LinearLayout.LayoutParams(-1, dp(48)))
 
         val installed = SanyLiveSportsExtensionManager.installed(this)
         // The curated package is the source of truth. Do not hide its provider just
