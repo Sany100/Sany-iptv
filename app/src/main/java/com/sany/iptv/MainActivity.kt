@@ -1752,22 +1752,24 @@ class MainActivity : AppCompatActivity() {
                             // Sync SANY's verified Anime packages plus the curated Hindi/Bangla
                             // providers. Do this off the UI thread; each package is SHA-256 checked.
                             val syncReport = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
-                            syncReport.packages.forEach { packageFile ->
+                            val allowedAnimeProviderNames = syncReport.packages.flatMap { packageFile ->
                                 val loaded = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
                                 if (!loaded.success) {
                                     android.util.Log.w("SANY-Anime-Provider", "${packageFile.name}: ${loaded.error}")
-                                }
-                            }
+                                    emptyList()
+                                } else loaded.providerNames
+                            }.toSet()
                             if (syncReport.failures.isNotEmpty()) {
                                 android.util.Log.w("SANY-Anime-Provider", syncReport.failures.joinToString("; "))
                             }
                             SanyCloudStreamPluginRuntime.providers()
                                 .filter { provider ->
-                                    provider.supportedTypes.any { type ->
-                                        type == com.lagradost.cloudstream3.TvType.Anime ||
-                                            type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
-                                            type == com.lagradost.cloudstream3.TvType.OVA
-                                    }
+                                    provider.name in allowedAnimeProviderNames &&
+                                        provider.supportedTypes.any { type ->
+                                            type == com.lagradost.cloudstream3.TvType.Anime ||
+                                                type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
+                                                type == com.lagradost.cloudstream3.TvType.OVA
+                                        }
                                 }
                                 .flatMap { provider ->
                                     runCatching {
@@ -1822,15 +1824,17 @@ class MainActivity : AppCompatActivity() {
         thread(name = "SANY-Anime-ProviderCheck") {
             val result = runCatching {
                 val report = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
-                report.packages.forEach { packageFile ->
+                val allowedProviderNames = report.packages.flatMap { packageFile ->
                     val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
                     if (!loadResult.success) {
                         android.util.Log.e("SANY-CS", "DEX load failed: ${packageFile.name}: ${loadResult.error}")
-                    }
-                }
+                        emptyList()
+                    } else loadResult.providerNames
+                }.toSet()
                 val providers = SanyCloudStreamPluginRuntime.providers()
+                    .filter { it.name in allowedProviderNames }
                 check(providers.isNotEmpty()) {
-                    report.failures.joinToString("; ").ifBlank { "No Anime MainAPI provider was registered" }
+                    report.failures.joinToString("; ").ifBlank { "No curated Bangla/Hindi Anime provider was registered" }
                 }
                 providers
             }
