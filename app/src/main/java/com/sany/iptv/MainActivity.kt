@@ -3129,7 +3129,7 @@ class MainActivity : AppCompatActivity() {
                 else -> !isMovie(channel) && !isSeries(channel)
             }
             if (eligibleForAll) allCount++
-            val group = if (isSportsChannel(channel)) "Sports" else channel.group
+            val group = if (isSportsChannel(channel)) "Sports" else normalizeLiveTvCategory(channel.group)
             if (group.isNotBlank() && !groupCounts.containsKey(group)) {
                 groupCounts[group] = 0
             }
@@ -3535,7 +3535,7 @@ class MainActivity : AppCompatActivity() {
                 section == "Series" && selectedGroup == "Anime" -> isAnime(c)
                 section == "Movies" && selectedGroup in movieCategories -> matchesMovieCategory(c, selectedGroup)
                 section == "Live TV" && selectedGroup.equals("Sports", true) -> isSportsChannel(c)
-                else -> c.group.equals(selectedGroup, true)
+                else -> normalizeLiveTvCategory(c.group).equals(selectedGroup, true)
             }
             val q = searchQuery.trim().lowercase()
             typeMatch && groupMatch &&
@@ -3591,6 +3591,11 @@ class MainActivity : AppCompatActivity() {
             "hockey", "boxing", "wimbledon", "euro cup", "world cup"
         )
         return keywords.any(metadata::contains)
+    }
+
+    private fun normalizeLiveTvCategory(group: String): String {
+        val value = group.trim()
+        return if (value.equals("Bangla", true) || value.equals("Bangladesh", true)) "Bangla" else value
     }
 
     private fun isAnime(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
