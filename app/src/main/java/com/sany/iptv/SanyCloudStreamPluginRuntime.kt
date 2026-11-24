@@ -24,6 +24,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.Dispatchers
 import java.util.zip.ZipFile
@@ -170,7 +172,10 @@ object SanyCloudStreamPluginRuntime {
 
     private data class CachedHomePage(val savedAt: Long, val shelves: List<HomePageList>)
     private val homePageCache = ConcurrentHashMap<String, CachedHomePage>()
+    private val homePageLocks = ConcurrentHashMap<String, Mutex>()
     private val HOME_PAGE_CACHE_TTL_MS = 10 * 60 * 1000L
+    // One shared gate prevents multiple selected extensions from flooding provider servers.
+    private val homePageRequestGate = Semaphore(4)
 
     /** Fetches and briefly caches the selected provider's real CloudStream homepage shelves. */
     suspend fun homePage(providerName: String, page: Int = 1): List<HomePageList> {
@@ -180,48 +185,53 @@ object SanyCloudStreamPluginRuntime {
             "$providerName does not publish a homepage catalogue"
         }
         val cacheKey = "${provider.name.lowercase()}:$page"
-        homePageCache[cacheKey]?.takeIf {
+        fun cachedResult(): List<HomePageList>? = homePageCache[cacheKey]?.takeIf {
             System.currentTimeMillis() - it.savedAt < HOME_PAGE_CACHE_TTL_MS
-        }?.let { return it.shelves }
+        }?.shelves
+        cachedResult()?.let { return it }
 
-        val failedShelves = java.util.Collections.synchronizedList(mutableListOf<String>())
-        // Four concurrent requests reduce total wait without flooding provider servers.
-        val shelfGate = Semaphore(4)
-        val shelves = coroutineScope {
-            provider.mainPage
-                .sortedBy { it.name.trim().lowercase() }
-                .map { data ->
-                    async(Dispatchers.IO) {
-                        shelfGate.withPermit {
-                            try {
-                                val response = kotlinx.coroutines.withTimeout(9_000L) {
-                                    provider.getMainPage(
-                                        page,
-                                        MainPageRequest(data.name, data.data, data.horizontalImages)
-                                    )
+        // If the same screen/provider is requested twice, share one network fetch.
+        val requestLock = homePageLocks.computeIfAbsent(cacheKey) { Mutex() }
+        return requestLock.withLock {
+            cachedResult()?.let { return@withLock it }
+
+            val failedShelves = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val shelves = coroutineScope {
+                provider.mainPage
+                    .sortedBy { it.name.trim().lowercase() }
+                    .map { data ->
+                        async(Dispatchers.IO) {
+                            homePageRequestGate.withPermit {
+                                try {
+                                    val response = kotlinx.coroutines.withTimeout(9_000L) {
+                                        provider.getMainPage(
+                                            page,
+                                            MainPageRequest(data.name, data.data, data.horizontalImages)
+                                        )
+                                    }
+                                    val items = response?.items.orEmpty()
+                                    if (items.isEmpty()) failedShelves.add(data.name)
+                                    items
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (error: Throwable) {
+                                    failedShelves.add("${data.name}: ${error.cause?.message ?: error.message ?: error.javaClass.simpleName}")
+                                    emptyList()
                                 }
-                                val items = response?.items.orEmpty()
-                                if (items.isEmpty()) failedShelves.add(data.name)
-                                items
-                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                                throw cancelled
-                            } catch (error: Throwable) {
-                                failedShelves.add("${data.name}: ${error.cause?.message ?: error.message ?: error.javaClass.simpleName}")
-                                emptyList()
                             }
                         }
                     }
-                }
-                .awaitAll()
-                .flatten()
-                .filter { it.list.isNotEmpty() }
-                .sortedBy { it.name.trim().lowercase() }
+                    .awaitAll()
+                    .flatten()
+                    .filter { it.list.isNotEmpty() }
+                    .sortedBy { it.name.trim().lowercase() }
+            }
+            if (shelves.isEmpty()) {
+                error("Homepage returned no items for ${provider.mainUrl}. Failed/empty categories: ${failedShelves.joinToString("; ")}")
+            }
+            homePageCache[cacheKey] = CachedHomePage(System.currentTimeMillis(), shelves)
+            shelves
         }
-        if (shelves.isEmpty()) {
-            error("Homepage returned no items for ${provider.mainUrl}. Failed/empty categories: ${failedShelves.joinToString("; ")}")
-        }
-        homePageCache[cacheKey] = CachedHomePage(System.currentTimeMillis(), shelves)
-        return shelves
     }
 
     suspend fun load(providerName: String, url: String): LoadResponse? {
