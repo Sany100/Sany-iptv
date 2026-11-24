@@ -2138,26 +2138,18 @@ class MainActivity : AppCompatActivity() {
     private var subtitleTrackDialog: android.app.Dialog? = null
 
     private fun showAnimeSourcePicker(title: String, requests: List<SanyPlaybackRequest>) {
-        if (requests.isEmpty() || isFinishing || isDestroyed || movieSourcePickerDialog?.isShowing == true) return
-        val labels = requests.map { request ->
-            listOfNotNull(
-                request.quality?.takeIf { it.isNotBlank() },
-                request.streamMimeType?.substringAfterLast('/')?.takeIf { it.isNotBlank() },
-                request.provider.takeIf { it.isNotBlank() }
-            ).joinToString(" • ").ifBlank { request.url.substringBefore('?').takeLast(48) }
-        }.toTypedArray()
-        // A single tap on a listed source immediately starts that exact stream.
-        // No extra PLAY confirmation is required.
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("$title — Sources")
-            .setItems(labels) { _, index ->
-                if (index in requests.indices) startAnimeSourceFallback(requests, index)
-            }
-            .setNegativeButton("Cancel", null)
-            .create()
-        movieSourcePickerDialog = dialog
-        dialog.setOnDismissListener { if (movieSourcePickerDialog === dialog) movieSourcePickerDialog = null }
-        dialog.show()
+        if (requests.isEmpty() || isFinishing || isDestroyed) return
+        // Direct Play: start the first resolved stream immediately. Keep the
+        // remaining links in order and try them only if Media3 reports an error.
+        val ordered = requests.distinctBy { it.url }.filter { it.url.isNotBlank() }
+        if (ordered.isEmpty()) {
+            toast("কোনো valid video source পাওয়া যায়নি")
+            return
+        }
+        animeFallbackRequests = ordered
+        animeFallbackIndex = 0
+        android.util.Log.i("SANY-PLAYER", "Direct Play: starting source 1/${ordered.size} for $title")
+        playSanyPlaybackRequest(ordered.first(), preserveFallbackQueue = true)
     }
 
     private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
@@ -2526,14 +2518,11 @@ class MainActivity : AppCompatActivity() {
         requests: List<SanyPlaybackRequest>,
         selectedIndex: Int
     ) {
-        if (requests.isEmpty() || selectedIndex !in requests.indices) return
-        // Respect the exact source the user selected. Do not silently switch
-        // to another provider/link if this selected source fails to start.
-        val selected = requests[selectedIndex]
-        animeFallbackRequests = emptyList()
-        animeFallbackIndex = -1
-        toast("Selected source: ${selected.provider}")
-        playSanyPlaybackRequest(selected)
+        val ordered = requests.distinctBy { it.url }.filter { it.url.isNotBlank() }
+        if (selectedIndex !in ordered.indices) return
+        animeFallbackRequests = ordered
+        animeFallbackIndex = selectedIndex
+        playSanyPlaybackRequest(ordered[selectedIndex], preserveFallbackQueue = true)
     }
 
     private fun tryNextAnimeFallback(): Boolean {
@@ -5348,7 +5337,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         runOnUiThread {
                             if (section == "Series") showAnimePlaybackLoading("", false)
-                            if (section == "Series" && tryNextAnimeFallback()) {
+                            if ((section == "Series" || section == "Movies") && tryNextAnimeFallback()) {
                                 return@runOnUiThread
                             }
                             if (httpStatus != null) {
@@ -6174,22 +6163,18 @@ class MainActivity : AppCompatActivity() {
         val target = selector ?: return
         val quality = prefs.getString("video_quality", "auto") ?: "auto"
         val builder = target.buildUponParameters()
-        // Auto mode caps Anime at 720p to reduce sustained decoder/GPU load.
-        // Explicit 480p and 1080p selections remain available to the viewer.
-        if (section == "Series") {
-            // Anime always starts in adaptive Auto quality. Audio track preference is Bengali > Hindi > English.
-            // Subtitle tracks remain disabled until the viewer explicitly enables them inside the player.
+        // VOD Auto mode delegates quality selection to Media3's adaptive track
+        // selector. HLS/DASH renditions can move up/down with measured bandwidth.
+        // A single-file MP4 remains at the quality supplied by its source.
+        if (section == "Series" || section == "Movies") {
             val audioLanguages = activeProviderAudioLanguages ?: listOf("bn", "ben", "hi", "hin", "en", "eng")
             builder.setPreferredAudioLanguages(*audioLanguages.toTypedArray())
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-            val requestedHeight = activeProviderQualityHint?.lowercase()?.removeSuffix("p")?.toIntOrNull()
-            when {
-                requestedHeight != null && requestedHeight in 1..480 ->
-                    builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
-                requestedHeight != null && requestedHeight in 481..720 ->
-                    builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
-                requestedHeight != null && requestedHeight in 721..1080 ->
-                    builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
+            if (section == "Series") builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            val quality = prefs.getString("video_quality", "auto") ?: "auto"
+            when (quality) {
+                "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
+                "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
+                "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
                 else -> builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
             }
             target.setParameters(builder)
