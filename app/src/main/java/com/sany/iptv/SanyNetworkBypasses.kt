@@ -51,7 +51,13 @@ object SanyNetworkBypasses {
         if (githubProxyEnabled(context)) {
             val match = rawGithub.find(url)
             if (match != null) {
-                val (owner, repo, path) = match.destructured
+                val (owner, repo, rawPath) = match.destructured
+                // Raw GitHub URLs commonly use refs/heads/<branch>/...; jsDelivr expects @<branch>/...
+                val path = when {
+                    rawPath.startsWith("refs/heads/") -> rawPath.removePrefix("refs/heads/")
+                    rawPath.startsWith("refs/tags/") -> rawPath.removePrefix("refs/tags/")
+                    else -> rawPath
+                }
                 url = "https://cdn.jsdelivr.net/gh/$owner/$repo@$path"
             }
         }
