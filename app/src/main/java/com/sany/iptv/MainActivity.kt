@@ -2116,12 +2116,15 @@ class MainActivity : AppCompatActivity() {
         toast("এই Episode-এর অন্য Provider Source খোঁজা হচ্ছে…")
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val resolved = mutableListOf<SanyPlaybackRequest>()
-            val failures = mutableListOf<String>()
-            runCatching {
-                kotlinx.coroutines.withTimeout(22_000L) {
-                    resolved += SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
+            val failures = java.util.Collections.synchronizedList(mutableListOf<String>())
+            // Resolve the selected provider at the same time as alternate providers.
+            val primaryResult = async(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    kotlinx.coroutines.withTimeout(22_000L) {
+                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
+                    }
                 }
-            }.onFailure { failures += "$providerName: ${it.message ?: it.javaClass.simpleName}" }
+            }
 
             fun normalizeAnimeTitle(value: String): String =
                 value.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
@@ -2143,7 +2146,7 @@ class MainActivity : AppCompatActivity() {
                     async(kotlinx.coroutines.Dispatchers.IO) {
                         gate.withPermit {
                             runCatching {
-                                kotlinx.coroutines.withTimeout(18_000L) {
+                                kotlinx.coroutines.withTimeout(14_000L) {
                                     val match = SanyCloudStreamPluginRuntime.search(provider.name, title)
                                         .firstOrNull { normalizeAnimeTitle(it.name) == normalizeAnimeTitle(title) }
                                         ?: return@withTimeout emptyList<SanyPlaybackRequest>()
@@ -2182,7 +2185,10 @@ class MainActivity : AppCompatActivity() {
                 }.awaitAll()
             }
             resolved += alternateResults.flatten()
-                        val distinct = resolved.distinctBy { it.url }
+            primaryResult.await()
+                .onSuccess { resolved += it }
+                .onFailure { failures += "$providerName: ${it.message ?: it.javaClass.simpleName}" }
+            val distinct = resolved.distinctBy { it.url }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (distinct.isEmpty()) {
