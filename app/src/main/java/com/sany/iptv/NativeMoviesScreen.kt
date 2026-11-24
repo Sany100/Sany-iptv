@@ -24,6 +24,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 
 class NativeMoviesScreen(
     private val context: Context,
@@ -44,6 +48,9 @@ class NativeMoviesScreen(
     private val mainHandler = Handler(Looper.getMainLooper())
     // Keep image networking and bitmap decoding off the UI thread with a bounded worker pool.
     private val posterExecutor = Executors.newFixedThreadPool(3)
+    // Keep homepage jobs attached to this screen and cancel stale work on rerender.
+    private val homeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val homeJobs = mutableListOf<Job>()
     private lateinit var body: LinearLayout
 
     fun create(): View {
@@ -88,6 +95,8 @@ class NativeMoviesScreen(
     }
 
     private fun renderMovies() {
+        homeJobs.forEach { it.cancel() }
+        homeJobs.clear()
         body.removeAllViews()
         val movies = readMovies()
         val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -174,7 +183,7 @@ class NativeMoviesScreen(
     private fun loadExtensionHome(providerName: String, host: LinearLayout) {
         host.removeAllViews()
         host.addView(label("Loading $providerName movies…", 13, muted, false))
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        val job = homeScope.launch {
             val result = runCatching {
                 kotlinx.coroutines.withTimeout(25_000L) {
                     SanyCloudStreamPluginRuntime.homePage(providerName, 1)
@@ -256,6 +265,7 @@ class NativeMoviesScreen(
                 }
             }
         }
+        homeJobs.add(job)
     }
 
     private fun addSectionTitle(title: String) {
