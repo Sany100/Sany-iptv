@@ -1918,7 +1918,7 @@ class MainActivity : AppCompatActivity() {
                             // cased or branded MainAPI name). These are the only Anime packages
                             // loaded by the curated Anime sync path, so select by actual
                             // CloudStream media capabilities rather than brittle name equality.
-                            val animeProviders = SanyCloudStreamPluginRuntime.providers()
+                            var animeProviders = SanyCloudStreamPluginRuntime.providers()
                                 .filter { provider ->
                                     provider.supportedTypes.any { type ->
                                         type == com.lagradost.cloudstream3.TvType.Anime ||
@@ -1926,110 +1926,99 @@ class MainActivity : AppCompatActivity() {
                                             type == com.lagradost.cloudstream3.TvType.OVA
                                     }
                                 }
+                            // Recover if the user opens Anime before the startup sync has
+                            // registered the curated extensions, or if Android cleared process state.
+                            if (animeProviders.isEmpty()) {
+                                val retryReport = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
+                                retryReport.packages.forEach { packageFile ->
+                                    val loaded = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                                    if (!loaded.success) {
+                                        android.util.Log.e("SANY-Anime-Home", "Retry load failed: ${packageFile.name}: ${loaded.error}")
+                                    }
+                                }
+                                retryReport.failures.forEach {
+                                    android.util.Log.e("SANY-Anime-Home", "Retry sync: $it")
+                                }
+                                animeProviders = SanyCloudStreamPluginRuntime.providers()
+                                    .filter { provider ->
+                                        provider.supportedTypes.any { type ->
+                                            type == com.lagradost.cloudstream3.TvType.Anime ||
+                                                type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
+                                                type == com.lagradost.cloudstream3.TvType.OVA
+                                        }
+                                    }
+                            }
                             android.util.Log.i(
                                 "SANY-Anime-Home",
                                 "Loaded Anime homepage providers: " +
                                     animeProviders.joinToString { "${it.name}[${it.supportedTypes.joinToString()}]" }
                             )
-                            // Use each provider's real homepage catalogue instead of
-                            // one-character searches (many providers reject or return no
-                            // results for A-Z queries). Fetch every homepage shelf from all
-                            // three allowlisted providers, then merge and sort the results.
+                            // Load every provider independently. A provider without a
+                            // homepage must not prevent the other providers or the fallback
+                            // search catalogue from appearing.
+                            val fallbackQueries = listOf("a", "one piece", "naruto", "demon slayer")
                             val providerResults = kotlinx.coroutines.coroutineScope {
                                 animeProviders.map { provider ->
                                     async(kotlinx.coroutines.Dispatchers.IO) {
-                                        runCatching {
-                                            SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
-                                                .flatMap { shelf -> shelf.list }
-                                                .mapNotNull { item ->
-                                                    val title = item.name.trim()
-                                                    val url = item.url.trim()
+                                        suspend fun mapItems(items: List<com.lagradost.cloudstream3.SearchResponse>): List<Pair<String, SanyProviderItem>> =
+                                            items.mapNotNull { item ->
+                                                val title = item.name.trim()
+                                                val url = item.url.trim()
+                                                if (title.isBlank() || url.isBlank()) null
+                                                else {
+                                                    val isMovie =
+                                                        item.type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
+                                                            item.type == com.lagradost.cloudstream3.TvType.Movie
                                                     val isAnimeSeries =
                                                         item.type == com.lagradost.cloudstream3.TvType.Anime ||
-                                                        item.type == com.lagradost.cloudstream3.TvType.OVA
-                                                    val isAnimeMovie =
-                                                        item.type == com.lagradost.cloudstream3.TvType.AnimeMovie
-                                                    if (title.isBlank() || url.isBlank() ||
-                                                        (!isAnimeSeries && !isAnimeMovie)
-                                                    ) null
-                                                    else SanyProviderItem(
+                                                            item.type == com.lagradost.cloudstream3.TvType.OVA ||
+                                                            provider.supportedTypes.any { type ->
+                                                                type == com.lagradost.cloudstream3.TvType.Anime ||
+                                                                    type == com.lagradost.cloudstream3.TvType.OVA
+                                                            }
+                                                    if (!isMovie && !isAnimeSeries) null
+                                                    else (if (isMovie) "MOVIE" else "SERIES") to SanyProviderItem(
                                                         title = title,
                                                         url = url,
                                                         posterUrl = item.posterUrl.orEmpty(),
                                                         sourceProvider = provider.name
-                                                    ).let { entry ->
-                                                        (if (isAnimeMovie) "MOVIE" else "SERIES") to entry
-                                                    }
+                                                    )
                                                 }
+                                            }
+
+                                        val homepageItems = runCatching {
+                                            kotlinx.coroutines.withTimeout(18_000L) {
+                                                SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
+                                                    .flatMap { it.list }
+                                                    .let(::mapItems)
+                                            }
                                         }.onFailure { error ->
-                                            android.util.Log.w(
-                                                "SANY-Anime-Home",
-                                                "${provider.name} homepage failed: ${error.message}",
-                                                error
-                                            )
+                                            android.util.Log.w("SANY-Anime-Home", "${provider.name} homepage failed: ${error.message}", error)
                                         }.getOrDefault(emptyList())
+
+                                        if (homepageItems.isNotEmpty()) {
+                                            homepageItems
+                                        } else {
+                                            val fallback = mutableListOf<Pair<String, SanyProviderItem>>()
+                                            for (query in fallbackQueries) {
+                                                val matches = runCatching {
+                                                    kotlinx.coroutines.withTimeout(6_000L) {
+                                                        SanyCloudStreamPluginRuntime.search(provider.name, query)
+                                                    }.let(::mapItems)
+                                                }.getOrDefault(emptyList())
+                                                fallback += matches
+                                                if (fallback.size >= 12) break
+                                            }
+                                            android.util.Log.i(
+                                                "SANY-Anime-Home",
+                                                "${provider.name}: homepage empty; fallback search returned ${fallback.size} titles"
+                                            )
+                                            fallback.distinctBy { it.second.title.trim().lowercase() }
+                                        }
                                     }
                                 }.awaitAll()
                             }
-                            var allResults = providerResults.flatten()
-
-                            // Some valid Anime extensions expose search but no usable
-                            // CloudStream homepage shelves. If every homepage is empty,
-                            // seed the same catalogue from real provider search results.
-                            // This keeps the Series page useful instead of showing a blank
-                            // state merely because a provider omitted mainPage().
-                            if (allResults.isEmpty() && animeProviders.isNotEmpty()) {
-                                val fallbackQueries = listOf(
-                                    "One Piece",
-                                    "Naruto",
-                                    "Demon Slayer",
-                                    "Jujutsu Kaisen",
-                                    "Solo Leveling",
-                                    "Attack on Titan"
-                                )
-                                val fallbackResults = kotlinx.coroutines.coroutineScope {
-                                    animeProviders.map { provider ->
-                                        async(kotlinx.coroutines.Dispatchers.IO) {
-                                            fallbackQueries.flatMap { query ->
-                                                runCatching {
-                                                    SanyCloudStreamPluginRuntime.search(provider.name, query)
-                                                        .mapNotNull { item ->
-                                                            val title = item.name.trim()
-                                                            val url = item.url.trim()
-                                                            if (title.isBlank() || url.isBlank()) null
-                                                            else {
-                                                                val isAnimeMovie =
-                                                                    item.type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
-                                                                    item.type == com.lagradost.cloudstream3.TvType.Movie
-                                                                val isAnimeSeries =
-                                                                    item.type == com.lagradost.cloudstream3.TvType.Anime ||
-                                                                    item.type == com.lagradost.cloudstream3.TvType.OVA ||
-                                                                    (!isAnimeMovie && provider.supportedTypes.any { type ->
-                                                                        type == com.lagradost.cloudstream3.TvType.Anime ||
-                                                                            type == com.lagradost.cloudstream3.TvType.OVA
-                                                                    })
-                                                                if (!isAnimeSeries && !isAnimeMovie) null
-                                                                else (if (isAnimeMovie) "MOVIE" else "SERIES") to
-                                                                    SanyProviderItem(
-                                                                        title = title,
-                                                                        url = url,
-                                                                        posterUrl = item.posterUrl.orEmpty(),
-                                                                        sourceProvider = provider.name
-                                                                    )
-                                                            }
-                                                        }
-                                                }.getOrDefault(emptyList())
-                                            }
-                                        }
-                                    }.awaitAll()
-                                }
-                                allResults = fallbackResults.flatten()
-                                android.util.Log.i(
-                                    "SANY-Anime-Home",
-                                    "Homepage fallback search returned ${allResults.size} Anime titles"
-                                )
-                            }
-
+                            val allResults = providerResults.flatten()
                             // Merge the three curated providers into one A–Z catalogue.
                             // Keep the source provider on each item for detail/playback.
                             val series = allResults.filter { it.first == "SERIES" }
@@ -4997,7 +4986,7 @@ class MainActivity : AppCompatActivity() {
         closePlayer(keepOrientation = true)
         currentChannel = channel
         // Move the single active-channel highlight immediately when playback selection changes.
-        if (::listContainer.isInitialized && (section == "Live TV" || section == "Live Sports" || section == "Movies")) {
+        if (::listContainer.isInitialized && (section == "Live TV" || section == "Live Sports")) {
             val scroll = listContainer.parent as? ScrollView
             val previousScrollY = scroll?.scrollY ?: 0
             renderChannelRows(listContainer)
@@ -5066,7 +5055,7 @@ class MainActivity : AppCompatActivity() {
                             .setPreferredAudioLanguages("bn", "ben", "hi", "hin", "en", "eng")
                             // Audio preference: Bengali, then Hindi, then English. Subtitles remain off by default.
                             .setMaxVideoSize(1920, 1080)
-                            .setMaxVideoBitrate(Int.MAX_VALUE)
+                            .setMaxVideoBitrate(if (section == "Movies") 12_000_000 else Int.MAX_VALUE)
                     )
                 }
                 applyVideoQuality(selector)
@@ -5074,24 +5063,28 @@ class MainActivity : AppCompatActivity() {
             .setLoadControl(
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        if (highSpeedStreaming) 3000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (section == "Movies") {
+                            if (highSpeedStreaming) 5000 else 4000
+                        } else if (highSpeedStreaming) 3000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 1500
                             "high" -> 3500
                             else -> 2500
                         },
-                        if (highSpeedStreaming) 24000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (section == "Movies") {
+                            if (highSpeedStreaming) 45000 else 30000
+                        } else if (highSpeedStreaming) 24000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 12000
                             "high" -> 30000
                             else -> 20000
                         },
-                        if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (section == "Movies") 1500 else if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 750
                             "high" -> 1500
                             else -> 1000
                         },
                         // Media3 requires minBufferMs >= bufferForPlaybackAfterRebufferMs.
                         // Keep the rebuffer threshold below the selected minimum for every mode.
-                        if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (section == "Movies") 3000 else if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 1000
                             "high" -> 3000
                             else -> 2000
