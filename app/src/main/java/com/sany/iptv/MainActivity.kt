@@ -6302,21 +6302,20 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Video navigation has priority over page navigation.
+        // 1) The first Back from fullscreen only changes the player to FIT.
+        // Playback remains active while every page/category is unwound.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
             lastBackPressedAt = 0L
             return
         }
 
+        // 2) Let embedded browser/provider pages unwind one page at a time.
         if (section == "Movies" && moviesWebView?.canGoBack() == true) {
             moviesWebView?.goBack()
             lastBackPressedAt = 0L
             return
         }
-
-        // AniLight owns its own catalogue/detail navigation. Keep Back inside
-        // Anime Series until its home screen is reached; only then switch to Live TV.
         if (section == "Series") {
             if (cloudStreamProviderScreen?.handleBack() == true) {
                 lastBackPressedAt = 0L
@@ -6333,61 +6332,39 @@ class MainActivity : AppCompatActivity() {
                 lastBackPressedAt = 0L
                 return
             }
-            returnToLiveTvHome(keepPlayback = playerView != null && player != null)
-            return
         }
 
-        // Live Sports follows the same Back sequence as every other section:
-        // unwind one page at a time, keep playback alive until the Live TV home,
-        // then let the next Back explicitly close the player.
-        // Live TV Back flow is deliberately isolated from Movies and Anime Series.
-        // First Back from fullscreen is handled above and only changes the player to FIT.
-        // While inline, unwind one navigation-history page at a time without touching playback.
-        if (section == "Live TV" && playerView != null) {
-            if (navigationHistory.isNotEmpty()) {
-                lastBackPressedAt = 0L
-                restorePreviousNavigation()
-            } else if (selectedGroup != "Select category" || searchQuery.isNotEmpty()) {
-                // Once history is exhausted, show the Live TV category directory and keep video alive.
-                returnToLiveTvHome(keepPlayback = true)
-            } else {
-                // At the category directory, this Back closes only the player.
-                // The next two Back presses can then exit the app.
-                closePlayer()
-                lastBackPressedAt = 0L
-            }
-            return
+        // 3) Unwind history only within the currently selected option.
+        // Old entries from another tab must never pull the user across sections.
+        while (navigationHistory.isNotEmpty() &&
+            navigationHistory.peekLast().section != section
+        ) {
+            navigationHistory.removeLast()
         }
-
-        if (playerView != null) {
-            // With playback active, every non-Live-TV section also unwinds its
-            // own page history first. Never stop the video just because the user
-            // presses Back from Settings or another menu.
-            if (navigationHistory.isNotEmpty()) {
-                lastBackPressedAt = 0L
-                restorePreviousNavigation()
-            } else {
-                // The final destination before app exit is always the Live TV
-                // category directory; keep the current stream running there.
-                returnToLiveTvHome(keepPlayback = true)
-            }
-            return
-        }
-
-        // Settings, Checker, Series and other pages unwind one screen at a time.
-        // Once their history is exhausted, return to the Live TV home before exit.
         if (navigationHistory.isNotEmpty()) {
             lastBackPressedAt = 0L
             restorePreviousNavigation()
             return
         }
 
-        if (section != "Live TV" || selectedGroup != "Select category" || searchQuery.isNotEmpty()) {
-            returnToLiveTvHome()
+        // 4) Once the current option's own home is reached, go to Live TV home.
+        // Keep the same video playing and show it in FIT mode.
+        if (section != "Live TV" ||
+            selectedGroup != "Select category" ||
+            searchQuery.isNotEmpty()
+        ) {
+            returnToLiveTvHome(keepPlayback = playerView != null && player != null)
             return
         }
 
-        // Only the Live TV home can be exited, using two consecutive Back presses.
+        // 5) At Live TV home, first Back closes the video only.
+        // With no video, two consecutive Back presses exit the app.
+        if (playerView != null) {
+            closePlayer()
+            lastBackPressedAt = 0L
+            return
+        }
+
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastBackPressedAt in 1..2000L) {
             lastBackPressedAt = 0L
