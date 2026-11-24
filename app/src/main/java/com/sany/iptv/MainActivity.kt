@@ -6531,16 +6531,12 @@ class MainActivity : AppCompatActivity() {
         val canEnterFloatingWindow = prefs.getBoolean("floating_window_enabled", true) &&
             playerView != null && player?.isPlaying == true && hasVideo
 
-        var width = videoSize?.width ?: 0
-        var height = videoSize?.height ?: 0
-        if (videoSize?.unappliedRotationDegrees == 90 || videoSize?.unappliedRotationDegrees == 270) {
-            val swap = width; width = height; height = swap
-        }
-        val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
+        // Use one standard 16:9 PiP window for every playback section/provider.
+        // Do not let a source's encoded aspect ratio change the floating-window size.
         // PiP entry is enabled only for active video playback, never audio-only,
         // paused, stopped, or empty-player states.
         val builder = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
+            .setAspectRatio(Rational(16, 9))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Always update this flag, including false, so a previous video
             // cannot leave stale auto-enter enabled after pause/stop.
