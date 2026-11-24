@@ -2532,92 +2532,28 @@ class MainActivity : AppCompatActivity() {
         episodeName: String,
         episodeIndex: Int
     ) {
-        toast("এই Episode-এর অন্য Provider Source খোঁজা হচ্ছে…")
+        toast("এই Episode-এর Source খোঁজা হচ্ছে…")
+        // Resolve the selected provider first. Waiting for every alternate provider
+        // made playback feel slow even when the selected provider already had a link.
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            val resolved = mutableListOf<SanyPlaybackRequest>()
-            val failures = java.util.Collections.synchronizedList(mutableListOf<String>())
-            // Resolve the selected provider at the same time as alternate providers.
-            val primaryResult = async(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching {
-                    kotlinx.coroutines.withTimeout(22_000L) {
-                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
-                    }
+            val result = runCatching {
+                kotlinx.coroutines.withTimeout(12_000L) {
+                    SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
                 }
             }
-
-            fun normalizeAnimeTitle(value: String): String =
-                value.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
-
-            // Search alternate curated Anime providers concurrently. A slow or offline
-            // provider must not block the sources returned by the others.
-            val alternateProviders = SanyCloudStreamPluginRuntime.providers().filter { provider ->
-                !provider.name.equals(providerName, ignoreCase = true) &&
-                    provider.name in setOf("Animedubhindi", "Animesalt", "Cinefreak") &&
-                    provider.supportedTypes.any { type ->
-                        type == com.lagradost.cloudstream3.TvType.Anime ||
-                            type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
-                            type == com.lagradost.cloudstream3.TvType.OVA
-                    }
-            }
-            val gate = kotlinx.coroutines.sync.Semaphore(3)
-            val alternateResults = kotlinx.coroutines.coroutineScope {
-                alternateProviders.map { provider ->
-                    async(kotlinx.coroutines.Dispatchers.IO) {
-                        gate.withPermit {
-                            runCatching {
-                                kotlinx.coroutines.withTimeout(14_000L) {
-                                    val match = SanyCloudStreamPluginRuntime.search(provider.name, title)
-                                        .firstOrNull { normalizeAnimeTitle(it.name) == normalizeAnimeTitle(title) }
-                                        ?: return@withTimeout emptyList<SanyPlaybackRequest>()
-                                    val response = SanyCloudStreamPluginRuntime.load(provider.name, match.url)
-                                        ?: return@withTimeout emptyList<SanyPlaybackRequest>()
-                                    val episodes = when (response) {
-                                        is com.lagradost.cloudstream3.AnimeLoadResponse ->
-                                            response.episodes.values.flatten()
-                                        // Support providers that expose Anime as a flat TV-series episode list.
-                                        is com.lagradost.cloudstream3.TvSeriesLoadResponse -> response.episodes
-                                        is com.lagradost.cloudstream3.MovieLoadResponse -> {
-                                            listOfNotNull(response.dataUrl.takeIf { it.isNotBlank() }?.let { data ->
-                                                provider.newEpisode(data) { name = "Movie" }
-                                            })
-                                        }
-                                        else -> emptyList()
-                                    }
-                                    val targetByNumber = episodeNumber?.let { number ->
-                                        episodes.firstOrNull { it.episode == number }
-                                    }
-                                    val targetByName = episodeName.takeIf { it.isNotBlank() }?.let { selectedName ->
-                                        episodes.firstOrNull {
-                                            it.name?.let(::normalizeAnimeTitle) == normalizeAnimeTitle(selectedName)
-                                        }
-                                    }
-                                    val mappedEpisode = targetByNumber ?: targetByName ?: episodes.getOrNull(episodeIndex)
-                                    if (mappedEpisode != null) {
-                                        SanyCloudStreamPluginRuntime.resolvePlayback(
-                                            provider.name, response.name, mappedEpisode.data
-                                        )
-                                    } else emptyList()
-                                }
-                            }.onFailure { error ->
-                                failures += "${provider.name}: ${error.message ?: error.javaClass.simpleName}"
-                            }.getOrDefault(emptyList())
-                        }
-                    }
-                }.awaitAll()
-            }
-            resolved += alternateResults.flatten()
-            primaryResult.await()
-                .onSuccess { resolved += it }
-                .onFailure { failures += "$providerName: ${it.message ?: it.javaClass.simpleName}" }
-            val distinct = resolved.distinctBy { it.url }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (distinct.isEmpty()) {
-                    toast("কোনো Provider-এ playable source পাওয়া যায়নি")
-                    if (failures.isNotEmpty()) android.util.Log.w("SANY-CS", failures.joinToString("; "))
-                } else {
-                    android.util.Log.i("SANY-CS", "Resolved ${distinct.size} sources across providers for $title")
-                    showAnimeSourcePicker("$title — All Provider Sources", distinct)
+                result.onSuccess { sources ->
+                    val available = sources.distinctBy { it.url }
+                    if (available.isEmpty()) {
+                        toast("এই Episode-এর playable source পাওয়া যায়নি")
+                    } else {
+                        android.util.Log.i("SANY-CS", "Primary source resolved for $title: ${available.size}")
+                        showAnimeSourcePicker("$title — Sources", available)
+                    }
+                }.onFailure { error ->
+                    android.util.Log.w("SANY-CS", "Fast source resolve failed for $title", error)
+                    toast("Source পাওয়া যায়নি: ${error.message ?: error.javaClass.simpleName}")
                 }
             }
         }
