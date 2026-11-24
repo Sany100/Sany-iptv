@@ -22,7 +22,7 @@ permissions:
   contents: read
 concurrency:
   group: cloudstream-toolchain-migration
-  # Keep validation active for the latest source revision while earlier runs finish.
+  # Run migration validation against the newest committed application sources.
   cancel-in-progress: false
 jobs:
   sany-debug:
