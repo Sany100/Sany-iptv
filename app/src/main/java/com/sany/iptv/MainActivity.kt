@@ -1490,11 +1490,46 @@ class MainActivity : AppCompatActivity() {
             }.setNegativeButton("CLOSE", null).show()
     }
 
+    private fun installBuiltInPlayZTV() {
+        val progress = AlertDialog.Builder(this)
+            .setTitle("PlayZTVProvider")
+            .setMessage("Sports extension ডাউনলোড, যাচাই ও ইনস্টল হচ্ছে…")
+            .setCancelable(false)
+            .create()
+        progress.show()
+        thread(name = "SANY-PlayZTV-Install") {
+            val result = runCatching {
+                SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                progress.dismiss()
+                result.onSuccess { loaded ->
+                    if (loaded.success) {
+                        toast("PlayZTVProvider ইনস্টল ও Load হয়েছে")
+                        if (section == "Live Sports") renderSection()
+                    } else {
+                        AlertDialog.Builder(this)
+                            .setTitle("PlayZTV Install Failed")
+                            .setMessage(loaded.error ?: "Provider load failed")
+                            .setPositiveButton("OK", null).show()
+                    }
+                }.onFailure { error ->
+                    AlertDialog.Builder(this)
+                        .setTitle("PlayZTV Install Failed")
+                        .setMessage(error.message ?: error.javaClass.simpleName)
+                        .setPositiveButton("OK", null).show()
+                }
+            }
+        }
+    }
+
     private fun renderLiveSportsExtensions() {
         contentArea.removeAllViews()
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)) }
         page.addView(text("LIVE SPORTS", 22, white, true))
         page.addView(text("CloudStream Live provider extensions", 12, muted).apply { setPadding(0, dp(4), 0, dp(14)) })
+        page.addView(actionButton("INSTALL / REPAIR PLAYZTV") { installBuiltInPlayZTV() }, LinearLayout.LayoutParams(-1, dp(48)))
         page.addView(actionButton("＋  EXTENSIONS") { showLiveSportsExtensionManager() }, LinearLayout.LayoutParams(-1, dp(48)))
         val installed = SanyLiveSportsExtensionManager.installed(this)
         val providers = SanyCloudStreamPluginRuntime.providers().filter { p -> p.supportedTypes.any { it == com.lagradost.cloudstream3.TvType.Live } && installed.any { item -> runCatching { java.io.File(p.sourcePlugin).canonicalPath == java.io.File(item.packagePath).canonicalPath }.getOrDefault(false) } }
@@ -1976,7 +2011,24 @@ class MainActivity : AppCompatActivity() {
             }
         )
         aniLightNativeScreen = screen
-        contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
+        // Keep an always-visible Anime extension entry point even when every
+        // provider homepage is empty or temporarily unavailable.
+        val animePage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        }
+        val extensionBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        extensionBar.addView(
+            actionButton("＋  EXTENSIONS") { showCloudStreamProviderBrowser() },
+            LinearLayout.LayoutParams(-1, dp(44))
+        )
+        animePage.addView(extensionBar, LinearLayout.LayoutParams(-1, -2))
+        animePage.addView(screen.create(), LinearLayout.LayoutParams(-1, 0, 1f))
+        contentArea.addView(animePage, LinearLayout.LayoutParams(-1, -1))
     }
 
     private fun showCloudStreamProviderBrowser() {
