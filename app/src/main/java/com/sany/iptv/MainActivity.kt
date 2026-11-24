@@ -1684,13 +1684,36 @@ class MainActivity : AppCompatActivity() {
                         val orderedCategories = categoryOrder.filter { grouped.containsKey(it) } +
                             grouped.keys.filterNot { it in categoryOrder }.sorted()
 
+                        // Horizontal, swipeable category rail; tapping a sport jumps to its banner shelf.
+                        val categoryTargets = LinkedHashMap<String, View>()
+                        val categoryRail = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+                        val categoryScroller = android.widget.HorizontalScrollView(this).apply {
+                            isHorizontalScrollBarEnabled = false
+                            overScrollMode = View.OVER_SCROLL_NEVER
+                            clipToPadding = false
+                            setPadding(0, dp(6), 0, dp(8))
+                            addView(categoryRail, ViewGroup.LayoutParams(-2, -2))
+                        }
+                        orderedCategories.forEach { category ->
+                            val chip = actionButton(category.uppercase()) {
+                                val target = categoryTargets[category] ?: return@actionButton
+                                target.requestRectangleOnScreen(android.graphics.Rect(0, 0, target.width, target.height), true)
+                            }
+                            categoryRail.addView(chip, LinearLayout.LayoutParams(-2, dp(38)).apply {
+                                rightMargin = dp(7)
+                            })
+                        }
+                        results.addView(categoryScroller, LinearLayout.LayoutParams(-1, -2))
                         orderedCategories.forEach { category ->
                             val categoryItems = grouped[category].orEmpty()
                             if (categoryItems.isNotEmpty()) {
-                                results.addView(
-                                    text("$category  •  ${categoryItems.size}", 16, white, true)
-                                        .apply { setPadding(0, dp(18), 0, dp(8)) }
-                                )
+                                val categoryHeading = text("$category  •  ${categoryItems.size}", 16, white, true)
+                                    .apply { setPadding(0, dp(18), 0, dp(8)) }
+                                categoryTargets[category] = categoryHeading
+                                results.addView(categoryHeading)
                                 // Full-width two-column banner grid for every sports category.
                                 val screenWidthDp = resources.displayMetrics.widthPixels /
                                     resources.displayMetrics.density
