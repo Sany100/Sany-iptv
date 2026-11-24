@@ -82,6 +82,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.9.3")
     implementation("commons-net:commons-net:3.11.1")
     implementation("com.github.Blatzar:NiceHttp:0.4.18")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
     // CloudStream plugin DEX files resolve Gson through the host app classloader.
     // Package Gson explicitly so plugin references such as com.google.gson.JsonParser resolve at runtime.
