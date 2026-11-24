@@ -2518,13 +2518,121 @@ class MainActivity : AppCompatActivity() {
                             if (isEmpty()) append("Episode ${index + 1}")
                         }
                     }.toTypedArray()
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle(response.name)
-                        .setItems(labels) { _, i ->
-                            resolveCloudStreamEpisode(providerName, response.name, episodes[i].data, episodes[i].episode, episodes[i].name.orEmpty(), i)
+                    // Open a dedicated Anime details page instead of a compact episode popup.
+                    contentArea.removeAllViews()
+                    val detailPage = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setBackgroundColor(bg)
+                    }
+                    val pageHeader = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                    }
+                    val backButton = TextView(this@MainActivity).apply {
+                        text = "‹  BACK"
+                        textSize = 14f
+                        setTextColor(white)
+                        setPadding(dp(8), dp(10), dp(18), dp(10))
+                        setOnClickListener { contentArea.removeAllViews(); renderAniLightNative() }
+                    }
+                    pageHeader.addView(backButton)
+                    pageHeader.addView(TextView(this@MainActivity).apply {
+                        text = "ANIME DETAILS"
+                        textSize = 15f
+                        setTextColor(white)
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    })
+                    detailPage.addView(pageHeader, LinearLayout.LayoutParams(-1, -2))
+                    val detailScroll = ScrollView(this@MainActivity)
+                    val detailBody = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(14), dp(4), dp(14), dp(22))
+                    }
+                    val banner = FrameLayout(this@MainActivity).apply {
+                        background = android.graphics.drawable.GradientDrawable(
+                            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                            intArrayOf(0xFF123D70.toInt(), 0xFF101827.toInt(), 0xFF080B12.toInt())
+                        ).apply { cornerRadius = dp(14).toFloat() }
+                        clipToOutline = true
+                    }
+                    val bannerImage = ImageView(this@MainActivity).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        alpha = 0.72f
+                    }
+                    banner.addView(bannerImage, FrameLayout.LayoutParams(-1, -1))
+                    val bannerTitle = TextView(this@MainActivity).apply {
+                        text = response.name
+                        textSize = 23f
+                        setTextColor(Color.WHITE)
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setShadowLayer(8f, 1f, 2f, Color.BLACK)
+                        setPadding(dp(16), dp(12), dp(16), dp(12))
+                        gravity = Gravity.BOTTOM or Gravity.START
+                    }
+                    banner.addView(bannerTitle, FrameLayout.LayoutParams(-1, -1))
+                    detailBody.addView(banner, LinearLayout.LayoutParams(-1, dp(176)).apply { bottomMargin = dp(14) })
+                    val posterUrl = response.posterUrl.orEmpty()
+                    if (posterUrl.startsWith("http", true)) thread(name = "SANY-Anime-Detail-Banner") {
+                        runCatching {
+                            (java.net.URL(posterUrl).openConnection() as java.net.HttpURLConnection).run {
+                                connectTimeout = 6000
+                                readTimeout = 6000
+                                inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }.also { disconnect() }
+                            }
+                        }.getOrNull()?.let { bitmap ->
+                            runOnUiThread { if (!isFinishing && !isDestroyed) bannerImage.setImageBitmap(bitmap) }
                         }
-                        .setNegativeButton("বন্ধ", null)
-                        .show()
+                    }
+                    detailBody.addView(TextView(this@MainActivity).apply {
+                        text = "EPISODES  •  ${episodes.size}"
+                        textSize = 16f
+                        setTextColor(white)
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+                    episodes.indices.sortedWith(compareBy<Int> { episodes[it].season ?: 0 }.thenBy { episodes[it].episode ?: (it + 1) }).forEach { i ->
+                        val episode = episodes[i]
+                        val episodeNumber = episode.episode ?: (i + 1)
+                        val episodeTitle = episode.name?.takeIf { it.isNotBlank() } ?: "Episode $episodeNumber"
+                        val row = LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            setPadding(dp(13), dp(13), dp(13), dp(13))
+                            background = android.graphics.drawable.GradientDrawable().apply {
+                                setColor(0xFF171D28.toInt())
+                                cornerRadius = dp(11).toFloat()
+                                setStroke(dp(1), 0xFF303B4D.toInt())
+                            }
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener {
+                                resolveCloudStreamEpisode(providerName, response.name, episode.data, episode.episode, episode.name.orEmpty(), i)
+                            }
+                        }
+                        row.addView(TextView(this@MainActivity).apply {
+                            text = "▶"
+                            textSize = 19f
+                            setTextColor(accent)
+                        }, LinearLayout.LayoutParams(dp(34), -2))
+                        val episodeInfo = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+                        episodeInfo.addView(TextView(this@MainActivity).apply {
+                            text = "EPISODE $episodeNumber"
+                            textSize = 10f
+                            setTextColor(accent)
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                        })
+                        episodeInfo.addView(TextView(this@MainActivity).apply {
+                            text = episodeTitle
+                            textSize = 14f
+                            setTextColor(white)
+                            maxLines = 2
+                        })
+                        row.addView(episodeInfo, LinearLayout.LayoutParams(0, -2, 1f))
+                        detailBody.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+                    }
+                    detailScroll.addView(detailBody)
+                    detailPage.addView(detailScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+                    contentArea.addView(detailPage, LinearLayout.LayoutParams(-1, -1))
                 }.onFailure { toast("Details error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Load failed", it) }
             }
         }
