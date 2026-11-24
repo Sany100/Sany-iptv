@@ -157,7 +157,7 @@ object SanyExtensionRepositories {
     fun fetchCatalog(context: Context): List<Pair<String, List<CloudStreamPluginInfo>>> {
         val result = mutableListOf<Pair<String, List<CloudStreamPluginInfo>>>()
         for (repoUrl in all(context)) {
-            val manifest = runCatching { JSONObject(readHttps(repoUrl, MAX_JSON_BYTES)) }.getOrNull() ?: continue
+            val manifest = runCatching { JSONObject(readHttps(context, repoUrl, MAX_JSON_BYTES)) }.getOrNull() ?: continue
             val manifestVersion = manifest.optInt("manifestVersion", 1)
             if (manifestVersion > SUPPORTED_REPOSITORY_MANIFEST) continue
             val repoName = manifest.optString("name").ifBlank { URL(repoUrl).host }
@@ -165,7 +165,7 @@ object SanyExtensionRepositories {
             val plugins = mutableListOf<CloudStreamPluginInfo>()
             for (i in 0 until pluginLists.length()) {
                 val listUrl = resolveHttps(repoUrl, pluginLists.optString(i)) ?: continue
-                val array = runCatching { JSONArray(readHttps(listUrl, MAX_JSON_BYTES)) }.getOrNull() ?: continue
+                val array = runCatching { JSONArray(readHttps(context, listUrl, MAX_JSON_BYTES)) }.getOrNull() ?: continue
                 for (j in 0 until array.length()) {
                     val item = array.optJSONObject(j) ?: continue
                     val download = resolveHttps(listUrl, item.optString("url")) ?: continue
@@ -215,7 +215,7 @@ object SanyExtensionRepositories {
         val packages = mutableListOf<File>()
         val failures = mutableListOf<String>()
         val legacyAnimeNames = runCatching {
-            val index = JSONArray(readHttps(legacyIndexUrl, MAX_JSON_BYTES))
+            val index = JSONArray(readHttps(context, legacyIndexUrl, MAX_JSON_BYTES))
             (0 until index.length()).mapNotNull { index.optJSONObject(it) }
                 .filter { item ->
                     val types = item.optJSONArray("tvTypes")
@@ -315,7 +315,7 @@ object SanyExtensionRepositories {
         val destination = File(root, "${plugin.internalName}.cs3")
         val temporary = File(root, "${plugin.internalName}.download")
         try {
-            downloadHttps(plugin.downloadUrl, temporary)
+            downloadHttps(context, plugin.downloadUrl, temporary)
             require(temporary.length() in 1..MAX_PLUGIN_BYTES) { "Invalid plugin file size" }
             if (plugin.fileSize != null) require(temporary.length() == plugin.fileSize) {
                 "Plugin file size does not match repository metadata"
@@ -434,40 +434,11 @@ object SanyExtensionRepositories {
         return normalizeHttpsUrl(runCatching { URL(java.net.URI(base).resolve(raw).toString()).toString() }.getOrDefault(raw))
     }
 
-    private fun openHttps(startUrl: String, maxRedirects: Int = 4): HttpURLConnection {
-        var current = normalizeHttpsUrl(startUrl) ?: error("Only HTTPS URLs are allowed")
-        repeat(maxRedirects + 1) { index ->
-            val connection = (URL(current).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8000
-                readTimeout = 15000
-                instanceFollowRedirects = false
-                setRequestProperty("User-Agent", "SANY-IPTV-Extensions/1.0")
-                setRequestProperty("Accept", "application/json, application/zip, application/octet-stream")
-            }
-            val code = connection.responseCode
-            if (code in 300..399) {
-                val location = connection.getHeaderField("Location")
-                connection.disconnect()
-                if (index == maxRedirects || location.isNullOrBlank()) error("Invalid repository redirect")
-                current = normalizeHttpsUrl(URL(java.net.URI(current).resolve(location).toString()).toString())
-                    ?: error("Redirect must remain on HTTPS")
-            } else {
-                if (code !in 200..299) {
-                    connection.disconnect()
-                    error("Repository HTTP $code")
-                }
-                return connection
-            }
-        }
-        error("Too many HTTPS redirects")
-    }
-
-    private fun readHttps(url: String, maxBytes: Int): String {
-        val connection = openHttps(url)
-        try {
-            val declared = connection.contentLengthLong
-            if (declared > maxBytes) error("Repository response is too large")
-            return connection.inputStream.use { stream ->
+    private fun readHttps(context: Context, url: String, maxBytes: Int): String {
+        SanyNetworkBypasses.execute(context, url).use { response ->
+            val body = response.body ?: error("Empty repository response")
+            if (body.contentLength() > maxBytes) error("Repository response is too large")
+            body.byteStream().use { stream ->
                 val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
                 var total = 0
@@ -478,19 +449,16 @@ object SanyExtensionRepositories {
                     if (total > maxBytes) error("Repository response is too large")
                     output.write(buffer, 0, count)
                 }
-                output.toString("UTF-8")
+                return output.toString("UTF-8")
             }
-        } finally {
-            connection.disconnect()
         }
     }
 
-    private fun downloadHttps(url: String, destination: File) {
-        val connection = openHttps(url)
-        try {
-            val declared = connection.contentLengthLong
-            if (declared > MAX_PLUGIN_BYTES) error("Plugin package is too large")
-            connection.inputStream.use { input ->
+    private fun downloadHttps(context: Context, url: String, destination: File) {
+        SanyNetworkBypasses.execute(context, url).use { response ->
+            val body = response.body ?: error("Empty plugin response")
+            if (body.contentLength() > MAX_PLUGIN_BYTES) error("Plugin package is too large")
+            body.byteStream().use { input ->
                 destination.outputStream().buffered().use { output ->
                     val buffer = ByteArray(32 * 1024)
                     var total = 0L
@@ -503,8 +471,6 @@ object SanyExtensionRepositories {
                     }
                 }
             }
-        } finally {
-            connection.disconnect()
         }
     }
 }
