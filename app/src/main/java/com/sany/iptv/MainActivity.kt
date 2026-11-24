@@ -1055,9 +1055,10 @@ class MainActivity : AppCompatActivity() {
 
         contentArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            // Anime Series is edge-to-edge; other sections retain the standard side gutters.
-            setPadding(if (section == "Series") 0 else dp(18), 0,
-                if (section == "Series") 0 else dp(18), 0)
+            // Anime Series and Movies use full-width layouts without black side gutters.
+            val edgeToEdgeSection = section == "Series" || section == "Movies"
+            setPadding(if (edgeToEdgeSection) 0 else dp(18), 0,
+                if (edgeToEdgeSection) 0 else dp(18), 0)
             setBackgroundColor(bg)
         }
         home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
