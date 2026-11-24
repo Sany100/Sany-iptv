@@ -272,9 +272,7 @@ class NativeMoviesScreen(
                     if (mergedShelves.isEmpty()) {
                         host.addView(label("Homepage category পাওয়া যায়নি। উপরের search ব্যবহার করুন।", 13, muted, false))
                     } else {
-                        mergedShelves.forEach { (category, cards) ->
-                            addMovieShelf(category, cards.values.toList(), host)
-                        }
+                        renderMovieCategoryPage(host, mergedShelves, 1)
                     }
                     val errors = providerShelves.filter { it.second.isEmpty() }.map { it.first }
                     if (errors.isNotEmpty()) host.addView(label(
@@ -285,6 +283,49 @@ class NativeMoviesScreen(
             }
         }
         homeJobs.add(job)
+    }
+
+    /** Show six Movie categories at a time, with numbered navigation below. */
+    private fun renderMovieCategoryPage(
+        host: LinearLayout,
+        shelves: List<Map.Entry<String, LinkedHashMap<String, MovieShelfCard>>>,
+        requestedPage: Int
+    ) {
+        if (host.parent == null) return
+        val pageSize = 6
+        val pageCount = ((shelves.size + pageSize - 1) / pageSize).coerceAtLeast(1)
+        val page = requestedPage.coerceIn(1, pageCount)
+        host.removeAllViews()
+        shelves.drop((page - 1) * pageSize).take(pageSize).forEach { (category, cards) ->
+            addMovieShelf(category, cards.values.toList(), host)
+        }
+        if (pageCount > 1) {
+            val pager = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(dp(4), dp(10), dp(4), dp(22))
+            }
+            pager.addView(button("‹") { renderMovieCategoryPage(host, shelves, page - 1) }.apply {
+                isEnabled = page > 1
+                alpha = if (page > 1) 1f else 0.4f
+            })
+            val first = maxOf(1, minOf(page - 2, pageCount - 4))
+            val last = minOf(pageCount, first + 4)
+            for (number in first..last) {
+                pager.addView(button(number.toString()) {
+                    renderMovieCategoryPage(host, shelves, number)
+                }.apply {
+                    alpha = if (number == page) 1f else 0.72f
+                }, LinearLayout.LayoutParams(dp(42), dp(40)).apply {
+                    leftMargin = dp(3)
+                    rightMargin = dp(3)
+                })
+            }
+            pager.addView(button("›") { renderMovieCategoryPage(host, shelves, page + 1) }.apply {
+                isEnabled = page < pageCount
+                alpha = if (page < pageCount) 1f else 0.4f
+            })
+        }
     }
 
     /** Debounced live search across every selected Movie provider. */
