@@ -33,7 +33,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 
-data class SanyProviderItem(val title: String, val url: String, val posterUrl: String)
+data class SanyProviderItem(val title: String, val url: String, val posterUrl: String, val sourceProvider: String = "")
 data class SanyProviderShelf(val providerName: String, val shelfName: String, val items: List<SanyProviderItem>)
 
 /** Native AniLight browser backed by the provider's public JSON API. */
@@ -299,51 +299,41 @@ class AniLightNativeScreen(
     }
 
     private fun addProviderShelf(shelf: SanyProviderShelf) {
-        if (!isHomePage) return
-        val title = if (shelf.shelfName.isBlank()) shelf.providerName
-            else "${shelf.providerName} • ${shelf.shelfName}"
-        val heading = label(title, 18, fg, true).apply {
+        if (!isHomePage || shelf.items.isEmpty()) return
+        val heading = row().apply {
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(18), dp(12), dp(8))
         }
+        heading.addView(label(shelf.shelfName, 18, fg, true),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        heading.addView(label("${shelf.items.size} TITLES", 10, muted, true))
         contentHost.addView(heading)
-        if (shelf.items.isEmpty()) {
-            // Providers without a curated homepage still remain visible and usable.
-            // A direct Search action prevents a successfully installed extension
-            // from appearing to be missing just because it exposes no home shelves.
-            val providerCard = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                background = rounded(surface, 12)
-                isFocusable = true
-                setOnClickListener { onSearchProvider(shelf.providerName) }
+
+        // Unified A–Z catalogue: compact three-column poster grid, not separate
+        // provider carousels. Every unique result remains available on this page.
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val sidePadding = 12
+        val cardWidth = ((screenWidthDp - sidePadding * 2 - 16) / 3f).toInt().coerceAtLeast(88)
+        var gridRow: LinearLayout? = null
+        shelf.items.forEachIndexed { index, entry ->
+            if (index % 3 == 0) {
+                gridRow = row().apply {
+                    gravity = Gravity.TOP
+                    setPadding(dp(sidePadding), 0, dp(sidePadding), dp(12))
+                }
+                contentHost.addView(gridRow)
             }
-            providerCard.addView(label("Browse ${shelf.providerName}", 14, fg, true),
-                LinearLayout.LayoutParams(0, -2, 1f))
-            providerCard.addView(label("SEARCH  ›", 12, accent, true))
-            contentHost.addView(providerCard, LinearLayout.LayoutParams(-1, dp(54)).apply {
-                leftMargin = dp(12)
-                rightMargin = dp(12)
-                bottomMargin = dp(8)
-            })
-            return
-        }
-        val scroller = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-        }
-        val rail = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        scroller.addView(rail)
-        val widthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
-        val cardWidth = (widthDp / 3f).toInt().coerceAtLeast(96)
-        shelf.items.take(24).forEach { entry ->
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
-                setOnClickListener { onCloudStreamResult(shelf.providerName, entry.url, entry.title) }
+                background = rounded(surface, 12)
+                setPadding(dp(4), dp(4), dp(4), dp(7))
+                setOnClickListener {
+                    onCloudStreamResult(entry.sourceProvider.ifBlank { shelf.providerName }, entry.url, entry.title)
+                }
             }
             val posterFrame = FrameLayout(context).apply {
-                background = rounded(surface, 12)
+                background = rounded(surface, 9)
                 clipToOutline = true
             }
             val poster = ImageView(context).apply {
@@ -352,20 +342,17 @@ class AniLightNativeScreen(
             }
             posterFrame.addView(poster, FrameLayout.LayoutParams(-1, -1))
             if (entry.posterUrl.startsWith("http")) loadImage(entry.posterUrl, poster)
-            card.addView(posterFrame, LinearLayout.LayoutParams(dp(cardWidth), dp((cardWidth * 1.42f).toInt())))
-            card.addView(label(entry.title, 12, fg, false).apply {
+            card.addView(posterFrame, LinearLayout.LayoutParams(-1, dp((cardWidth * 1.42f).toInt())))
+            card.addView(label(entry.title, 11, fg, true).apply {
                 maxLines = 2
                 gravity = Gravity.CENTER
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(dp(3), dp(5), dp(3), 0)
-            }, LinearLayout.LayoutParams(dp(cardWidth), -2))
-            rail.addView(card, LinearLayout.LayoutParams(-2, -2).apply {
-                rightMargin = dp(9)
+                setPadding(dp(2), dp(6), dp(2), 0)
+            }, LinearLayout.LayoutParams(-1, -2))
+            gridRow?.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                if (index % 3 != 2) rightMargin = dp(8)
             })
         }
-        contentHost.addView(scroller, bottom(10).apply {
-            leftMargin = dp(12)
-        })
     }
 
     private fun addFeaturedHero(item: JSONObject) {
