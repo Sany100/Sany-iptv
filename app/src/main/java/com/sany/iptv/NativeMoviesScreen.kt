@@ -336,7 +336,8 @@ class NativeMoviesScreen(
                 val directory = java.io.File(context.cacheDir, "movie_posters").apply { mkdirs() }
                 val cachedFile = java.io.File(directory, url.hashCode().toString() + ".img")
                 if (!cachedFile.exists() || cachedFile.length() == 0L) {
-                    tempFile = java.io.File(directory, cachedFile.name + ".tmp")
+                    val temp = java.io.File(directory, cachedFile.name + ".tmp")
+                    tempFile = temp
                     connection = (URL(url).openConnection() as HttpURLConnection).apply {
                         connectTimeout = 3500
                         readTimeout = 5000
@@ -346,7 +347,7 @@ class NativeMoviesScreen(
                         setRequestProperty("Accept", "image/avif,image/webp,image/*,*/*;q=0.8")
                     }
                     connection.inputStream.use { input ->
-                        tempFile.outputStream().use { output ->
+                        temp.outputStream().use { output ->
                             val buffer = ByteArray(16 * 1024)
                             var total = 0
                             while (true) {
@@ -360,9 +361,9 @@ class NativeMoviesScreen(
                     }
                     connection.disconnect()
                     connection = null
-                    if (!tempFile.renameTo(cachedFile)) {
-                        tempFile.copyTo(cachedFile, overwrite = true)
-                        tempFile.delete()
+                    if (!temp.renameTo(cachedFile)) {
+                        temp.copyTo(cachedFile, overwrite = true)
+                        temp.delete()
                     }
                 }
                 if (cachedFile.isFile && cachedFile.length() in 1..(8L * 1024L * 1024L)) {
