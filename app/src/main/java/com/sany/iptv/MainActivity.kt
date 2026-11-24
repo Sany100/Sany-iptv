@@ -385,6 +385,18 @@ class MainActivity : AppCompatActivity() {
                         android.util.Log.e("SANY-MOVIE", "Movie extension restore failed: ${result.error}")
                     }
                 }
+                val playZtvAutoSync = runCatching {
+                    SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
+                }.onFailure { error ->
+                    android.util.Log.e("SANY-LIVE-SPORTS", "Built-in PlayZTVProvider auto-install/update failed", error)
+                }.getOrNull()
+                if (playZtvAutoSync != null) {
+                    if (playZtvAutoSync.success) {
+                        android.util.Log.i("SANY-LIVE-SPORTS", "Built-in PlayZTVProvider v49 auto-installed/updated, selected and loaded")
+                    } else {
+                        android.util.Log.e("SANY-LIVE-SPORTS", "Built-in PlayZTVProvider auto-load failed: ${playZtvAutoSync.error}")
+                    }
+                }
                 SanyLiveSportsExtensionManager.loadInstalled(applicationContext).forEach { result ->
                     if (result.success) {
                         android.util.Log.i("SANY-LIVE-SPORTS", "Live Sports extension restored: ${result.pluginName}")
