@@ -323,11 +323,16 @@ class AniLightNativeScreen(
         }
         heading.addView(label(shelf.shelfName, 17, fg, true),
             LinearLayout.LayoutParams(0, -2, 1f))
-        heading.addView(label("${shelf.items.size} TITLES", 10, muted, true))
+        heading.addView(label("SEE ALL  ›", 11, accent, true).apply {
+            setPadding(dp(10), dp(8), dp(8), dp(8))
+            isFocusable = true
+            setOnClickListener { openProviderShelfPage(shelf) }
+        })
+        heading.addView(label("${shelf.items.size}", 10, muted, true))
         contentHost.addView(heading)
 
-        // Three visible poster cards per category; swipe horizontally for the
-        // remaining titles, matching the Movie homepage shelf interaction.
+        // Compact category preview: only a few cards are rendered on Home.
+        // The complete merged category opens on a numbered, paginated page.
         val screenWidthDp = context.resources.displayMetrics.widthPixels /
             context.resources.displayMetrics.density
         val sidePadding = 0
@@ -346,7 +351,7 @@ class AniLightNativeScreen(
         }
         scroller.addView(rail, ViewGroup.LayoutParams(-2, -2))
 
-        shelf.items.forEachIndexed { index, entry ->
+        shelf.items.take(6).forEachIndexed { index, entry ->
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
@@ -378,6 +383,74 @@ class AniLightNativeScreen(
             })
         }
         contentHost.addView(scroller, LinearLayout.LayoutParams(-1, -2))
+    }
+
+    private fun openProviderShelfPage(shelf: SanyProviderShelf, page: Int = 1) {
+        pushCurrentPage()
+        isHomePage = false
+        isShelfCategoryPage = true
+        isAnimeSearchPage = false
+        renderProviderShelfPage(shelf, page)
+    }
+
+    private fun renderProviderShelfPage(shelf: SanyProviderShelf, page: Int) {
+        body.removeAllViews()
+        val pageSize = 18
+        val pageCount = ((shelf.items.size + pageSize - 1) / pageSize).coerceAtLeast(1)
+        val safePage = page.coerceIn(1, pageCount)
+        body.addView(row().apply {
+            addView(button("← BACK") { restorePreviousPage() })
+            addView(label(shelf.shelfName, 17, fg, true), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                leftMargin = dp(10)
+            })
+        }, bottom(12))
+        val grid = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(3), 0, dp(3), dp(8))
+        }
+        val screenWidthDp = context.resources.displayMetrics.widthPixels / context.resources.displayMetrics.density
+        val cardWidth = ((screenWidthDp - 12f) / 3f).toInt().coerceAtLeast(88)
+        val posterHeight = (cardWidth * 1.42f).toInt()
+        shelf.items.drop((safePage - 1) * pageSize).take(pageSize).chunked(3).forEach { entries ->
+            val line = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.TOP }
+            entries.forEach { entry ->
+                val card = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(2), dp(3), dp(2), dp(7))
+                    setOnClickListener {
+                        onCloudStreamResult(entry.sourceProvider.ifBlank { shelf.providerName }, entry.url, entry.title)
+                    }
+                }
+                val posterFrame = FrameLayout(context).apply { background = rounded(surface, 9); clipToOutline = true }
+                val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
+                posterFrame.addView(poster, FrameLayout.LayoutParams(-1, -1))
+                if (entry.posterUrl.startsWith("http")) loadImage(entry.posterUrl, poster)
+                card.addView(posterFrame, LinearLayout.LayoutParams(-1, dp(posterHeight)))
+                card.addView(label(entry.title, 11, fg, true).apply {
+                    maxLines = 2; gravity = Gravity.CENTER; ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(dp(2), dp(5), dp(2), 0)
+                })
+                line.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    leftMargin = dp(2); rightMargin = dp(2); bottomMargin = dp(8)
+                })
+            }
+            while (line.childCount < 3) line.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            grid.addView(line, LinearLayout.LayoutParams(-1, -2))
+        }
+        body.addView(grid, LinearLayout.LayoutParams(-1, -2))
+        if (pageCount > 1) {
+            val pager = row().apply { gravity = Gravity.CENTER; setPadding(dp(4), dp(8), dp(4), dp(20)) }
+            pager.addView(button("‹") { renderProviderShelfPage(shelf, safePage - 1) }.apply { isEnabled = safePage > 1 })
+            val first = maxOf(1, safePage - 2)
+            val last = minOf(pageCount, first + 4)
+            for (number in first..last) {
+                pager.addView(button(number.toString()) { renderProviderShelfPage(shelf, number) }.apply {
+                    alpha = if (number == safePage) 1f else 0.72f
+                }, LinearLayout.LayoutParams(dp(42), dp(40)).apply { leftMargin = dp(3); rightMargin = dp(3) })
+            }
+            pager.addView(button("›") { renderProviderShelfPage(shelf, safePage + 1) }.apply { isEnabled = safePage < pageCount })
+            body.addView(pager, LinearLayout.LayoutParams(-1, -2))
+        }
     }
 
     private fun addFeaturedHero(item: JSONObject) {
