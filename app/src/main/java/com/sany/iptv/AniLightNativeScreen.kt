@@ -1123,7 +1123,6 @@ class AniLightNativeScreen(
         // when at least one audio mode is available; playback chooses a source automatically.
         body.addView(label("EPISODES", 16, fg, true), bottom(8))
         val available = (0 until (eps?.length() ?: 0)).mapNotNull { eps?.optJSONObject(it) }
-            .filter { it.optBoolean("sub", false) || it.optBoolean("dub", false) }
             .sortedBy { it.optInt("number", Int.MAX_VALUE) }
         val episodeRows = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -1157,7 +1156,7 @@ class AniLightNativeScreen(
                 .map { ep.optString(it) }
                 .firstOrNull { it.startsWith("http", true) }
                 ?: ep.optJSONObject("thumbnail")?.optString("url")?.takeIf { it.startsWith("http", true) }
-                ?: activeAnimePosterUrl.takeIf { it.startsWith("http", true) }
+                ?: null
             val imageFrame = FrameLayout(context).apply {
                 background = rounded(0xFF292D35.toInt(), 9)
                 clipToOutline = true
@@ -1167,7 +1166,18 @@ class AniLightNativeScreen(
                 setBackgroundColor(0xFF292D35.toInt())
             }
             imageFrame.addView(thumb, FrameLayout.LayoutParams(-1, -1))
-            if (!thumbUrl.isNullOrBlank()) loadImage(thumbUrl, thumb)
+            if (!thumbUrl.isNullOrBlank()) {
+                loadImage(thumbUrl, thumb)
+            } else {
+                val episodePlaceholder = TextView(context).apply {
+                    text = "EP $number"
+                    textSize = 15f
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setTextColor(0xFFE4EAF4.toInt())
+                }
+                imageFrame.addView(episodePlaceholder, FrameLayout.LayoutParams(-1, -1))
+            }
             val play = TextView(context).apply {
                 text = "▶"
                 textSize = 17f
