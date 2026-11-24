@@ -1327,25 +1327,54 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton("CLOSE", null).show()
             return
         }
+        val selected = SanyMovieExtensionManager.selectedIds(this).toMutableSet()
         val labels = installed.map { "${it.name}  •  ${it.version}" }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("Installed Movie Extensions")
-            .setItems(labels) { _, index ->
-                val item = installed[index]
-                AlertDialog.Builder(this).setTitle(item.name)
-                    .setMessage("Version: ${item.version}")
-                    .setPositiveButton("SEARCH") { _, _ ->
-                        val provider = SanyCloudStreamPluginRuntime.providers().firstOrNull {
-                            it.sourcePlugin == item.packagePath
-                        }
-                        if (provider == null) toast("এই extension-এর কোনো active provider নেই")
-                        else showMovieExtensionSearch(provider.name)
-                    }
-                    .setNeutralButton("UNINSTALL") { _, _ ->
-                        runCatching { SanyMovieExtensionManager.uninstall(this, item.id) }
-                            .onSuccess { toast(if (it) "Movie extension removed" else "Remove failed") }
-                            .onFailure { toast("Remove failed: ${it.message}") }
+        val checked = BooleanArray(installed.size) { installed[it].id in selected }
+        AlertDialog.Builder(this).setTitle("Select Movie Extensions")
+            .setMultiChoiceItems(labels, checked) { _, index, isChecked ->
+                if (isChecked) selected.add(installed[index].id)
+                else selected.remove(installed[index].id)
+            }
+            .setPositiveButton("SAVE SELECTION") { _, _ ->
+                SanyMovieExtensionManager.setSelectedIds(this, selected)
+                if (section == "Movies") renderSection()
+                toast("Movie extension selection saved")
+            }
+            .setNeutralButton("MANAGE / REMOVE") { _, _ ->
+                val actions = installed.map { "${it.name}  •  ${it.version}" }.toTypedArray()
+                AlertDialog.Builder(this).setTitle("Manage installed extensions")
+                    .setItems(actions) { _, index ->
+                        val item = installed[index]
+                        AlertDialog.Builder(this).setTitle(item.name)
+                            .setMessage("Version: ${item.version}")
+                            .setPositiveButton("SEARCH") {
+                                _, _ ->
+                                val provider = SanyCloudStreamPluginRuntime.providers().firstOrNull {
+                                    runCatching {
+                                        java.io.File(it.sourcePlugin).canonicalPath ==
+                                            java.io.File(item.packagePath).canonicalPath
+                                    }.getOrDefault(false) &&
+                                        it.supportedTypes.any { type ->
+                                            type == com.lagradost.cloudstream3.TvType.Movie ||
+                                                type == com.lagradost.cloudstream3.TvType.AnimeMovie
+                                        }
+                                }
+                                if (provider == null) toast("এই extension-এর active Movie provider নেই")
+                                else showMovieExtensionSearch(provider.name)
+                            }
+                            .setNeutralButton("UNINSTALL") { _, _ ->
+                                runCatching { SanyMovieExtensionManager.uninstall(this, item.id) }
+                                    .onSuccess {
+                                        selected.remove(item.id)
+                                        SanyMovieExtensionManager.setSelectedIds(this, selected)
+                                        if (section == "Movies") renderSection()
+                                        toast(if (it) "Movie extension removed" else "Remove failed")
+                                    }
+                                    .onFailure { toast("Remove failed: ${it.message}") }
+                            }.setNegativeButton("CLOSE", null).show()
                     }.setNegativeButton("CLOSE", null).show()
-            }.setNegativeButton("CLOSE", null).show()
+            }
+            .setNegativeButton("CANCEL", null).show()
     }
 
     private fun showMovieExtensionSearch(providerName: String) {
