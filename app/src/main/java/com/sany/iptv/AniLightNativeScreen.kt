@@ -313,6 +313,22 @@ class AniLightNativeScreen(
         val pageCount = ((cachedProviderShelves.size + homeCategoriesPerPage - 1) / homeCategoriesPerPage).coerceAtLeast(1)
         homeCategoryPage = homeCategoryPage.coerceIn(1, pageCount)
         val from = (homeCategoryPage - 1) * homeCategoriesPerPage
+        // Compact search action in the top-right corner of the Anime home.
+        val homeHeader = row().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(5), dp(12), dp(8))
+        }
+        homeHeader.addView(label("ANIME SERIES", 16, fg, true),
+            LinearLayout.LayoutParams(0, -2, 1f))
+        homeHeader.addView(label("⌕  SEARCH", 12, accent, true).apply {
+            gravity = Gravity.CENTER
+            background = rounded(surface, 18)
+            setPadding(dp(13), dp(9), dp(13), dp(9))
+            isFocusable = true
+            contentDescription = "Search Anime"
+            setOnClickListener { openAnimeSearch() }
+        })
+        contentHost.addView(homeHeader, bottom(5))
         cachedProviderShelves.drop(from).take(homeCategoriesPerPage).forEach { shelf ->
             addProviderShelf(shelf)
         }
@@ -681,7 +697,7 @@ class AniLightNativeScreen(
                 val value = text?.toString().orEmpty()
                 val task = Runnable { searchAnimeLive(value) }
                 animeSearchDebounce = task
-                ui.postDelayed(task, 320L)
+                ui.postDelayed(task, 180L)
             }
             override fun afterTextChanged(editable: android.text.Editable?) = Unit
         })
