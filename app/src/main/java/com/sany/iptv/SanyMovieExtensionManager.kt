@@ -35,6 +35,7 @@ object SanyMovieExtensionManager {
     private const val KEY_SELECTED = "selected_movie_extension_ids"
     private const val KEY_DEFAULT_REPOSITORY_SEEDED = "default_repository_seeded"
     private const val DEFAULT_MOVIE_REPOSITORY = "https://raw.githubusercontent.com/dipender98/Indflix/builds/repo.json"
+    private const val SANY_MOVIE_CATALOGUE = "https://raw.githubusercontent.com/Sany100/Sany-iptv/migration/cloudstream-runtime-toolchain/movie-extensions/index.json"
     private const val CONNECT_TIMEOUT_MS = 12_000
     private const val READ_TIMEOUT_MS = 25_000
     private const val MAX_INDEX_BYTES = 2 * 1024 * 1024
@@ -65,8 +66,23 @@ object SanyMovieExtensionManager {
     fun repositories(context: Context): List<Repository> {
         val store = prefs(context)
         val array = JSONArray(store.getString(KEY_REPOSITORIES, "[]") ?: "[]")
-        if (array.length() == 0 && !store.getBoolean(KEY_DEFAULT_REPOSITORY_SEEDED, false)) {
-            array.put(JSONObject().put("url", DEFAULT_MOVIE_REPOSITORY).put("name", "Indflix"))
+        // Keep the SANY curated Movie catalogue and upstream Indflix repository
+        // available on both fresh installs and existing installs upgraded in place.
+        val defaultRepositories = listOf(
+            Repository(SANY_MOVIE_CATALOGUE, "SANY Movie Catalogue"),
+            Repository(DEFAULT_MOVIE_REPOSITORY, "Indflix")
+        )
+        val knownUrls = (0 until array.length()).mapNotNull { array.optJSONObject(it)?.optString("url") }
+            .map { normalizeRepositoryUrl(it).lowercase() }.toMutableSet()
+        var defaultsChanged = false
+        defaultRepositories.forEach { defaultRepo ->
+            if (defaultRepo.url.lowercase() !in knownUrls) {
+                array.put(JSONObject().put("url", defaultRepo.url).put("name", defaultRepo.name))
+                knownUrls.add(defaultRepo.url.lowercase())
+                defaultsChanged = true
+            }
+        }
+        if (defaultsChanged || !store.getBoolean(KEY_DEFAULT_REPOSITORY_SEEDED, false)) {
             store.edit().putString(KEY_REPOSITORIES, array.toString())
                 .putBoolean(KEY_DEFAULT_REPOSITORY_SEEDED, true).commit()
         }
