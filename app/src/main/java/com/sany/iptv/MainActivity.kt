@@ -1847,7 +1847,7 @@ class MainActivity : AppCompatActivity() {
                             val curatedNames = setOf("Animedubhindi", "Animesalt", "Cinefreak")
                             val animeProviders = SanyCloudStreamPluginRuntime.providers()
                                 .filter { provider ->
-                                    provider.name in curatedNames &&
+                                    curatedNames.any { it.equals(provider.name, ignoreCase = true) } &&
                                         provider.supportedTypes.any { type ->
                                             type == com.lagradost.cloudstream3.TvType.Anime ||
                                                 type == com.lagradost.cloudstream3.TvType.AnimeMovie ||
