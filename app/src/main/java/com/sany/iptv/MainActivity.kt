@@ -2868,16 +2868,10 @@ class MainActivity : AppCompatActivity() {
                     banner.addView(bannerTitle, FrameLayout.LayoutParams(-1, -1))
                     detailBody.addView(banner, LinearLayout.LayoutParams(-1, dp(176)).apply { bottomMargin = dp(14) })
                     val posterUrl = response.posterUrl.orEmpty()
-                    if (posterUrl.startsWith("http", true)) thread(name = "SANY-Anime-Detail-Banner") {
-                        runCatching {
-                            (java.net.URL(posterUrl).openConnection() as java.net.HttpURLConnection).run {
-                                connectTimeout = 6000
-                                readTimeout = 6000
-                                inputStream.use { android.graphics.BitmapFactory.decodeStream(it) }.also { disconnect() }
-                            }
-                        }.getOrNull()?.let { bitmap ->
-                            runOnUiThread { if (!isFinishing && !isDestroyed) bannerImage.setImageBitmap(bitmap) }
-                        }
+                    // Reuse the bounded, disk-cached image loader so repeat banner
+                    // visits display immediately without another full-size download.
+                    if (posterUrl.startsWith("http", true)) {
+                        loadCachedChannelLogo(bannerImage, null, posterUrl)
                     }
                     detailBody.addView(TextView(this@MainActivity).apply {
                         text = "EPISODES  •  ${episodes.size}"
@@ -5947,6 +5941,8 @@ class MainActivity : AppCompatActivity() {
                     .setBufferDurationsMs(
                         if (section == "Movies") {
                             if (highSpeedStreaming) 5000 else 4000
+                        } else if (section == "Live TV") {
+                            1000
                         } else if (highSpeedStreaming) 3000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 1500
                             "high" -> 3500
@@ -5959,14 +5955,14 @@ class MainActivity : AppCompatActivity() {
                             "high" -> 30000
                             else -> 20000
                         },
-                        if (section == "Movies") 1500 else if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (section == "Movies") 1500 else if (section == "Live TV") 500 else if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 750
                             "high" -> 1500
                             else -> 1000
                         },
                         // Media3 requires minBufferMs >= bufferForPlaybackAfterRebufferMs.
                         // Keep the rebuffer threshold below the selected minimum for every mode.
-                        if (section == "Movies") 3000 else if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                        if (section == "Movies") 3000 else if (section == "Live TV") 750 else if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
                             "low" -> 1000
                             "high" -> 3000
                             else -> 2000
