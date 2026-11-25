@@ -359,14 +359,14 @@ object SanyCloudStreamPluginRuntime {
         }?.requests
         cached()?.let {
             if (isMovieProvider) Log.i("SANY-MOVIE", "Source cache hit: provider=${provider.name} sources=${it.size}")
-            if (isMovieProvider) it.forEach { request -> runCatching { onSource?.invoke(request) } }
+            it.forEach { request -> runCatching { onSource?.invoke(request) } }
             return it
         }
         val requestLock = playbackLocks.computeIfAbsent(cacheKey) { Mutex() }
         return requestLock.withLock {
             cached()?.let {
                 if (isMovieProvider) Log.i("SANY-MOVIE", "Source cache hit after lock: provider=${provider.name} sources=${it.size}")
-                if (isMovieProvider) it.forEach { request -> runCatching { onSource?.invoke(request) } }
+                it.forEach { request -> runCatching { onSource?.invoke(request) } }
                 return@withLock it
             }
             val links = mutableListOf<ExtractorLink>()
@@ -405,24 +405,23 @@ object SanyCloudStreamPluginRuntime {
                 },
                 callback = { link ->
                     links.add(link)
+                    val scheme = link.url.trim().substringBefore(':', "").lowercase()
                     if (isMovieProvider) {
                         val sourceIndex = emittedMovieLinks.incrementAndGet()
                         if (sourceIndex <= 8) {
-                            val scheme = link.url.trim().substringBefore(':', "").lowercase().ifBlank { "missing" }
                             Log.i(
                                 "SANY-MOVIE",
-                                "Extractor emitted source: provider=${provider.name} index=$sourceIndex elapsedMs=${System.currentTimeMillis() - extractorStartedAt} scheme=$scheme urlLength=${link.url.length} type=${link.type} quality=${link.quality}"
+                                "Extractor emitted source: provider=${provider.name} index=$sourceIndex elapsedMs=${System.currentTimeMillis() - extractorStartedAt} scheme=${scheme.ifBlank { "missing" }} urlLength=${link.url.length} type=${link.type} quality=${link.quality}"
                             )
                         }
-                        val scheme = link.url.trim().substringBefore(':', "").lowercase()
-                        if (scheme in setOf("http", "https", "ftp")) {
-                            runCatching {
-                                onSource?.invoke(
-                                    CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles.toList(), provider.name)
-                                )
-                            }.onFailure { error ->
-                                Log.w("SANY-MOVIE", "Could not publish early source: provider=${provider.name}", error)
-                            }
+                    }
+                    if (scheme in setOf("http", "https", "ftp")) {
+                        runCatching {
+                            onSource?.invoke(
+                                CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles.toList(), provider.name)
+                            )
+                        }.onFailure { error ->
+                            Log.w(if (isMovieProvider) "SANY-MOVIE" else TAG, "Could not publish early source: provider=${provider.name}", error)
                         }
                     }
                 }
@@ -475,14 +474,14 @@ object SanyCloudStreamPluginRuntime {
                 CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles, provider.name)
             }.distinctBy { it.url }
             if (isMovieProvider) {
-                // Publish the completed list once more so early entries gain any subtitles
-                // discovered later during extraction.
-                requests.forEach { request -> runCatching { onSource?.invoke(request) } }
+                // Completed Anime/Movie requests are published below after final subtitles.
                 Log.i(
                     "SANY-MOVIE",
                     "Source resolve finished: provider=${provider.name} elapsedMs=${System.currentTimeMillis() - resolveStartedAt} playableSources=${requests.size}"
                 )
             }
+            // Refresh emitted entries with the final subtitle set for incremental pickers.
+            requests.forEach { request -> runCatching { onSource?.invoke(request) } }
             if (requests.isNotEmpty()) {
                 if (playbackCache.size > 120) playbackCache.clear()
                 playbackCache[cacheKey] = CachedPlayback(System.currentTimeMillis(), requests)
