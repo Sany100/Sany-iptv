@@ -322,7 +322,7 @@ class AniLightNativeScreen(
             LinearLayout.LayoutParams(0, -2, 1f))
         homeHeader.addView(label("⌕  SEARCH", 12, accent, true).apply {
             gravity = Gravity.CENTER
-            background = rounded(surface, 18)
+            background = SanyLiquidGlass.background(context, 18, light, accent)
             setPadding(dp(13), dp(9), dp(13), dp(9))
             isFocusable = true
             contentDescription = "Search Anime"
@@ -427,14 +427,15 @@ class AniLightNativeScreen(
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
-                background = rounded(surface, 12)
+                background = SanyLiquidGlass.background(context, 12, light, accent)
+                SanyLiquidGlass.elevate(this, context, 4f)
                 setPadding(dp(2), dp(3), dp(2), dp(6))
                 setOnClickListener {
                     onCloudStreamResult(entry.sourceProvider.ifBlank { shelf.providerName }, entry.url, entry.title)
                 }
             }
             val posterFrame = FrameLayout(context).apply {
-                background = rounded(surface, 9)
+                background = SanyLiquidGlass.background(context, 9, light, accent)
                 clipToOutline = true
             }
             applyProviderNowPlayingHighlight(card, posterFrame, entry, shelf.providerName)
@@ -494,7 +495,7 @@ class AniLightNativeScreen(
                         onCloudStreamResult(entry.sourceProvider.ifBlank { shelf.providerName }, entry.url, entry.title)
                     }
                 }
-                val posterFrame = FrameLayout(context).apply { background = rounded(surface, 9); clipToOutline = true }
+                val posterFrame = FrameLayout(context).apply { background = SanyLiquidGlass.background(context, 9, light, accent); clipToOutline = true }
                 applyProviderNowPlayingHighlight(card, posterFrame, entry, shelf.providerName)
                 val poster = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(surface) }
                 posterFrame.addView(poster, FrameLayout.LayoutParams(-1, -1))
@@ -630,11 +631,12 @@ class AniLightNativeScreen(
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
+                SanyLiquidGlass.elevate(this, context, 4f)
                 setOnClickListener { openAnime(item) }
             }
             applyNowPlayingHighlight(card, item)
             val posterFrame = FrameLayout(context).apply {
-                background = rounded(surface, 14)
+                background = SanyLiquidGlass.background(context, 14, light, accent)
                 clipToOutline = true
             }
             val poster = ImageView(context).apply {
@@ -695,7 +697,7 @@ class AniLightNativeScreen(
             setTextColor(fg)
             setHintTextColor(muted)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
-            background = rounded(surface, 12)
+            background = SanyLiquidGlass.background(context, 12, light, accent)
             setPadding(dp(14), dp(11), dp(14), dp(11))
         }
         body.addView(input, LinearLayout.LayoutParams(-1, dp(50)).apply {
@@ -822,7 +824,7 @@ class AniLightNativeScreen(
                     val card = LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         setPadding(dp(12), dp(10), dp(12), dp(10))
-                        background = rounded(surface, 10)
+                        background = SanyLiquidGlass.background(context, 10, light, accent)
                     }
                     val bannerUrl = sources.firstOrNull { it.bannerUrl.startsWith("http") }?.bannerUrl.orEmpty()
                     if (bannerUrl.isNotBlank()) {
@@ -905,7 +907,7 @@ class AniLightNativeScreen(
             }
             applyNowPlayingHighlight(tile, item)
             val frame = FrameLayout(context).apply {
-                background = rounded(surface, 10)
+                background = SanyLiquidGlass.background(context, 10, light, accent)
                 clipToOutline = true
             }
             val poster = ImageView(context).apply {
@@ -1072,7 +1074,7 @@ class AniLightNativeScreen(
             val score = featured.optDouble("averageScore", 0.0).takeIf { it > 0 }?.toString()?.let { "★ $it" }.orEmpty()
 
             val hero = FrameLayout(context).apply {
-                background = rounded(surface, 20)
+                background = SanyLiquidGlass.background(context, 20, light, accent)
                 clipToOutline = true
                 isFocusable = true
                 setOnClickListener { openAnime(featured) }
@@ -1137,7 +1139,7 @@ class AniLightNativeScreen(
                 ?.let { "★ $it" }.orEmpty()
 
             val card = FrameLayout(context).apply {
-                background = rounded(surface, 14)
+                background = SanyLiquidGlass.background(context, 14, light, accent)
                 clipToOutline = true
                 isFocusable = true
                 setOnClickListener { openAnime(item) }
@@ -1294,7 +1296,7 @@ class AniLightNativeScreen(
                 ).apply {
                     cornerRadius = dp(13).toFloat()
                     setStroke(dp(3), 0xFF35B8FF.toInt())
-                } else rounded(surface, 13)
+                } else SanyLiquidGlass.background(context, 13, light, accent)
                 if (isNowPlaying) {
                     elevation = dp(9).toFloat()
                     foreground = GradientDrawable().apply {
@@ -1817,7 +1819,7 @@ class AniLightNativeScreen(
             val episode = entry.optInt("episode", 1)
             val lang = entry.optString("language", "sub").uppercase()
             val card = FrameLayout(context).apply {
-                background = rounded(surface, 12)
+                background = SanyLiquidGlass.background(context, 12, light, accent)
                 clipToOutline = true
                 isFocusable = true
                 setOnClickListener { openAnime(item) }

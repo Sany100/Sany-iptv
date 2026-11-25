@@ -66,6 +66,7 @@ class CloudStreamProviderHomeScreen(
                 typeface = Typeface.DEFAULT_BOLD
                 setPadding(dp(18), dp(20), dp(18), dp(20))
                 background = surface()
+                SanyLiquidGlass.elevate(this, context, 4f)
                 isFocusable = true
                 isClickable = true
                 setOnClickListener {
@@ -173,6 +174,7 @@ class CloudStreamProviderHomeScreen(
                 maxWidth = dp(172)
                 minHeight = dp(96)
                 background = surface()
+                SanyLiquidGlass.elevate(this, context, 4f)
                 isFocusable = true
                 isClickable = true
                 setOnClickListener { onOpenItem(providerName, item.url, item.name) }
@@ -225,15 +227,8 @@ class CloudStreamProviderHomeScreen(
 
     private fun surface() = glassSurface(14)
 
-    private fun glassSurface(radius: Int) = GradientDrawable(
-        GradientDrawable.Orientation.TL_BR,
-        if (backgroundColor == Color.BLACK)
-            intArrayOf(0xAA49688F.toInt(), 0xB0121D30.toInt(), 0xAA202F49.toInt())
-        else intArrayOf(0xEFFFFFFF.toInt(), 0xDDE6F1FF.toInt(), 0xF7FFFFFF.toInt())
-    ).apply {
-        cornerRadius = dp(radius).toFloat()
-        setStroke(dp(1), if (backgroundColor == Color.BLACK) 0xBDA9CFFF.toInt() else 0xDFFFFFFF.toInt())
-    }
+    private fun glassSurface(radius: Int) =
+        SanyLiquidGlass.background(context, radius, backgroundColor != Color.BLACK, accentColor)
 
     private fun topMargin(value: Int) = LinearLayout.LayoutParams(-1, -2).apply {
         topMargin = dp(value)

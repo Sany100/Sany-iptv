@@ -438,8 +438,9 @@ class NativeMoviesScreen(
             }
             val isNowPlaying = prefs.getString("movies_now_playing_title", "").equals(item.title, ignoreCase = true)
             val frame = FrameLayout(context).apply {
-                background = rounded(card, 14)
+                background = SanyLiquidGlass.background(context, 14, light, accent)
                 clipToOutline = true
+                SanyLiquidGlass.elevate(this, context, 5f)
                 if (isNowPlaying) {
                     foreground = GradientDrawable().apply {
                         cornerRadius = dp(14).toFloat()
@@ -521,8 +522,9 @@ class NativeMoviesScreen(
             }
             val isNowPlaying = prefs.getString("movies_now_playing_title", "").equals(item.title, ignoreCase = true)
             val frame = FrameLayout(context).apply {
-                background = rounded(card, 12)
+                background = SanyLiquidGlass.background(context, 12, light, accent)
                 clipToOutline = true
+                SanyLiquidGlass.elevate(this, context, 5f)
                 if (isNowPlaying) {
                     foreground = GradientDrawable().apply {
                         cornerRadius = dp(12).toFloat()

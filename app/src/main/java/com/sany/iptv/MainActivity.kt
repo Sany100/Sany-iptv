@@ -6123,13 +6123,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(3), dp(8), dp(3))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xA6101A2A.toInt(), 0xB20A1220.toInt())
-            ).apply {
-                cornerRadius = dp(12).toFloat()
-                setStroke(dp(1), 0x884D8DDA.toInt())
-            }
+            background = glass(12)
             visibility = View.GONE
             alpha = 0f
             elevation = dp(5).toFloat()
@@ -6189,11 +6183,7 @@ class MainActivity : AppCompatActivity() {
             transportRow.visibility = View.GONE
             transportRow.removeView(playPauseButton)
             playPauseButton.textSize = 34f
-            playPauseButton.background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0x66000000)
-                setStroke(dp(1), 0x99FFFFFF.toInt())
-            }
+            playPauseButton.background = SanyLiquidGlass.background(this@MainActivity, 50, false, accent)
             animeCenterPlayButton = playPauseButton
         }
 
@@ -7515,73 +7505,12 @@ class MainActivity : AppCompatActivity() {
         else intArrayOf(Color.BLACK, Color.BLACK, Color.BLACK)
     )
 
-    // Shared translucent glass surface used by menu cards, controls, pills and icon buttons.
-    // Native Android View backgrounds cannot blur arbitrary sibling content on every API level,
-    // so use layered alpha gradients, a bright top edge and a soft tinted outline for a consistent glass look.
-    // Shared translucent glass surface used by menu cards, controls, pills and icon buttons.
-    // Native Android View backgrounds cannot blur arbitrary sibling content on every API level,
-    // so use layered alpha gradients, a bright top edge and a soft tinted outline for a consistent glass look.
-    // iOS-inspired Liquid Glass material. Android's classic View system has no
-    // true per-view backdrop blur on every supported API, so use layered translucency,
-    // a luminous top rim and a subtle tinted lower edge without blurring video/content.
-    private fun glass(radius: Int) = GradientDrawable(
-        GradientDrawable.Orientation.TL_BR,
-        if (isLight) intArrayOf(
-            // Brighter milky-white Liquid Glass with a soft cool reflection near the base.
-            Color.argb(246, 255, 255, 255),
-            Color.argb(232, 255, 255, 255),
-            Color.argb(216, 239, 247, 255),
-            Color.argb(236, 255, 255, 255)
-        ) else intArrayOf(
-            Color.argb(166, 100, 145, 205),
-            Color.argb(132, 20, 38, 68),
-            Color.argb(158, 30, 48, 82)
-        )
-    ).apply {
-        cornerRadius = dp(radius).toFloat()
-        setStroke(
-            dp(1),
-            if (isLight) Color.argb(250, 255, 255, 255)
-            else Color.argb(205, 174, 211, 255)
-        )
-    }
-    // The brand header keeps its left, right and bottom glass outline, but
-    // deliberately omits the bright top rim so Android's status indicators have
-    // a clean edge above the header.
-    private fun glassWithoutTopStroke(radius: Int): android.graphics.drawable.Drawable {
-        val fill = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            if (isLight) intArrayOf(
-                Color.argb(246, 255, 255, 255),
-                Color.argb(232, 255, 255, 255),
-                Color.argb(216, 239, 247, 255),
-                Color.argb(236, 255, 255, 255)
-            ) else intArrayOf(
-                Color.argb(166, 100, 145, 205),
-                Color.argb(132, 20, 38, 68),
-                Color.argb(158, 30, 48, 82)
-            )
-        ).apply {
-            cornerRadius = dp(radius).toFloat()
-            setStroke(dp(1), if (isLight) Color.argb(250, 255, 255, 255)
-                else Color.argb(205, 174, 211, 255))
-        }
-        return object : android.graphics.drawable.Drawable() {
-            override fun draw(canvas: android.graphics.Canvas) {
-                fill.bounds = bounds
-                val save = canvas.save()
-                canvas.clipRect(bounds.left, bounds.top + dp(1), bounds.right, bounds.bottom)
-                fill.draw(canvas)
-                canvas.restoreToCount(save)
-            }
-            override fun setAlpha(alpha: Int) { fill.alpha = alpha }
-            override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
-                fill.colorFilter = colorFilter
-            }
-            @Deprecated("Deprecated in Android")
-            override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
-        }
-    }
+    // Shared Liquid Glass material used across Home, Live TV, Sports, Settings and player controls.
+    private fun glass(radius: Int) =
+        SanyLiquidGlass.background(this, radius, isLight, accent)
+
+    private fun glassWithoutTopStroke(radius: Int) =
+        SanyLiquidGlass.background(this, radius, isLight, accent, topRim = false)
 
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
