@@ -208,6 +208,16 @@ class MainActivity : AppCompatActivity() {
     private var playerChannelRows: LinearLayout? = null
     private var playerControlsPanel: View? = null
     private var headerTitleView: TextView? = null
+    private var homeDateTimeView: TextView? = null
+    private var playerDateTimeView: TextView? = null
+    private val dateTimeHandler = Handler(Looper.getMainLooper())
+    private val dateTimeRefreshRunnable = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed) return
+            updateDateTimeLabels()
+            dateTimeHandler.postDelayed(this, 30_000L)
+        }
+    }
     private var homeHeaderContainer: View? = null
     private var playlistSelectorContainer: View? = null
     private var liveTvNavLabel: TextView? = null
@@ -1003,6 +1013,27 @@ class MainActivity : AppCompatActivity() {
         }, 700L)
     }
 
+    private fun currentDateTimeText(): String =
+        java.text.SimpleDateFormat("EEE, dd MMM  •  hh:mm a", java.util.Locale.getDefault())
+            .format(java.util.Date())
+
+    private fun updateDateTimeLabels() {
+        val value = currentDateTimeText()
+        homeDateTimeView?.text = value
+        playerDateTimeView?.text = value
+    }
+
+    private fun createDateTimeLabel(): TextView =
+        text(currentDateTimeText(), 10, white, true).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            includeFontPadding = false
+            setPadding(dp(9), dp(7), dp(9), dp(7))
+            background = glass(12)
+            elevation = dp(8).toFloat()
+            contentDescription = "Current date and time"
+        }
+
     private fun updateHomeHeaderVisibility() {
         // Keep the brand header hidden on every tab while the compact player is active.
         // Closing the player restores the header in the normal home layout.
@@ -1119,6 +1150,10 @@ class MainActivity : AppCompatActivity() {
             playlistSelectorContainer = playlistButton
             titleRow.addView(playlistButton, LinearLayout.LayoutParams(dp(142), dp(40)))
         }
+        homeDateTimeView = createDateTimeLabel()
+        titleRow.addView(homeDateTimeView, LinearLayout.LayoutParams(-2, -2).apply {
+            leftMargin = dp(8)
+        })
         top.addView(titleRow)
         homeHeaderContainer = top
         // Full-width, edge-to-edge square header; remove the extra top gap.
@@ -6048,6 +6083,16 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
+        // Keep a live date/time indicator visible over the video in both inline
+        // and fullscreen playback, even when the regular app header is hidden.
+        playerDateTimeView = createDateTimeLabel()
+        screen.addView(playerDateTimeView, FrameLayout.LayoutParams(
+            -2, -2, Gravity.TOP or Gravity.END
+        ).apply {
+            topMargin = dp(10)
+            rightMargin = dp(10)
+        })
+        updateDateTimeLabels()
         if (isAnimeEpisode) {
             val loading = FrameLayout(this).apply {
                 setBackgroundColor(Color.BLACK)
@@ -7002,6 +7047,7 @@ class MainActivity : AppCompatActivity() {
         player = null
         trackSelector = null
         playerView = null
+        playerDateTimeView = null
         animeEpisodePanel = null
         animeCenterPlayButton = null
         animePlayerTitleOverlay = null
@@ -7447,6 +7493,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        dateTimeHandler.removeCallbacks(dateTimeRefreshRunnable)
         // Swiping this task away from Recents finishes SANY IPTV only.
         if (isFinishing) {
             prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
