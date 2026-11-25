@@ -2299,35 +2299,107 @@ class MainActivity : AppCompatActivity() {
 
     private fun resolveMovieExtensionPlayback(providerName: String, title: String, data: String) {
         val resolveStartedAt = System.currentTimeMillis()
+        val requestId = ++movieStreamingRequestId
+        movieStreamingSourceDialog?.dismiss()
+        movieStreamingSourceDialog = null
+        movieStreamingSourceAdapter = null
+        movieStreamingSourceRequests = mutableListOf()
+        movieStreamingPlaybackStarted = false
         android.util.Log.i("SANY-MOVIE", "Movie source request: provider=$providerName title=$title dataLength=${data.length}")
         toast("Resolving $title…")
         thread(name = "SANY-Movie-Resolve") {
             val links = runCatching {
                 kotlinx.coroutines.runBlocking {
                     kotlinx.coroutines.withTimeout(25_000L) {
-                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
+                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data) { source ->
+                            runOnUiThread {
+                                publishMovieStreamingSources(requestId, title, listOf(source), finished = false)
+                            }
+                        }
                     }
                 }
             }
             runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (isFinishing || isDestroyed || requestId != movieStreamingRequestId) return@runOnUiThread
                 links.onSuccess { sources ->
                     android.util.Log.i(
                         "SANY-MOVIE",
                         "Movie source request finished: provider=$providerName elapsedMs=${System.currentTimeMillis() - resolveStartedAt} sources=${sources.size}"
                     )
+                    publishMovieStreamingSources(requestId, title, sources, finished = true)
                     if (sources.isEmpty()) toast("এই Movie/Episode-এর কোনো playable source পাওয়া যায়নি")
-                    else showAnimeSourcePicker(title, sources)
                 }.onFailure { error ->
                     android.util.Log.e(
                         "SANY-MOVIE",
                         "Movie source request failed: provider=$providerName elapsedMs=${System.currentTimeMillis() - resolveStartedAt}",
                         error
                     )
-                    toast("Source resolve failed: ${error.message}")
+                    if (movieStreamingSourceRequests.isEmpty()) toast("Source resolve failed: ${error.message}")
+                    else movieStreamingSourceDialog?.setTitle("$title • source search stopped")
                 }
             }
         }
+    }
+
+    private fun publishMovieStreamingSources(
+        requestId: Int,
+        title: String,
+        incoming: List<SanyPlaybackRequest>,
+        finished: Boolean
+    ) {
+        if (isFinishing || isDestroyed || requestId != movieStreamingRequestId) return
+        incoming.filter { it.url.isNotBlank() }.forEach { source ->
+            val existingIndex = movieStreamingSourceRequests.indexOfFirst { it.url == source.url }
+            if (existingIndex >= 0) movieStreamingSourceRequests[existingIndex] = source
+            else movieStreamingSourceRequests.add(source)
+        }
+        if (movieStreamingPlaybackStarted) {
+            // Keep later-arriving links available to the existing playback fallback queue.
+            animeFallbackRequests = movieStreamingSourceRequests.toList()
+            return
+        }
+        if (movieStreamingSourceRequests.isEmpty()) return
+
+        val labels = movieStreamingSourceRequests.mapIndexed { index, request ->
+            val provider = request.provider.ifBlank { "Source ${index + 1}" }
+            val quality = request.quality?.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty()
+            val type = request.streamMimeType?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?.let { " • ${it.uppercase()}" }.orEmpty()
+            "$provider$quality$type"
+        }
+        var adapter = movieStreamingSourceAdapter
+        if (adapter == null) {
+            adapter = android.widget.ArrayAdapter(
+                this,
+                android.R.layout.simple_list_item_1,
+                mutableListOf<String>()
+            )
+            movieStreamingSourceAdapter = adapter
+            val created = AlertDialog.Builder(this)
+                .setTitle(if (finished) title else "$title • আরও source খোঁজা হচ্ছে…")
+                .setAdapter(adapter) { _, selectedIndex ->
+                    val available = movieStreamingSourceRequests.toList()
+                    movieStreamingPlaybackStarted = true
+                    movieStreamingSourceDialog = null
+                    startAnimeSourceFallback(available, selectedIndex)
+                }
+                .setNegativeButton("বন্ধ", null)
+                .create()
+            movieStreamingSourceDialog = created
+            created.setOnDismissListener {
+                if (movieStreamingSourceDialog === created) {
+                    movieStreamingSourceDialog = null
+                    movieStreamingSourceAdapter = null
+                }
+            }
+            created.show()
+        }
+        adapter.clear()
+        adapter.addAll(labels)
+        adapter.notifyDataSetChanged()
+        movieStreamingSourceDialog?.setTitle(
+            if (finished) title else "$title • আরও source খোঁজা হচ্ছে…"
+        )
     }
 
     private fun renderNativeMovies(showSeries: Boolean) {
@@ -2400,6 +2472,12 @@ class MainActivity : AppCompatActivity() {
 
     private var movieSourcePickerDialog: AlertDialog? = null
     private var moviePlaybackStartedAtMs = 0L
+    // Movies only: show each valid source as soon as the provider emits it.
+    private var movieStreamingRequestId = 0
+    private var movieStreamingSourceRequests = mutableListOf<SanyPlaybackRequest>()
+    private var movieStreamingSourceDialog: AlertDialog? = null
+    private var movieStreamingSourceAdapter: android.widget.ArrayAdapter<String>? = null
+    private var movieStreamingPlaybackStarted = false
     private var animeEpisodeSourceResolving = false
     private var animeSourcePickerDialog: AlertDialog? = null
     private var subtitleTrackDialog: android.app.Dialog? = null
