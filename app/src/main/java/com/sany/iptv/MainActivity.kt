@@ -1578,12 +1578,14 @@ class MainActivity : AppCompatActivity() {
             isFillViewport = true
             isNestedScrollingEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
+            setBackgroundColor(if (isLight) Color.WHITE else bg)
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(14), 0, dp(28))
             clipChildren = false
             clipToPadding = false
+            setBackgroundColor(if (isLight) Color.WHITE else bg)
         }
         page.addView(text("LIVE SPORTS", 22, white, true))
 
@@ -1609,7 +1611,7 @@ class MainActivity : AppCompatActivity() {
                     orientation = LinearLayout.VERTICAL
                     // Keep the provider panel full width; only its controls get inner spacing.
                     setPadding(0, dp(10), 0, dp(10))
-                    setBackgroundColor(0xFF101820.toInt())
+                    setBackgroundColor(if (isLight) Color.WHITE else 0xFF101820.toInt())
                 }
                 card.addView(text(provider.name, 17, white, true).apply {
                     setPadding(dp(12), dp(3), dp(12), 0)
@@ -1754,7 +1756,7 @@ class MainActivity : AppCompatActivity() {
                                             prefs.getString("sany_last_played_title", "").equals(item.name, true))
                                     val card = FrameLayout(this).apply {
                                         background = GradientDrawable().apply {
-                                            setColor(if (isNowPlaying) 0xFF123E70.toInt() else 0xFF202D43.toInt())
+                                            setColor(if (isNowPlaying) 0xFF123E70.toInt() else if (isLight) Color.WHITE else 0xFF202D43.toInt())
                                             cornerRadius = dp(8).toFloat()
                                             if (isNowPlaying) setStroke(dp(3), 0xFF35B8FF.toInt())
                                         }
@@ -1766,14 +1768,14 @@ class MainActivity : AppCompatActivity() {
                                     }
                                     val image = ImageView(this).apply {
                                         scaleType = ImageView.ScaleType.CENTER_CROP
-                                        setBackgroundColor(0xFF202D43.toInt())
+                                        setBackgroundColor(if (isLight) Color.WHITE else 0xFF202D43.toInt())
                                     }
                                     val placeholder = TextView(this).apply {
                                         text = "▶  LIVE SPORTS"
                                         textSize = 11f
                                         gravity = Gravity.CENTER
                                         setTextColor(white)
-                                        setBackgroundColor(0xFF202D43.toInt())
+                                        setBackgroundColor(if (isLight) Color.WHITE else 0xFF202D43.toInt())
                                     }
                                     card.addView(image, FrameLayout.LayoutParams(-1, -1))
                                     card.addView(placeholder, FrameLayout.LayoutParams(-1, -1))
