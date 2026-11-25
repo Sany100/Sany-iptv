@@ -335,9 +335,9 @@ class MultimoviesProvider : MainAPI() {
 
         const val DOOPLAY_NONCE_TTL_MS = 12 * 60 * 60 * 1000L
 
-        const val LIVE_FILL_MS = 90_000L
+        const val LIVE_FILL_MS = 2_500L
 
-        const val FAST_START_MAX_MS = 45_000L
+        const val FAST_START_MAX_MS = 20_000L
 
         fun passesQualityFloor(isAdaptive: Boolean, height: Int): Boolean =
             isAdaptive || height <= 0 || height >= 720
