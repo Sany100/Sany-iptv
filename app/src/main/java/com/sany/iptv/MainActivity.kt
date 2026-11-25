@@ -7695,7 +7695,7 @@ class MainActivity : AppCompatActivity() {
     private var lastBackPressedAt = 0L
 
     companion object {
-        @Volatile private var pipPlaybackActionHandler: (() -> Unit)? = null
+        @Volatile private var pipPlaybackActionHandler: ((String) -> Unit)? = null
 
         internal fun dispatchPipPlaybackAction(action: String) {
             pipPlaybackActionHandler?.invoke(action)
