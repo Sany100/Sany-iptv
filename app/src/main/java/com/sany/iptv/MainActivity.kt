@@ -865,6 +865,8 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+        dateTimeHandler.removeCallbacks(dateTimeRefreshRunnable)
+        dateTimeHandler.post(dateTimeRefreshRunnable)
         renderHome()
         if (showSplash) showStartupAnimation() else scheduleAutoUpdateCheck()
     }
