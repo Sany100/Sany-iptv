@@ -6378,25 +6378,21 @@ class MainActivity : AppCompatActivity() {
                                 toast("Auto retry ${playbackRetryCount}/2…")
                                 playbackRetryHandler.postDelayed({
                                     if (player === this@MainActivity.player && playerView != null) {
-                                        if (section == "Series") {
-                                            // Keep Anime paused during every retry too; STATE_READY
-                                            // releases playback only after the loading overlay is dismissed.
-                                            animeAutoPlayWhenReady = prefs.getBoolean("auto_play", true)
-                                            player?.playWhenReady = false
-                                            player?.prepare()
-                                        } else {
-                                            player?.prepare()
-                                            player?.playWhenReady = prefs.getBoolean("auto_play", true)
-                                        }
+                                        // A retry is a fresh load: keep audio/video held until
+                                        // the next first frame, just like the initial request.
+                                        animeAutoPlayWhenReady = prefs.getBoolean("auto_play", true)
+                                        animeFirstFrameRendered = false
+                                        animePlaybackLoadingRequested = true
+                                        player?.playWhenReady = false
+                                        updateAnimeFullscreenBuffering()
+                                        player?.prepare()
                                     }
                                 }, 1800L)
                             }
                         }
                     }
                     override fun onPlaybackStateChanged(state: Int) {
-                        if (section == "Series" || section == "Movies") {
-                            runOnUiThread { updateAnimeFullscreenBuffering() }
-                        }
+                        runOnUiThread { updateAnimeFullscreenBuffering() }
                         if (section == "Movies") {
                             val stateName = when (state) {
                                 Player.STATE_IDLE -> "IDLE"
@@ -6436,7 +6432,7 @@ class MainActivity : AppCompatActivity() {
                         refreshPictureInPictureParams()
                     }
                     override fun onIsLoadingChanged(isLoading: Boolean) {
-                        if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
+                        runOnUiThread { updateAnimeFullscreenBuffering() }
                     }
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         // Auto-entry depends on actual playback; keep PiP action
@@ -6526,8 +6522,6 @@ class MainActivity : AppCompatActivity() {
             view.addView(loading, FrameLayout.LayoutParams(-1, -1))
             animeFullscreenBufferingOverlay = loading
             updateAnimeFullscreenBuffering()
-        } else {
-            animeFullscreenBufferingOverlay = null
         }
         animeEpisodePanel = if (isAnimeEpisode) aniLightNativeScreen?.createPlayerEpisodePanel() else null
         animeEpisodePanel?.let { episodePanel ->
