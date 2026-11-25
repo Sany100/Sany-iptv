@@ -6180,7 +6180,7 @@ class MainActivity : AppCompatActivity() {
                         if (section == "Movies") {
                             android.util.Log.e(
                                 "SANY-MOVIE",
-                                "Movie playback error: provider=${currentChannel?.provider ?: "unknown"} code=${error.errorCodeName} httpStatus=${httpStatus ?: "unknown"}",
+                                "Movie playback error: code=${error.errorCodeName} httpStatus=${httpStatus ?: "unknown"}",
                                 error
                             )
                         }
