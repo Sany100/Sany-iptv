@@ -1805,8 +1805,20 @@ class MainActivity : AppCompatActivity() {
             tag = "sports-results-$providerName"
         }
         host.addView(results, LinearLayout.LayoutParams(-1, -2))
-        results.addView(text("Sports হোমপেজ লোড হচ্ছে…", 13, muted)
-            .apply { setPadding(dp(8), dp(12), dp(8), dp(8)) })
+        val declaredCategories = if (providerName.equals("PlayZTVProvider", true)) {
+            SanyCloudStreamPluginRuntime.providers()
+                .firstOrNull { it.name.equals(providerName, true) }
+                ?.mainPage.orEmpty().map { it.name }.filter { it.isNotBlank() }.distinct()
+        } else emptyList()
+        if (declaredCategories.isNotEmpty()) {
+            declaredCategories.forEach { category ->
+                results.addView(text("$category  •  লোড হচ্ছে…", 16, white, true)
+                    .apply { setPadding(dp(8), dp(14), dp(8), dp(7)) })
+            }
+        } else {
+            results.addView(text("Sports হোমপেজ লোড হচ্ছে…", 13, muted)
+                .apply { setPadding(dp(8), dp(12), dp(8), dp(8)) })
+        }
         thread(name = "SANY-LiveSports-Home") {
             val outcome = runCatching {
                 kotlinx.coroutines.runBlocking {
