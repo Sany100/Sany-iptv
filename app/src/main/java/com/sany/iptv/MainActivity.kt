@@ -2305,6 +2305,7 @@ class MainActivity : AppCompatActivity() {
         movieStreamingSourceAdapter = null
         movieStreamingSourceRequests = mutableListOf()
         movieStreamingPlaybackStarted = false
+        movieStreamingPickerDismissed = false
         android.util.Log.i("SANY-MOVIE", "Movie source request: provider=$providerName title=$title dataLength=${data.length}")
         toast("Resolving $title…")
         thread(name = "SANY-Movie-Resolve") {
@@ -2358,7 +2359,7 @@ class MainActivity : AppCompatActivity() {
             animeFallbackRequests = movieStreamingSourceRequests.toList()
             return
         }
-        if (movieStreamingSourceRequests.isEmpty()) return
+        if (movieStreamingPickerDismissed || movieStreamingSourceRequests.isEmpty()) return
 
         val labels = movieStreamingSourceRequests.mapIndexed { index, request ->
             val provider = request.provider.ifBlank { "Source ${index + 1}" }
@@ -2390,6 +2391,7 @@ class MainActivity : AppCompatActivity() {
                 if (movieStreamingSourceDialog === created) {
                     movieStreamingSourceDialog = null
                     movieStreamingSourceAdapter = null
+                    movieStreamingPickerDismissed = true
                 }
             }
             created.show()
@@ -2478,6 +2480,7 @@ class MainActivity : AppCompatActivity() {
     private var movieStreamingSourceDialog: AlertDialog? = null
     private var movieStreamingSourceAdapter: android.widget.ArrayAdapter<String>? = null
     private var movieStreamingPlaybackStarted = false
+    private var movieStreamingPickerDismissed = false
     private var animeEpisodeSourceResolving = false
     private var animeSourcePickerDialog: AlertDialog? = null
     private var subtitleTrackDialog: android.app.Dialog? = null
