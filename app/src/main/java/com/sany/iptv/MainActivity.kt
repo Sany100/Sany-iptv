@@ -161,7 +161,12 @@ class MainActivity : AppCompatActivity() {
     private var aniLightWebView: WebView? = null
     private var aniLightSiteLoaded = false
     private var aniLightNativeScreen: AniLightNativeScreen? = null
+    private var aniLightNativeView: View? = null
     private var cloudStreamProviderScreen: CloudStreamProviderHomeScreen? = null
+    private var cloudStreamProviderView: View? = null
+    // Keep the exact Anime parent page attached/detached across details and playback.
+    private var animeExternalPageActive = false
+    private var animeExternalPageReturnToProvider = false
     private var currentChannel: Channel? = null
     private var playbackReturnScrollY = 0
     // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
@@ -2311,7 +2316,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun attachAniLightNativeView() {
+        val nativeView = aniLightNativeView ?: return
+        (nativeView.parent as? android.view.ViewGroup)?.removeView(nativeView)
+        val animePage = LinearLayout(this).apply {
+            setBackgroundColor(bg)
+        }
+        animePage.addView(nativeView, LinearLayout.LayoutParams(-1, -1))
+        contentArea.addView(animePage, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun attachCloudStreamProviderView() {
+        val providerView = cloudStreamProviderView ?: return
+        (providerView.parent as? android.view.ViewGroup)?.removeView(providerView)
+        contentArea.addView(providerView, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun restoreAnimeExternalPage() {
+        if (!animeExternalPageActive) return
+        animeExternalPageActive = false
+        contentArea.removeAllViews()
+        if (animeExternalPageReturnToProvider &&
+            cloudStreamProviderScreen != null && cloudStreamProviderView != null
+        ) {
+            attachCloudStreamProviderView()
+        } else {
+            attachAniLightNativeView()
+        }
+    }
+
     private fun renderAniLightNative() {
+        // Reattach the existing screen instead of constructing a fresh one.
+        // This preserves its page stack, filters and exact scroll position.
+        if (aniLightNativeScreen != null && aniLightNativeView != null) {
+            attachAniLightNativeView()
+            return
+        }
         // Keep CloudStream DEX provider management internal. The verified providers
         // are synchronized and loaded automatically at app startup; no manual
         // provider/search entry is shown in the Anime Series UI.
@@ -2467,12 +2507,8 @@ class MainActivity : AppCompatActivity() {
             }
         )
         aniLightNativeScreen = screen
-        val animePage = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-        }
-        animePage.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
-        contentArea.addView(animePage, LinearLayout.LayoutParams(-1, -1))
+        aniLightNativeView = screen.create()
+        attachAniLightNativeView()
     }
 
     private fun showCloudStreamProviderBrowser() {
@@ -2517,15 +2553,14 @@ class MainActivity : AppCompatActivity() {
                         onOpenItem = { providerName, url, title -> showCloudStreamDetails(providerName, url, title) },
                         onBackToAnime = {
                             cloudStreamProviderScreen = null
+                            cloudStreamProviderView = null
                             contentArea.removeAllViews()
-                            renderAniLightNative()
+                            attachAniLightNativeView()
                         }
                     )
+                    cloudStreamProviderView = cloudStreamProviderScreen!!.create()
                     contentArea.removeAllViews()
-                    contentArea.addView(
-                        cloudStreamProviderScreen!!.create(),
-                        LinearLayout.LayoutParams(-1, -1)
-                    )
+                    attachCloudStreamProviderView()
                 }.onFailure { error ->
                     android.util.Log.e("SANY-CS", "Anime provider sync/load failed from provider browser", error)
                     AlertDialog.Builder(this@MainActivity)
@@ -2564,6 +2599,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCloudStreamDetails(providerName: String, url: String, fallbackTitle: String) {
+        val returnToProviderBrowser = cloudStreamProviderScreen != null
         pendingCloudStreamAnimeItem = Triple(providerName, url, fallbackTitle)
         toast("Loading $fallbackTitle…")
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
@@ -2607,6 +2643,10 @@ class MainActivity : AppCompatActivity() {
                             if (isEmpty()) append("Episode ${index + 1}")
                         }
                     }.toTypedArray()
+                    // Keep the exact parent page so Android Back can return to it
+                    // after details or video playback without resetting Anime navigation.
+                    animeExternalPageReturnToProvider = returnToProviderBrowser
+                    animeExternalPageActive = true
                     // Open a dedicated Anime details page instead of a compact episode popup.
                     contentArea.removeAllViews()
                     val detailPage = LinearLayout(this@MainActivity).apply {
@@ -2623,7 +2663,7 @@ class MainActivity : AppCompatActivity() {
                         textSize = 14f
                         setTextColor(white)
                         setPadding(dp(8), dp(10), dp(18), dp(10))
-                        setOnClickListener { contentArea.removeAllViews(); renderAniLightNative() }
+                        setOnClickListener { restoreAnimeExternalPage() }
                     }
                     pageHeader.addView(backButton)
                     pageHeader.addView(TextView(this@MainActivity).apply {
@@ -7072,14 +7112,22 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Series") {
+            // A provider detail page is one navigation level above its parent
+            // catalogue/provider page. Unwind it before the underlying page stack.
+            if (animeExternalPageActive) {
+                restoreAnimeExternalPage()
+                lastBackPressedAt = 0L
+                return
+            }
             if (cloudStreamProviderScreen?.handleBack() == true) {
                 lastBackPressedAt = 0L
                 return
             }
             if (cloudStreamProviderScreen != null) {
                 cloudStreamProviderScreen = null
+                cloudStreamProviderView = null
                 contentArea.removeAllViews()
-                renderAniLightNative()
+                attachAniLightNativeView()
                 lastBackPressedAt = 0L
                 return
             }
