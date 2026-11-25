@@ -4338,14 +4338,50 @@ class MainActivity : AppCompatActivity() {
                 toast("Device ID copied — এখানে পাঠান")
             }
         }
-        box.addView(text("ADDITIONAL SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Update EPG data", "Manually refresh all 3 XMLTV sources now") {
+        val additionalSettingsDropdown = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = glass(14)
+        }
+        val additionalSettingsHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+        }
+        val additionalSettingsLabels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        additionalSettingsLabels.addView(text("ADDITIONAL SETTINGS", 15, white, true))
+        additionalSettingsLabels.addView(text("EPG • Automatic EPG • EPG sources", 11, muted).apply {
+            setPadding(0, dp(4), 0, 0)
+        })
+        additionalSettingsHeader.addView(additionalSettingsLabels, LinearLayout.LayoutParams(0, -2, 1f))
+        val additionalSettingsArrow = text("⌄", 22, accent, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(4), 0)
+        }
+        additionalSettingsHeader.addView(additionalSettingsArrow)
+        additionalSettingsDropdown.addView(additionalSettingsHeader, LinearLayout.LayoutParams(-1, -2))
+        val additionalSettingsContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(12), 0, 0)
+        }
+        settingsCard(additionalSettingsContent, "Update EPG data", "Manually refresh all 3 XMLTV sources now") {
             refreshEpgSources(true)
         }
-        settingsToggleCard(box, "Auto add EPG data", "Detect playlist EPG URL automatically; daily EPG refresh remains scheduled", "auto_add_epg", true)
-        settingsCard(box, "EPG sources (3)", "View the 3 built-in feeds and daily update schedule") {
+        settingsToggleCard(additionalSettingsContent, "Auto add EPG data", "Detect playlist EPG URL automatically; daily EPG refresh remains scheduled", "auto_add_epg", true)
+        settingsCard(additionalSettingsContent, "EPG sources (3)", "View the 3 built-in feeds and daily update schedule") {
             showBuiltInEpgSources()
         }
+        additionalSettingsDropdown.addView(additionalSettingsContent, LinearLayout.LayoutParams(-1, -2))
+        additionalSettingsHeader.setOnClickListener {
+            val expanded = additionalSettingsContent.visibility != View.VISIBLE
+            additionalSettingsContent.visibility = if (expanded) View.VISIBLE else View.GONE
+            additionalSettingsArrow.text = if (expanded) "⌃" else "⌄"
+        }
+        box.addView(additionalSettingsDropdown, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(12)
+        })
         box.addView(text("ABOUT", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
             setPadding(dp(15), dp(16), dp(15), dp(16)); background = rounded(panel, 12)
