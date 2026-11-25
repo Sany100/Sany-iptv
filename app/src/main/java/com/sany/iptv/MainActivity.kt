@@ -196,7 +196,14 @@ class MainActivity : AppCompatActivity() {
     private var animeEpisodePanel: View? = null
     private var animeCenterPlayButton: TextView? = null
     private var animePlayerTitleOverlay: TextView? = null
-    private var displayedLimit = 60
+    // Scale UI work to the device's available memory instead of assuming a flagship phone.
+    private val isLowMemoryDevice: Boolean by lazy {
+        val manager = getSystemService(android.app.ActivityManager::class.java)
+        manager?.isLowRamDevice == true || (manager?.memoryClass ?: 256) <= 128
+    }
+    private val initialDisplayedLimit: Int get() = if (isLowMemoryDevice) 24 else 60
+    private val displayedLimitIncrement: Int get() = if (isLowMemoryDevice) 48 else 120
+    private var displayedLimit = initialDisplayedLimit
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
@@ -227,7 +234,7 @@ class MainActivity : AppCompatActivity() {
     // A small bounded pool prevents one thread per channel logo on low-memory phones.
     private val logoExecutor by lazy {
         java.util.concurrent.Executors.newFixedThreadPool(
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
+            if (isLowMemoryDevice) 1 else 2
         )
     }
 
@@ -260,8 +267,18 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
+                    // Channel marks and poster tiles are small on screen; decode only
+                    // enough pixels for their target bounds to avoid full-size bitmap RAM spikes.
+                    val targetPixels = if (image.scaleType == ImageView.ScaleType.CENTER_CROP) dp(240) else dp(96)
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
+                    var sampleSize = 1
+                    while (bounds.outWidth / (sampleSize * 2) >= targetPixels &&
+                        bounds.outHeight / (sampleSize * 2) >= targetPixels
+                    ) sampleSize *= 2
                     val options = BitmapFactory.Options().apply {
                         inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                        inSampleSize = sampleSize
                     }
                     val bitmap = BitmapFactory.decodeFile(cachedFile.absolutePath, options)
                     if (bitmap != null) runOnUiThread {
@@ -3590,12 +3607,14 @@ class MainActivity : AppCompatActivity() {
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV blinking live indicator"
                 alpha = 1f
-                startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
-                    duration = 900L
-                    repeatMode = android.view.animation.Animation.REVERSE
-                    repeatCount = android.view.animation.Animation.INFINITE
-                    startOffset = (index % 6) * 110L
-                })
+                if (!isLowMemoryDevice) {
+                    startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
+                        duration = 900L
+                        repeatMode = android.view.animation.Animation.REVERSE
+                        repeatCount = android.view.animation.Animation.INFINITE
+                        startOffset = (index % 6) * 110L
+                    })
+                }
             }
             watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
@@ -3641,7 +3660,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += 120
+                displayedLimit += displayedLimitIncrement
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8); bottomMargin = dp(12) })
         }
