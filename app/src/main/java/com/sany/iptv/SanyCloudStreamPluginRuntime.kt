@@ -338,7 +338,8 @@ object SanyCloudStreamPluginRuntime {
     suspend fun resolvePlayback(
         providerName: String,
         title: String,
-        episodeData: String
+        episodeData: String,
+        onSource: ((SanyPlaybackRequest) -> Unit)? = null
     ): List<SanyPlaybackRequest> {
         providersContext()?.let { SanyNetworkBypasses.configureCloudStream(it) }
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
@@ -358,12 +359,14 @@ object SanyCloudStreamPluginRuntime {
         }?.requests
         cached()?.let {
             if (isMovieProvider) Log.i("SANY-MOVIE", "Source cache hit: provider=${provider.name} sources=${it.size}")
+            if (isMovieProvider) it.forEach { request -> runCatching { onSource?.invoke(request) } }
             return it
         }
         val requestLock = playbackLocks.computeIfAbsent(cacheKey) { Mutex() }
         return requestLock.withLock {
             cached()?.let {
                 if (isMovieProvider) Log.i("SANY-MOVIE", "Source cache hit after lock: provider=${provider.name} sources=${it.size}")
+                if (isMovieProvider) it.forEach { request -> runCatching { onSource?.invoke(request) } }
                 return@withLock it
             }
             val links = mutableListOf<ExtractorLink>()
@@ -410,6 +413,16 @@ object SanyCloudStreamPluginRuntime {
                                 "SANY-MOVIE",
                                 "Extractor emitted source: provider=${provider.name} index=$sourceIndex elapsedMs=${System.currentTimeMillis() - extractorStartedAt} scheme=$scheme urlLength=${link.url.length} type=${link.type} quality=${link.quality}"
                             )
+                        }
+                        val scheme = link.url.trim().substringBefore(':', "").lowercase()
+                        if (scheme in setOf("http", "https", "ftp")) {
+                            runCatching {
+                                onSource?.invoke(
+                                    CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles.toList(), provider.name)
+                                )
+                            }.onFailure { error ->
+                                Log.w("SANY-MOVIE", "Could not publish early source: provider=${provider.name}", error)
+                            }
                         }
                     }
                 }
@@ -461,10 +474,15 @@ object SanyCloudStreamPluginRuntime {
             val requests = playbackLinks.map { link ->
                 CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles, provider.name)
             }.distinctBy { it.url }
-            if (isMovieProvider) Log.i(
-                "SANY-MOVIE",
-                "Source resolve finished: provider=${provider.name} elapsedMs=${System.currentTimeMillis() - resolveStartedAt} playableSources=${requests.size}"
-            )
+            if (isMovieProvider) {
+                // Publish the completed list once more so early entries gain any subtitles
+                // discovered later during extraction.
+                requests.forEach { request -> runCatching { onSource?.invoke(request) } }
+                Log.i(
+                    "SANY-MOVIE",
+                    "Source resolve finished: provider=${provider.name} elapsedMs=${System.currentTimeMillis() - resolveStartedAt} playableSources=${requests.size}"
+                )
+            }
             if (requests.isNotEmpty()) {
                 if (playbackCache.size > 120) playbackCache.clear()
                 playbackCache[cacheKey] = CachedPlayback(System.currentTimeMillis(), requests)
