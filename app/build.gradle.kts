@@ -60,7 +60,7 @@ android {
         }
     }
     sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
-    sourceSets.getByName("main").assets.srcDir(playZtvAssetsDir)
+    sourceSets.getByName("main").assets.srcDir(playZtvAssetsDir.get().asFile)
 
     defaultConfig {
         minSdk = 23
