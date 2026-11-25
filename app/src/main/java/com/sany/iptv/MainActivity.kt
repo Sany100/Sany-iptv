@@ -162,6 +162,11 @@ class MainActivity : AppCompatActivity() {
     private var aniLightSiteLoaded = false
     private var aniLightNativeScreen: AniLightNativeScreen? = null
     private var aniLightNativeView: View? = null
+    // Keep Movies catalogue and Live Sports provider catalogue views alive while
+    // their details/player overlays are opened, preserving filters and scroll.
+    private var moviesNativeView: View? = null
+    private var movieDetailsParentView: View? = null
+    private var liveSportsCatalogueView: View? = null
     private var cloudStreamProviderScreen: CloudStreamProviderHomeScreen? = null
     private var cloudStreamProviderView: View? = null
     // Keep the exact Anime parent page attached/detached across details and playback.
@@ -1578,6 +1583,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderLiveSportsExtensions() {
+        liveSportsCatalogueView?.let { existing ->
+            (existing.parent as? ViewGroup)?.removeView(existing)
+            contentArea.addView(existing, LinearLayout.LayoutParams(-1, -1))
+            return
+        }
         contentArea.removeAllViews()
         val scroll = FastSportsScrollView(this).apply {
             isFillViewport = true
@@ -1641,6 +1651,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         scroll.addView(page)
+        liveSportsCatalogueView = scroll
         contentArea.addView(scroll, LinearLayout.LayoutParams(-1, -1))
     }
 
@@ -1895,8 +1906,9 @@ class MainActivity : AppCompatActivity() {
                         // resolve successfully but return a stream that never renders video.
                         animeFallbackRequests = sources
                         animeFallbackIndex = 0
+                        // Keep the exact Live Sports catalogue attached underneath
+                        // the player. Rebuilding it here used to reset category/scroll state.
                         playSanyPlaybackRequest(sources.first(), preserveFallbackQueue = true)
-                        if (section == "Live Sports") renderSection()
                     }
                 }.onFailure {
                     android.util.Log.e("SANY-LIVE-SPORTS", "Resolve failed for $title", it)
@@ -1950,6 +1962,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun restoreMovieDetailsParent() {
+        val parent = movieDetailsParentView ?: moviesNativeView
+        contentArea.removeAllViews()
+        if (parent != null) {
+            (parent.parent as? ViewGroup)?.removeView(parent)
+            contentArea.addView(parent, LinearLayout.LayoutParams(-1, -1))
+        } else {
+            renderNativeMovies(false)
+        }
+    }
+
     /** Anime-style details page: select an episode first, then choose its source before playback. */
     private fun showMovieExtensionDetails(
         providerName: String,
@@ -1963,6 +1986,9 @@ class MainActivity : AppCompatActivity() {
         val posterUrl = response.posterUrl.orEmpty()
         val plot = response.plot.orEmpty()
 
+        // Retain the exact Movies catalogue/provider page so Back restores its
+        // category page, active search/filter and scroll position.
+        movieDetailsParentView = contentArea.getChildAt(0)
         contentArea.removeAllViews()
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1986,7 +2012,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             setPadding(dp(14), dp(10), dp(14), dp(10))
             background = rounded(0xFF242832.toInt(), 12)
-            setOnClickListener { renderNativeMovies(false) }
+            setOnClickListener { restoreMovieDetailsParent() }
         }
         header.addView(back)
         header.addView(text("MOVIE DETAILS", 14, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f).apply {
@@ -2135,6 +2161,11 @@ class MainActivity : AppCompatActivity() {
             renderDevelopmentSection()
             return
         }
+        moviesNativeView?.let { existing ->
+            (existing.parent as? ViewGroup)?.removeView(existing)
+            contentArea.addView(existing, LinearLayout.LayoutParams(-1, -1))
+            return
+        }
         val screen = NativeMoviesScreen(
             context = this,
             seriesMode = false,
@@ -2147,7 +2178,8 @@ class MainActivity : AppCompatActivity() {
                 openMovieExtensionTitle(providerName, url, title)
             }
         )
-        contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
+        moviesNativeView = screen.create()
+        contentArea.addView(moviesNativeView, LinearLayout.LayoutParams(-1, -1))
     }
 
     // Series is intentionally disabled. Keep this page empty except for its label.
