@@ -1547,7 +1547,7 @@ class MainActivity : AppCompatActivity() {
                             AlertDialog.Builder(this).setTitle(item.name).setMessage(item.description)
                                 .setPositiveButton(if (installed.containsKey(item.id)) "UPDATE" else "INSTALL") { _, _ ->
                                     thread(name = "SANY-LiveSports-Install") {
-                                        val result2 = runCatching { SanyLiveSportsExtensionManager.installOrUpdate(applicationContext, item) }
+                                        val result2 = runCatching { SanyLiveSportsExtensionManager.installOrUpdate(this@MainActivity, item) }
                                         runOnUiThread { result2.onSuccess { loaded -> if (loaded.success) { if (section == "Live Sports") renderSection(); toast("Installed: " + loaded.providerNames.joinToString()) } else toast("Install failed: " + loaded.error) }.onFailure { toast("Install failed: " + it.message) } }
                                     }
                                 }.setNegativeButton("CANCEL", null).show()
@@ -1581,7 +1581,7 @@ class MainActivity : AppCompatActivity() {
         progress.show()
         thread(name = "SANY-PlayZTV-Install") {
             val result = runCatching {
-                SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
+                SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(this@MainActivity)
             }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
@@ -1617,7 +1617,7 @@ class MainActivity : AppCompatActivity() {
             var syncError: String? = null
             try {
                 val outcome = runCatching {
-                    SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
+                    SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(this@MainActivity)
                 }
                 loaded = outcome.getOrNull()
                 if (loaded?.success == true) {
@@ -1631,7 +1631,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 runCatching {
                     SanyLiveSportsExtensionManager.loadInstalled(
-                        applicationContext,
+                        this@MainActivity,
                         if (loaded?.success == true) setOf("playztvprovider") else emptySet()
                     )
                 }.onSuccess { restored ->
