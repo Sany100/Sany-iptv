@@ -71,7 +71,7 @@ class AniLightNativeScreen(
     private val posterExecutor = Executors.newFixedThreadPool(
         if (Runtime.getRuntime().maxMemory() <= 256L * 1024L * 1024L) 2 else 4
     )
-    private val bg = if (light) 0xFFF2F6FC.toInt() else Color.BLACK
+    private val bg = if (light) Color.WHITE else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
     private val muted = if (light) 0xFF5A6576.toInt() else 0xFF94A0B4.toInt()
     private val surface = if (light) Color.WHITE else 0xFF16191F.toInt()
