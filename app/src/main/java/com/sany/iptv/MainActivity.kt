@@ -1064,15 +1064,27 @@ class MainActivity : AppCompatActivity() {
             translationZ = dp(10).toFloat()
         }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-        val connectionStatus = text(
-            if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED",
-            9,
-            if (settingsHeader && isLight) Color.rgb(38, 119, 245) else if (channels.isEmpty()) muted else accent, true
-        ).apply {
+        val connectionStatus = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(9), dp(5), dp(9), dp(5))
-            letterSpacing = 0.035f
             background = if (settingsHeader && isLight) rounded(Color.WHITE, 28) else if (settingsHeader) rounded(Color.rgb(20, 39, 64), 28) else glass(18)
+        }
+        if (channels.isEmpty()) {
+            connectionStatus.addView(text("NOT CONNECTED", 9, muted, true))
+        } else {
+            val connectedDot = text("●", 9, Color.rgb(45, 210, 115), true).apply {
+                gravity = Gravity.CENTER
+            }
+            connectionStatus.addView(connectedDot)
+            android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
+                duration = 650L
+                repeatMode = android.animation.ValueAnimator.REVERSE
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                start()
+            }
+            connectionStatus.addView(text(" CONNECTED", 9,
+                if (settingsHeader && isLight) Color.rgb(38, 119, 245) else accent, true))
         }
         brandLine.addView(connectionStatus, LinearLayout.LayoutParams(-2, -2).apply {
             leftMargin = dp(8)
@@ -4208,9 +4220,36 @@ class MainActivity : AppCompatActivity() {
         box.addView(ispBypassesDropdown, LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = dp(12)
         })
-        box.addView(text("PLAYBACK SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        val playbackDropdown = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = glass(14)
+        }
+        val playbackHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+        }
+        val playbackLabels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        playbackLabels.addView(text("PLAYBACK SETTINGS", 15, white, true))
+        playbackLabels.addView(text("Video • Audio • Buffer • Playback controls", 11, muted).apply {
+            setPadding(0, dp(4), 0, 0)
+        })
+        playbackHeader.addView(playbackLabels, LinearLayout.LayoutParams(0, -2, 1f))
+        val playbackArrow = text("⌄", 22, accent, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(4), 0)
+        }
+        playbackHeader.addView(playbackArrow)
+        playbackDropdown.addView(playbackHeader, LinearLayout.LayoutParams(-1, -2))
+        val playbackContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(12), 0, 0)
+        }
         settingsToggleCard(
-            box,
+            playbackContent,
             "High-Speed Streaming",
             "Prioritize maximum available video quality and a larger playback buffer",
             "high_speed_streaming",
@@ -4220,7 +4259,7 @@ class MainActivity : AppCompatActivity() {
             applyVideoQuality()
             toast(if (enabled) "High-speed streaming enabled — buffer applies next playback" else "Standard streaming restored")
         }
-        settingsCard(box, "Playback speed", "Choose normal or faster/slower video playback") {
+        settingsCard(playbackContent, "Playback speed", "Choose normal or faster/slower video playback") {
             val labels = arrayOf("0.75×", "1.0× (Normal)", "1.25×", "1.5×", "2.0×")
             val values = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
             val current = prefs.getFloat("playback_speed", 1.0f)
@@ -4233,8 +4272,8 @@ class MainActivity : AppCompatActivity() {
                     toast("Playback speed saved")
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Auto Play", "Automatically start a stream when you select a channel", "auto_play", true)
-        settingsCard(box, "Video Quality", "Choose Auto, 480p, 720p or 1080p") {
+        settingsToggleCard(playbackContent, "Auto Play", "Automatically start a stream when you select a channel", "auto_play", true)
+        settingsCard(playbackContent, "Video Quality", "Choose Auto, 480p, 720p or 1080p") {
             val labels = arrayOf("Auto", "480p", "720p", "1080p")
             val values = arrayOf("auto", "480", "720", "1080")
             val selected = values.indexOf(prefs.getString("video_quality", "auto")).coerceAtLeast(0)
@@ -4246,8 +4285,8 @@ class MainActivity : AppCompatActivity() {
                     toast("Video quality saved")
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Hardware Decoder", "Prefer hardware video decoding when supported; OFF prefers software decoding", "hardware_decoder", true)
-        settingsCard(box, "Buffer Control", "Choose buffering for slower or faster connections") {
+        settingsToggleCard(playbackContent, "Hardware Decoder", "Prefer hardware video decoding when supported; OFF prefers software decoding", "hardware_decoder", true)
+        settingsCard(playbackContent, "Buffer Control", "Choose buffering for slower or faster connections") {
             val labels = arrayOf("Low — faster start", "Balanced — recommended", "High — fewer interruptions")
             val values = arrayOf("low", "balanced", "high")
             val selected = values.indexOf(prefs.getString("network_buffer_size", defaultNetworkBufferMode)).coerceAtLeast(0)
@@ -4258,7 +4297,16 @@ class MainActivity : AppCompatActivity() {
                     toast("Buffer setting saved — applies to next playback")
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Auto Retry on Failure", "Retry a failed stream up to 2 times automatically", "auto_retry_playback", true)
+        settingsToggleCard(playbackContent, "Auto Retry on Failure", "Retry a failed stream up to 2 times automatically", "auto_retry_playback", true)
+        playbackDropdown.addView(playbackContent, LinearLayout.LayoutParams(-1, -2))
+        playbackHeader.setOnClickListener {
+            val expanded = playbackContent.visibility != View.VISIBLE
+            playbackContent.visibility = if (expanded) View.VISIBLE else View.GONE
+            playbackArrow.text = if (expanded) "⌃" else "⌄"
+        }
+        box.addView(playbackDropdown, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(12)
+        })
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
