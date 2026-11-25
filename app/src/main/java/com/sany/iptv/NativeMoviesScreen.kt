@@ -43,10 +43,10 @@ class NativeMoviesScreen(
     private val onOpenExtensionTitle: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     private class FastMovieScrollView(context: Context) : ScrollView(context) {
-        override fun fling(velocityY: Int) { super.fling((velocityY * 1.45f).toInt()) }
+        override fun fling(velocityY: Int) { super.fling((velocityY * 2.0f).toInt()) }
     }
     private class FastMovieHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
-        override fun fling(velocityX: Int) { super.fling((velocityX * 1.45f).toInt()) }
+        override fun fling(velocityX: Int) { super.fling((velocityX * 2.0f).toInt()) }
     }
     private data class Movie(val title: String, val url: String, val category: String, val poster: String)
     private data class MovieShelfCard(val title: String, val poster: String, val onClick: () -> Unit)
