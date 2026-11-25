@@ -1753,7 +1753,7 @@ class MainActivity : AppCompatActivity() {
                         val queries = listOf("sports", "football", "cricket", "live", "wwe")
                         val queryResults = kotlinx.coroutines.coroutineScope {
                             queries.map { query ->
-                                kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                                async(kotlinx.coroutines.Dispatchers.IO) {
                                     runCatching {
                                         kotlinx.coroutines.withTimeout(8_000L) {
                                             SanyCloudStreamPluginRuntime.search(providerName, query, forceRefresh = true)
