@@ -259,6 +259,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Install crash capture before any app/CloudStream initialization.
+        installSanyCrashLogger()
         CommonActivity.setActivityInstance(this)
         pipPlaybackActionHandler = {
             runOnUiThread {
@@ -301,8 +303,12 @@ class MainActivity : AppCompatActivity() {
             },
             true
         )
-        installSanyCrashLogger()
-        EpgRepository.scheduleDaily(this)
+        // WorkManager initialization must not be able to terminate the whole app at launch.
+        try {
+            EpgRepository.scheduleDaily(this)
+        } catch (error: Throwable) {
+            android.util.Log.e("SANY-STARTUP", "Daily EPG scheduling unavailable; continuing startup", error)
+        }
         // Refresh EPG on every fresh app launch, without blocking the first screen.
         // The existing daily worker remains as a background safety-net.
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
