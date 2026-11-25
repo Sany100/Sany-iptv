@@ -1815,7 +1815,7 @@ class MainActivity : AppCompatActivity() {
                         ?: error("Provider is not loaded: $providerName")
                     val realShelves = if (provider.hasMainPage && provider.mainPage.isNotEmpty()) {
                         runCatching {
-                            kotlinx.coroutines.withTimeout(14_000L) {
+                            kotlinx.coroutines.withTimeout(45_000L) {
                                 SanyCloudStreamPluginRuntime.homePage(providerName, 1, forceRefresh = false)
                                     .map { shelf -> shelf.name to shelf.list }
                             }
