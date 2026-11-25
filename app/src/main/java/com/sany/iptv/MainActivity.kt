@@ -215,16 +215,8 @@ class MainActivity : AppCompatActivity() {
     private var playerChannelRows: LinearLayout? = null
     private var playerControlsPanel: View? = null
     private var headerTitleView: TextView? = null
-    private var homeDateTimeView: TextView? = null
-    private var playerDateTimeView: TextView? = null
-    private val dateTimeHandler = Handler(Looper.getMainLooper())
-    private val dateTimeRefreshRunnable = object : Runnable {
-        override fun run() {
-            if (isFinishing || isDestroyed) return
-            updateDateTimeLabels()
-            dateTimeHandler.postDelayed(this, 30_000L)
-        }
-    }
+    @Volatile private var liveSportsProviderLastAttemptAt = 0L
+    @Volatile private var liveSportsProviderLastError: String? = null
     private var homeHeaderContainer: View? = null
     private var playlistSelectorContainer: View? = null
     private var liveTvNavLabel: TextView? = null
@@ -870,6 +862,7 @@ class MainActivity : AppCompatActivity() {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false
         }
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = isLight
             isAppearanceLightNavigationBars = isLight
@@ -884,9 +877,7 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
-        dateTimeHandler.removeCallbacks(dateTimeRefreshRunnable)
-        dateTimeHandler.post(dateTimeRefreshRunnable)
-        renderHome()
+         renderHome()
         if (showSplash) showStartupAnimation() else scheduleAutoUpdateCheck()
     }
 
@@ -1034,27 +1025,6 @@ class MainActivity : AppCompatActivity() {
         }, 700L)
     }
 
-    private fun currentDateTimeText(): String =
-        java.text.SimpleDateFormat("EEE, dd MMM  •  hh:mm a", java.util.Locale.getDefault())
-            .format(java.util.Date())
-
-    private fun updateDateTimeLabels() {
-        val value = currentDateTimeText()
-        homeDateTimeView?.text = value
-        playerDateTimeView?.text = value
-    }
-
-    private fun createDateTimeLabel(): TextView =
-        text(currentDateTimeText(), 10, white, true).apply {
-            gravity = Gravity.CENTER
-            maxLines = 1
-            includeFontPadding = false
-            setPadding(dp(9), dp(7), dp(9), dp(7))
-            background = glass(12)
-            elevation = dp(8).toFloat()
-            contentDescription = "Current date and time"
-        }
-
     private fun updateHomeHeaderVisibility() {
         // Keep the brand header hidden on every tab while the compact player is active.
         // Closing the player restores the header in the normal home layout.
@@ -1171,11 +1141,7 @@ class MainActivity : AppCompatActivity() {
             playlistSelectorContainer = playlistButton
             titleRow.addView(playlistButton, LinearLayout.LayoutParams(dp(142), dp(40)))
         }
-        homeDateTimeView = createDateTimeLabel()
-        titleRow.addView(homeDateTimeView, LinearLayout.LayoutParams(-2, -2).apply {
-            leftMargin = dp(8)
-        })
-        top.addView(titleRow)
+         top.addView(titleRow)
         homeHeaderContainer = top
         // Full-width, edge-to-edge square header; remove the extra top gap.
         home.addView(top, LinearLayout.LayoutParams(
@@ -1640,6 +1606,7 @@ class MainActivity : AppCompatActivity() {
         if (liveSportsProviderSyncRunning || isFinishing || isDestroyed) return
         if (liveSportsProviderSyncAttempted && !forceRetry) return
         liveSportsProviderSyncAttempted = true
+        liveSportsProviderLastAttemptAt = System.currentTimeMillis()
         liveSportsProviderSyncRunning = true
         thread(name = "SANY-LiveSports-Provider-AutoSync") {
             try {
@@ -1675,6 +1642,14 @@ class MainActivity : AppCompatActivity() {
             } catch (error: Throwable) {
                 android.util.Log.e("SANY-LIVE-SPORTS", "Live Sports provider sync crashed", error)
             } finally {
+                if (loaded?.success == true) {
+                    liveSportsProviderLastError = null
+                } else {
+                    liveSportsProviderLastError =
+                        loaded?.error ?: outcome.exceptionOrNull()?.message ?: "Provider sync failed"
+                    // Permit a later visit to retry after the short retry window.
+                    liveSportsProviderSyncAttempted = false
+                }
                 runOnUiThread {
                     liveSportsProviderSyncRunning = false
                     if (!isFinishing && !isDestroyed && section == "Live Sports") {
@@ -1723,6 +1698,14 @@ class MainActivity : AppCompatActivity() {
             // Keep the built-in provider visible even while its runtime is restoring,
             // or when the extension is installed but has not registered its provider yet.
             val builtIn = installed.firstOrNull { it.id.equals("playztvprovider", true) }
+            val retryAge = System.currentTimeMillis() - liveSportsProviderLastAttemptAt
+            if (!liveSportsProviderSyncRunning &&
+                (!liveSportsProviderSyncAttempted || retryAge >= 30_000L)
+            ) {
+                // A failed first-launch download must not leave Sports empty forever.
+                // Re-entering this tab retries the pinned provider after a short backoff.
+                syncLiveSportsProviderInBackground(forceRetry = true)
+            }
             val providerCard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(14), dp(12), dp(12))
@@ -1731,8 +1714,12 @@ class MainActivity : AppCompatActivity() {
             }
             providerCard.addView(text("PlayZTVProvider", 18, white, true))
             providerCard.addView(text(
-                if (builtIn != null) "Installed • Version ${builtIn.version} • Restoring provider…"
-                else "Built-in Live Sports provider • Installing…",
+                when {
+                    liveSportsProviderSyncRunning -> "PlayZTVProvider is installing/restoring…"
+                    !liveSportsProviderLastError.isNullOrBlank() -> "Provider load failed: ${liveSportsProviderLastError}"
+                    builtIn != null -> "Installed • Version ${builtIn.version} • Provider is not registered yet"
+                    else -> "Built-in Live Sports provider • Waiting to install…"
+                },
                 12, muted
             ).apply { setPadding(0, dp(5), 0, dp(10)) })
             providerCard.addView(actionButton("RETRY / REPAIR PLAYZTV") {
@@ -1822,7 +1809,7 @@ class MainActivity : AppCompatActivity() {
                     val realShelves = if (provider.hasMainPage && provider.mainPage.isNotEmpty()) {
                         runCatching {
                             kotlinx.coroutines.withTimeout(14_000L) {
-                                SanyCloudStreamPluginRuntime.homePage(providerName, 1, forceRefresh = true)
+                                SanyCloudStreamPluginRuntime.homePage(providerName, 1, forceRefresh = false)
                                     .map { shelf -> shelf.name to shelf.list }
                             }
                         }.onFailure { error ->
@@ -1840,7 +1827,7 @@ class MainActivity : AppCompatActivity() {
                                 async(kotlinx.coroutines.Dispatchers.IO) {
                                     runCatching {
                                         kotlinx.coroutines.withTimeout(8_000L) {
-                                            SanyCloudStreamPluginRuntime.search(providerName, query, forceRefresh = true)
+                                            SanyCloudStreamPluginRuntime.search(providerName, query, forceRefresh = false)
                                         }
                                     }.onFailure { error ->
                                         android.util.Log.w("SANY-LIVE-SPORTS", "$providerName search failed for $query", error)
@@ -6122,17 +6109,7 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
-        // Keep a live date/time indicator visible over the video in both inline
-        // and fullscreen playback, even when the regular app header is hidden.
-        playerDateTimeView = createDateTimeLabel()
-        screen.addView(playerDateTimeView, FrameLayout.LayoutParams(
-            -2, -2, Gravity.TOP or Gravity.END
-        ).apply {
-            topMargin = dp(10)
-            rightMargin = dp(10)
-        })
-        updateDateTimeLabels()
-        if (isAnimeEpisode) {
+         if (isAnimeEpisode) {
             val loading = FrameLayout(this).apply {
                 setBackgroundColor(Color.BLACK)
                 visibility = View.GONE
@@ -7043,11 +7020,14 @@ class MainActivity : AppCompatActivity() {
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
         if (!enabled) { applySystemBars(); return }
-        window.decorView.systemUiVisibility = if (enabled) {
-            (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
-        } else View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        // Keep the real Android status bar visible in fullscreen video so the
+        // phone clock, battery and network indicators remain available.
+        // Only the navigation bar is immersive-hidden.
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     }
 
     private fun closePlayer(keepOrientation: Boolean = false) {
@@ -7086,8 +7066,7 @@ class MainActivity : AppCompatActivity() {
         player = null
         trackSelector = null
         playerView = null
-        playerDateTimeView = null
-        animeEpisodePanel = null
+         animeEpisodePanel = null
         animeCenterPlayButton = null
         animePlayerTitleOverlay = null
         playerScreen?.let { root.removeView(it) }
@@ -7565,8 +7544,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        dateTimeHandler.removeCallbacks(dateTimeRefreshRunnable)
-        // Swiping this task away from Recents finishes SANY IPTV only.
+         // Swiping this task away from Recents finishes SANY IPTV only.
         if (isFinishing) {
             prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
         }
