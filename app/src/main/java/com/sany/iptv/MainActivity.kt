@@ -15,6 +15,10 @@ import android.app.RemoteAction
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiInfo
+import android.net.wifi.WifiManager
 import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.Icon
@@ -4175,6 +4179,94 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun wifiBandPermission(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            android.Manifest.permission.NEARBY_WIFI_DEVICES
+        } else {
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        }
+
+    private fun hasWifiBandPermission(): Boolean =
+        checkSelfPermission(wifiBandPermission()) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    // Read only the active Wi-Fi connection's frequency and negotiated link rate.
+    // No location coordinates or nearby-network scan results are accessed.
+    private fun currentWifiInfo(): WifiInfo? {
+        if (!hasWifiBandPermission()) return null
+        return try {
+            val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = connectivity.activeNetwork ?: return null
+            val capabilities = connectivity.getNetworkCapabilities(network) ?: return null
+            if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                capabilities.transportInfo as? WifiInfo
+            } else {
+                @Suppress("DEPRECATION")
+                (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager).connectionInfo
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    // 0 = unknown/not Wi-Fi, 2 = 2.4 GHz, 5 = 5/6 GHz high-throughput band.
+    private fun currentWifiBandCode(): Int {
+        val frequency = currentWifiInfo()?.frequency ?: return 0
+        return when (frequency) {
+            in 2400..2500 -> 2
+            in 4900..7125 -> 5
+            else -> 0
+        }
+    }
+
+    private fun wifiConnectionSummary(): String {
+        if (!hasWifiBandPermission()) return "Tap to allow Wi-Fi band detection"
+        val info = currentWifiInfo() ?: return "Wi-Fi not connected or band unavailable"
+        val frequency = info.frequency
+        val band = when (frequency) {
+            in 2400..2500 -> "2.4 GHz"
+            in 4900..5924 -> "5 GHz"
+            in 5925..7125 -> "6 GHz"
+            else -> "Band unavailable"
+        }
+        val speed = info.linkSpeed
+        return if (speed > 0) "Connected • $band • Link speed $speed Mbps"
+        else "Connected • $band"
+    }
+
+    private fun openWifiBandDetails() {
+        if (!hasWifiBandPermission()) {
+            requestPermissions(arrayOf(wifiBandPermission()), 905)
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Wi-Fi connection")
+            .setMessage(wifiConnectionSummary())
+            .setPositiveButton("REFRESH") { dialog, _ ->
+                dialog.dismiss()
+                renderHome()
+            }
+            .setNegativeButton("CLOSE", null)
+            .show()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 905 && section == "Settings") {
+            renderHome()
+            if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                toast("Wi-Fi band detection enabled")
+            } else {
+                toast("Wi-Fi band detection permission not granted")
+            }
+        }
+    }
+
     private fun renderSettings() {
         val scroll = ScrollView(this).apply {
             setBackgroundColor(bg)
@@ -4278,6 +4370,9 @@ class MainActivity : AppCompatActivity() {
         box.addView(ispBypassesDropdown, LinearLayout.LayoutParams(-1, -2).apply {
             bottomMargin = dp(12)
         })
+        settingsCard(box, "Wi-Fi Dual-Band", wifiConnectionSummary()) {
+            openWifiBandDetails()
+        }
         val playbackDropdown = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -4305,6 +4400,15 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding(0, dp(12), 0, 0)
+        }
+        settingsToggleCard(
+            playbackContent,
+            "Wi-Fi Smart Streaming",
+            "Automatically tune video buffering for the connected 2.4 GHz or 5/6 GHz Wi-Fi band",
+            "wifi_smart_streaming",
+            true
+        ) { enabled ->
+            toast(if (enabled) "Wi-Fi Smart Streaming enabled — applies next playback" else "Wi-Fi Smart Streaming disabled")
         }
         settingsToggleCard(
             playbackContent,
@@ -5873,6 +5977,10 @@ class MainActivity : AppCompatActivity() {
             putAll(requestHeaders)
         }
         val highSpeedStreaming = prefs.getBoolean("high_speed_streaming", false)
+        val wifiSmartStreaming = prefs.getBoolean("wifi_smart_streaming", true)
+        val wifiBandCode = if (wifiSmartStreaming) currentWifiBandCode() else 0
+        val wifiOn24Ghz = wifiBandCode == 2
+        val wifiOnHighBand = wifiBandCode == 5
         val httpFactory = OkHttpDataSource.Factory(
             SanyNetworkBypasses.client(
                 this,
@@ -5940,32 +6048,73 @@ class MainActivity : AppCompatActivity() {
                 DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         if (section == "Movies") {
-                            if (highSpeedStreaming) 5000 else 4000
+                            when {
+                                wifiOn24Ghz -> 6000
+                                wifiOnHighBand -> 3500
+                                highSpeedStreaming -> 5000
+                                else -> 4000
+                            }
                         } else if (section == "Live TV") {
                             1000
-                        } else if (highSpeedStreaming) 3000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 1500
-                            "high" -> 3500
-                            else -> 2500
+                        } else when {
+                            wifiOn24Ghz -> 4500
+                            wifiOnHighBand -> 2500
+                            highSpeedStreaming -> 3000
+                            else -> when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                                "low" -> 1500
+                                "high" -> 3500
+                                else -> 2500
+                            }
                         },
                         if (section == "Movies") {
-                            if (highSpeedStreaming) 45000 else 30000
-                        } else if (highSpeedStreaming) 24000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 12000
-                            "high" -> 30000
-                            else -> 20000
+                            when {
+                                wifiOn24Ghz -> 45000
+                                wifiOnHighBand -> 30000
+                                highSpeedStreaming -> 45000
+                                else -> 30000
+                            }
+                        } else if (section == "Live TV") {
+                            when {
+                                wifiOn24Ghz -> 30000
+                                wifiOnHighBand -> 18000
+                                highSpeedStreaming -> 24000
+                                else -> 20000
+                            }
+                        } else when {
+                            wifiOn24Ghz -> 36000
+                            wifiOnHighBand -> 24000
+                            highSpeedStreaming -> 24000
+                            else -> when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                                "low" -> 12000
+                                "high" -> 30000
+                                else -> 20000
+                            }
                         },
-                        if (section == "Movies") 1500 else if (section == "Live TV") 500 else if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 750
-                            "high" -> 1500
-                            else -> 1000
+                        if (section == "Movies") {
+                            if (wifiOn24Ghz) 1800 else if (wifiOnHighBand) 1000 else 1500
+                        } else if (section == "Live TV") 500 else when {
+                            wifiOn24Ghz -> 1200
+                            wifiOnHighBand -> 800
+                            highSpeedStreaming -> 1200
+                            else -> when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                                "low" -> 750
+                                "high" -> 1500
+                                else -> 1000
+                            }
                         },
                         // Media3 requires minBufferMs >= bufferForPlaybackAfterRebufferMs.
                         // Keep the rebuffer threshold below the selected minimum for every mode.
-                        if (section == "Movies") 3000 else if (section == "Live TV") 750 else if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 1000
-                            "high" -> 3000
-                            else -> 2000
+                        if (section == "Movies") {
+                            if (wifiOn24Ghz) 3000 else if (wifiOnHighBand) 2000 else 3000
+                        } else if (section == "Live TV") 750 else when {
+                            wifiOn24Ghz -> 2500
+                            wifiOnHighBand -> 1500
+                            highSpeedStreaming -> 2500
+                            else -> when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                                "low" -> 1000
+                                "high" -> 3000
+                                else -> 2000
+                            }
                         }
                     )
                     .setPrioritizeTimeOverSizeThresholds(true)
