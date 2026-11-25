@@ -76,11 +76,15 @@ import java.io.PrintWriter
 import java.io.StringWriter
 
 private const val ACTION_PIP_TOGGLE_PLAYBACK = "com.sany.iptv.action.PIP_TOGGLE_PLAYBACK"
+private const val ACTION_PIP_SEEK_BACK = "com.sany.iptv.action.PIP_SEEK_BACK"
+private const val ACTION_PIP_SEEK_FORWARD = "com.sany.iptv.action.PIP_SEEK_FORWARD"
 
 class PipPlaybackActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action == ACTION_PIP_TOGGLE_PLAYBACK) {
-            MainActivity.dispatchPipPlaybackAction()
+        when (intent?.action) {
+            ACTION_PIP_TOGGLE_PLAYBACK -> MainActivity.dispatchPipPlaybackAction("toggle")
+            ACTION_PIP_SEEK_BACK -> MainActivity.dispatchPipPlaybackAction("back")
+            ACTION_PIP_SEEK_FORWARD -> MainActivity.dispatchPipPlaybackAction("forward")
         }
     }
 }
@@ -297,15 +301,23 @@ class MainActivity : AppCompatActivity() {
         // Install crash capture before any app/CloudStream initialization.
         installSanyCrashLogger()
         CommonActivity.setActivityInstance(this)
-        pipPlaybackActionHandler = {
+        pipPlaybackActionHandler = { action ->
             runOnUiThread {
                 player?.let { activePlayer ->
-                    // PiP controls must follow the user's playback intent, not
-                    // isPlaying (which becomes false during temporary buffering).
-                    if (activePlayer.playWhenReady) {
-                        activePlayer.pause()
-                    } else {
-                        activePlayer.play()
+                    when (action) {
+                        "back" -> activePlayer.seekTo((activePlayer.currentPosition - 10_000L).coerceAtLeast(0L))
+                        "forward" -> {
+                            val target = activePlayer.currentPosition + 10_000L
+                            val duration = activePlayer.duration
+                            activePlayer.seekTo(if (duration != C.TIME_UNSET && duration > 0L) target.coerceAtMost(duration) else target)
+                        }
+                        else -> {
+                            if (activePlayer.playWhenReady) activePlayer.pause()
+                            else if (activePlayer.playbackState == Player.STATE_ENDED) {
+                                activePlayer.seekToDefaultPosition()
+                                activePlayer.play()
+                            } else activePlayer.play()
+                        }
                     }
                     refreshPictureInPictureParams()
                 }
@@ -2455,8 +2467,7 @@ class MainActivity : AppCompatActivity() {
      */
     private var animeLoadingOverlay: View? = null
     private var animePlaybackLoadingRequested = false
-    // Anime playback is held until Media3 reports STATE_READY; this prevents
-    // audio/video from starting underneath the in-player loading overlay.
+    // Every playback type is held silent until its first decoded frame is rendered.
     private var animeAutoPlayWhenReady = false
     private var animeFirstFrameRendered = false
     private var animeFullscreenBufferingOverlay: View? = null
@@ -2472,8 +2483,9 @@ class MainActivity : AppCompatActivity() {
         // Keep all Anime loading feedback attached to the actual video surface.
         // PlayerView has the same bounds in FIT and fullscreen, so the spinner
         // never covers the page or appears outside the video.
-        val isVodSection = section == "Series" || section == "Movies"
-        val shouldShow = isVodSection && playerView != null &&
+        val isSupportedPlayback = section == "Live TV" || section == "Live Sports" ||
+            section == "Movies" || section == "Series"
+        val shouldShow = isSupportedPlayback && playerView != null &&
             (animePlaybackLoadingRequested ||
                 (!animeFirstFrameRendered && player?.playbackState != Player.STATE_IDLE) ||
                 player?.playbackState == Player.STATE_BUFFERING || player?.isLoading == true)
@@ -6399,15 +6411,9 @@ class MainActivity : AppCompatActivity() {
                             )
                         }
                         if (state == Player.STATE_READY) {
-                            if (section == "Series") {
-                                // Keep the loading layer visible until Media3 confirms that
-                                // the first decoded video frame has actually reached the surface.
-                                val startAnimePlayback = animeAutoPlayWhenReady
-                                animeAutoPlayWhenReady = false
-                                if (startAnimePlayback) {
-                                    this@MainActivity.player?.playWhenReady = true
-                                }
-                            }
+                            // Do not release playback here: READY can arrive before the
+                            // first frame reaches the surface. The first-frame callback below
+                            // is the single release point for every category and screen mode.
                             updateAnimeFullscreenBuffering()
                             playbackRetryCount = 0
                             animeAutoNextInProgress = false
@@ -6465,11 +6471,13 @@ class MainActivity : AppCompatActivity() {
                             )
                             moviePlaybackStartedAtMs = 0L
                         }
-                        if (section == "Series" || section == "Movies") {
-                            runOnUiThread {
-                                animeFirstFrameRendered = true
-                                animePlaybackLoadingRequested = false
-                                updateAnimeFullscreenBuffering()
+                        runOnUiThread {
+                            animeFirstFrameRendered = true
+                            animePlaybackLoadingRequested = false
+                            updateAnimeFullscreenBuffering()
+                            if (animeAutoPlayWhenReady) {
+                                animeAutoPlayWhenReady = false
+                                player?.playWhenReady = true
                             }
                         }
                     }
@@ -6494,12 +6502,14 @@ class MainActivity : AppCompatActivity() {
             // Retain the last rendered frame during short surface/Activity transitions
             // so the app icon or an empty shutter does not flash before video resumes.
             setKeepContentOnPlayerReset(true)
-            setShowBuffering(if (isVodPlayer) PlayerView.SHOW_BUFFERING_NEVER else PlayerView.SHOW_BUFFERING_ALWAYS)
+            // A single in-video loading overlay is used for all categories.
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
         }
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
-        if (isVodPlayer) {
+        run {
+            animeFirstFrameRendered = false
             val loading = FrameLayout(this).apply {
                 setBackgroundColor(Color.BLACK)
                 visibility = View.GONE
@@ -7122,14 +7132,13 @@ class MainActivity : AppCompatActivity() {
             else p.setMediaSource(mergedSource)
         }
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
-        if (isAnimeEpisode) {
-            // Keep the decoder paused while buffering/preparing. STATE_READY above
-            // is the only place that releases this pending autoplay request.
-            animeAutoPlayWhenReady = startPlayback
-            p.playWhenReady = false
-        }
+        // Hold both audio and video until Media3 renders the first frame.
+        animeAutoPlayWhenReady = startPlayback
+        animeFirstFrameRendered = false
+        animePlaybackLoadingRequested = true
+        p.playWhenReady = false
+        updateAnimeFullscreenBuffering()
         p.prepare()
-        if (!isAnimeEpisode) p.playWhenReady = startPlayback
         if (isAnimeEpisode && startPlayback) animeCenterPlayButton?.visibility = View.GONE
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
@@ -7543,20 +7552,23 @@ class MainActivity : AppCompatActivity() {
             // Use playWhenReady for the action state so PiP does not
             // incorrectly switch to Resume during a short rebuffer.
             val isPlaying = player?.playWhenReady == true
-            val actionIntent = Intent(this, PipPlaybackActionReceiver::class.java)
-                .setAction(ACTION_PIP_TOGGLE_PLAYBACK)
-            val pendingAction = PendingIntent.getBroadcast(
-                this,
-                7101,
-                actionIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val actionIcon = Icon.createWithResource(
-                this,
-                if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
-            )
-            val actionLabel = if (isPlaying) "Pause" else "Resume"
-            builder.setActions(listOf(RemoteAction(actionIcon, actionLabel, actionLabel, pendingAction)))
+            fun pipAction(action: String, requestCode: Int, iconRes: Int, label: String): RemoteAction {
+                val actionIntent = Intent(this, PipPlaybackActionReceiver::class.java).setAction(action)
+                val pendingAction = PendingIntent.getBroadcast(
+                    this, requestCode, actionIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                return RemoteAction(Icon.createWithResource(this, iconRes), label, label, pendingAction)
+            }
+            builder.setActions(listOf(
+                pipAction(ACTION_PIP_SEEK_BACK, 7102, android.R.drawable.ic_media_rew, "Back 10 seconds"),
+                pipAction(
+                    ACTION_PIP_TOGGLE_PLAYBACK, 7101,
+                    if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                    if (isPlaying) "Pause" else "Play"
+                ),
+                pipAction(ACTION_PIP_SEEK_FORWARD, 7103, android.R.drawable.ic_media_ff, "Forward 10 seconds")
+            ))
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Always update this flag, including false, so a previous video
@@ -7691,8 +7703,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         @Volatile private var pipPlaybackActionHandler: (() -> Unit)? = null
 
-        internal fun dispatchPipPlaybackAction() {
-            pipPlaybackActionHandler?.invoke()
+        internal fun dispatchPipPlaybackAction(action: String) {
+            pipPlaybackActionHandler?.invoke(action)
         }
     }
 
