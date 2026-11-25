@@ -2298,6 +2298,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun resolveMovieExtensionPlayback(providerName: String, title: String, data: String) {
+        val resolveStartedAt = System.currentTimeMillis()
+        android.util.Log.i("SANY-MOVIE", "Movie source request: provider=$providerName title=$title dataLength=${data.length}")
         toast("Resolving $title…")
         thread(name = "SANY-Movie-Resolve") {
             val links = runCatching {
@@ -2310,9 +2312,20 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 links.onSuccess { sources ->
+                    android.util.Log.i(
+                        "SANY-MOVIE",
+                        "Movie source request finished: provider=$providerName elapsedMs=${System.currentTimeMillis() - resolveStartedAt} sources=${sources.size}"
+                    )
                     if (sources.isEmpty()) toast("এই Movie/Episode-এর কোনো playable source পাওয়া যায়নি")
                     else showAnimeSourcePicker(title, sources)
-                }.onFailure { toast("Source resolve failed: ${it.message}") }
+                }.onFailure { error ->
+                    android.util.Log.e(
+                        "SANY-MOVIE",
+                        "Movie source request failed: provider=$providerName elapsedMs=${System.currentTimeMillis() - resolveStartedAt}",
+                        error
+                    )
+                    toast("Source resolve failed: ${error.message}")
+                }
             }
         }
     }
@@ -2386,6 +2399,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var movieSourcePickerDialog: AlertDialog? = null
+    private var moviePlaybackStartedAtMs = 0L
     private var animeEpisodeSourceResolving = false
     private var animeSourcePickerDialog: AlertDialog? = null
     private var subtitleTrackDialog: android.app.Dialog? = null
@@ -2431,6 +2445,13 @@ class MainActivity : AppCompatActivity() {
         }
         val title = request.title.ifBlank { "AniLight" }
         val provider = request.provider.ifBlank { "Extension" }
+        if (section == "Movies") {
+            moviePlaybackStartedAtMs = System.currentTimeMillis()
+            android.util.Log.i(
+                "SANY-MOVIE",
+                "Movie playback requested: provider=$provider mime=${request.streamMimeType ?: "auto"} quality=${request.quality ?: "unknown"}"
+            )
+        }
         showAnimePlaybackLoading(title, true)
         if (section == "Series") {
             val pending = pendingCloudStreamAnimeItem?.takeIf {
@@ -6156,6 +6177,13 @@ class MainActivity : AppCompatActivity() {
                             }
                             cause = cause.cause
                         }
+                        if (section == "Movies") {
+                            android.util.Log.e(
+                                "SANY-MOVIE",
+                                "Movie playback error: provider=${currentChannel?.provider ?: "unknown"} code=${error.errorCodeName} httpStatus=${httpStatus ?: "unknown"}",
+                                error
+                            )
+                        }
                         runOnUiThread {
                             if (section == "Series") showAnimePlaybackLoading("", false)
                             if ((section == "Series" || section == "Movies" || section == "Live Sports") &&
@@ -6194,6 +6222,19 @@ class MainActivity : AppCompatActivity() {
                     }
                     override fun onPlaybackStateChanged(state: Int) {
                         if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
+                        if (section == "Movies") {
+                            val stateName = when (state) {
+                                Player.STATE_IDLE -> "IDLE"
+                                Player.STATE_BUFFERING -> "BUFFERING"
+                                Player.STATE_READY -> "READY"
+                                Player.STATE_ENDED -> "ENDED"
+                                else -> state.toString()
+                            }
+                            android.util.Log.i(
+                                "SANY-MOVIE",
+                                "Player state: state=$stateName elapsedMs=${if (moviePlaybackStartedAtMs > 0L) System.currentTimeMillis() - moviePlaybackStartedAtMs else -1L}"
+                            )
+                        }
                         if (state == Player.STATE_READY) {
                             if (section == "Series") {
                                 // Keep the loading layer visible until Media3 confirms that
@@ -6245,6 +6286,13 @@ class MainActivity : AppCompatActivity() {
                             liveSportsFirstFrameWatchdog = null
                             animeFallbackRequests = emptyList()
                             animeFallbackIndex = -1
+                        }
+                        if (section == "Movies") {
+                            android.util.Log.i(
+                                "SANY-MOVIE",
+                                "First video frame rendered: elapsedMs=${if (moviePlaybackStartedAtMs > 0L) System.currentTimeMillis() - moviePlaybackStartedAtMs else -1L}"
+                            )
+                            moviePlaybackStartedAtMs = 0L
                         }
                         if (section == "Series") {
                             runOnUiThread {
