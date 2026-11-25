@@ -16,6 +16,27 @@ tasks.configureEach {
     }
 }
 
+
+// Bundle the pinned Live Sports provider inside every APK so first launch can
+// install it locally without waiting for a provider download.
+val playZtvAssetsDir = layout.buildDirectory.dir("generated/liveSportsAssets")
+val bundlePlayZtvProvider by tasks.registering {
+    val bundledPackage = playZtvAssetsDir.map { it.file("live_sports/PlayZTVProvider.cs3") }
+    outputs.file(bundledPackage)
+    doLast {
+        val output = bundledPackage.get().asFile
+        output.parentFile.mkdirs()
+        val packageUrl = "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/builds/PlayZTVProvider.cs3"
+        val expectedSha256 = "8541a6dbf0c8fdd6dbf698548e85a856cdd11be27d99db0ee3a1ccda5f4226b5"
+        java.net.URL(packageUrl).openStream().use { input ->
+            output.outputStream().buffered().use { destination -> input.copyTo(destination) }
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(output.readBytes()).joinToString("") { "%02x".format(it) }
+        check(digest == expectedSha256) { "Bundled PlayZTVProvider checksum mismatch: $digest" }
+    }
+}
+
 android {
     namespace = "com.sany.iptv"
     compileSdk = 36
@@ -36,6 +57,7 @@ android {
         }
     }
     sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
+    sourceSets.getByName("main").assets.srcDir(playZtvAssetsDir)
 
     defaultConfig {
         minSdk = 23
@@ -64,6 +86,8 @@ kotlin {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
+
+tasks.named("preBuild").configure { dependsOn(bundlePlayZtvProvider) }
 
 dependencies {
     implementation(project(":cloudstream-library"))
