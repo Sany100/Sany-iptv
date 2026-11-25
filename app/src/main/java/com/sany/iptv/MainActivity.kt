@@ -7322,10 +7322,15 @@ class MainActivity : AppCompatActivity() {
         searchQuery = previous.searchQuery
         liveTvSelectedGroup = previous.liveTvSelectedGroup
         liveTvSearchQuery = previous.liveTvSearchQuery
-        playbackReturnSection = previous.section
-        playbackReturnGroup = previous.selectedGroup
-        playbackReturnSearch = previous.searchQuery
-        playbackReturnScrollY = previous.scrollY
+        // While a video is active, keep its original return point unchanged.
+        // Back may temporarily visit Settings or another tab, but closing the player
+        // must still restore the exact section/category where playback began.
+        if (playerView == null) {
+            playbackReturnSection = previous.section
+            playbackReturnGroup = previous.selectedGroup
+            playbackReturnSearch = previous.searchQuery
+            playbackReturnScrollY = previous.scrollY
+        }
         prefs.edit()
             .putString("ui_section", section)
             .putString("ui_group", selectedGroup)
@@ -7375,23 +7380,21 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // 1) The first Back from fullscreen only changes the player to FIT.
-        // Playback remains active while every page/category is unwound.
+        // First Back from fullscreen (or a downward swipe) changes only the
+        // presentation to FIT. The same player and playback position remain active.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
             lastBackPressedAt = 0L
             return
         }
 
-        // 2) Let embedded browser/provider pages unwind one page at a time.
+        // Embedded browser/provider navigation is deeper than the app-level stack.
         if (section == "Movies" && moviesWebView?.canGoBack() == true) {
             moviesWebView?.goBack()
             lastBackPressedAt = 0L
             return
         }
         if (section == "Series") {
-            // A provider detail page is one navigation level above its parent
-            // catalogue/provider page. Unwind it before the underlying page stack.
             if (animeExternalPageActive) {
                 restoreAnimeExternalPage()
                 lastBackPressedAt = 0L
@@ -7415,37 +7418,67 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 3) Unwind history only within the currently selected option.
-        // Old entries from another tab must never pull the user across sections.
-        while (navigationHistory.isNotEmpty() &&
-            navigationHistory.peekLast().section != section
-        ) {
-            navigationHistory.removeLast()
+        // Settings without a running video always returns to the Live TV home.
+        // With playback active, the navigation snapshot below returns to the
+        // exact option/page from which the video was started.
+        if (section == "Settings" && playerView == null) {
+            returnToLiveTvHome(keepPlayback = false)
+            return
         }
+
+        // Preserve every section/category transition in order. In particular,
+        // do not discard the previous section when Settings or another tab opens.
+        // If playback is active and we are already back at its origin, only unwind
+        // pages within that same option; never jump to an older unrelated tab.
         if (navigationHistory.isNotEmpty()) {
-            lastBackPressedAt = 0L
-            restorePreviousNavigation()
-            return
+            val previous = navigationHistory.peekLast()
+            val atPlaybackOrigin = playerView != null && section == playbackReturnSection
+            if (!atPlaybackOrigin || previous.section == section) {
+                lastBackPressedAt = 0L
+                restorePreviousNavigation()
+                return
+            }
         }
 
-        // 4) Once the current option's own home is reached, go to Live TV home.
-        // Keep the same video playing and show it in FIT mode.
-        if (section != "Live TV" ||
-            selectedGroup != "Select category" ||
-            searchQuery.isNotEmpty()
-        ) {
-            returnToLiveTvHome(keepPlayback = playerView != null && player != null)
-            return
-        }
-
-        // 5) At Live TV home, first Back closes the video only.
-        // With no video, two consecutive Back presses exit the app.
-        if (playerView != null) {
+        // At the original option's home, the next Back closes only the video.
+        // Keep the current home page visible and do not navigate to Live TV.
+        if (playerView != null && section == playbackReturnSection) {
             closePlayer()
             lastBackPressedAt = 0L
             return
         }
 
+        // If a video is active on a temporary tab but its history is unavailable,
+        // restore the original playback location without stopping the video.
+        if (playerView != null) {
+            section = playbackReturnSection
+            selectedGroup = playbackReturnGroup
+            searchQuery = playbackReturnSearch
+            if (section == "Live TV") {
+                liveTvSelectedGroup = selectedGroup
+                liveTvSearchQuery = searchQuery
+            }
+            restoringNavigation = true
+            renderHome()
+            if (::listContainer.isInitialized) {
+                (listContainer.parent as? ScrollView)?.post {
+                    (listContainer.parent as? ScrollView)?.scrollTo(0, playbackReturnScrollY)
+                }
+            }
+            lastBackPressedAt = 0L
+            return
+        }
+
+        // Without playback, Back from another main option returns to Live TV home.
+        if (section != "Live TV" ||
+            selectedGroup != "Select category" ||
+            searchQuery.isNotEmpty()
+        ) {
+            returnToLiveTvHome(keepPlayback = false)
+            return
+        }
+
+        // At Live TV home, two consecutive Back presses exit the app.
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastBackPressedAt in 1..2000L) {
             lastBackPressedAt = 0L
