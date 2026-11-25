@@ -2109,6 +2109,9 @@ class MainActivity : AppCompatActivity() {
         } else {
             renderNativeMovies(false)
         }
+        // Consume this details-page return point exactly once so the next Back
+        // continues through the Movies category/page history instead of reopening it.
+        movieDetailsParentView = null
     }
 
     /** Anime-style details page: select an episode first, then choose its source before playback. */
@@ -7533,6 +7536,14 @@ class MainActivity : AppCompatActivity() {
         // presentation to FIT. The same player and playback position remain active.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
+            lastBackPressedAt = 0L
+            return
+        }
+
+        // Movie details are the deepest Movies page. Restore the exact provider/
+        // category page first; the player stays attached and keeps its position.
+        if (section == "Movies" && movieDetailsParentView != null) {
+            restoreMovieDetailsParent()
             lastBackPressedAt = 0L
             return
         }
