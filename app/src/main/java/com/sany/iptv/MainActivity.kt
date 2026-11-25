@@ -2466,9 +2466,11 @@ class MainActivity : AppCompatActivity() {
         // Keep all Anime loading feedback attached to the actual video surface.
         // PlayerView has the same bounds in FIT and fullscreen, so the spinner
         // never covers the page or appears outside the video.
-        val shouldShow = section == "Series" && playerView != null &&
-            (animePlaybackLoadingRequested || !animeFirstFrameRendered && player?.playbackState != Player.STATE_IDLE ||
-                player?.playbackState == Player.STATE_BUFFERING)
+        val isVodSection = section == "Series" || section == "Movies"
+        val shouldShow = isVodSection && playerView != null &&
+            (animePlaybackLoadingRequested ||
+                (!animeFirstFrameRendered && player?.playbackState != Player.STATE_IDLE) ||
+                player?.playbackState == Player.STATE_BUFFERING || player?.isLoading == true)
         animeFullscreenBufferingOverlay?.visibility = if (shouldShow) View.VISIBLE else View.GONE
     }
 
@@ -6302,7 +6304,9 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                     override fun onPlaybackStateChanged(state: Int) {
-                        if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
+                        if (section == "Series" || section == "Movies") {
+                            runOnUiThread { updateAnimeFullscreenBuffering() }
+                        }
                         if (section == "Movies") {
                             val stateName = when (state) {
                                 Player.STATE_IDLE -> "IDLE"
@@ -6375,7 +6379,7 @@ class MainActivity : AppCompatActivity() {
                             )
                             moviePlaybackStartedAtMs = 0L
                         }
-                        if (section == "Series") {
+                        if (section == "Series" || section == "Movies") {
                             runOnUiThread {
                                 animeFirstFrameRendered = true
                                 animePlaybackLoadingRequested = false
@@ -6409,7 +6413,7 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
-        if (isAnimeEpisode) {
+        if (isVodPlayer) {
             val loading = FrameLayout(this).apply {
                 setBackgroundColor(Color.BLACK)
                 visibility = View.GONE
