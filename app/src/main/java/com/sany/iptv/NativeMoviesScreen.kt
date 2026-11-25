@@ -51,10 +51,11 @@ class NativeMoviesScreen(
     private data class Movie(val title: String, val url: String, val category: String, val poster: String)
     private data class MovieShelfCard(val title: String, val poster: String, val onClick: () -> Unit)
     private val prefs = context.getSharedPreferences("sany_iptv", Context.MODE_PRIVATE)
-    private val bg = Color.BLACK
-    private val card = Color.rgb(25, 25, 28)
-    private val fg = Color.WHITE
-    private val muted = Color.rgb(185, 185, 190)
+    // Daylight uses the same clean white canvas as Anime Series; dark mode is unchanged.
+    private val bg = if (light) Color.WHITE else Color.BLACK
+    private val card = if (light) Color.rgb(245, 247, 250) else Color.rgb(25, 25, 28)
+    private val fg = if (light) Color.rgb(20, 27, 38) else Color.WHITE
+    private val muted = if (light) Color.rgb(90, 101, 118) else Color.rgb(185, 185, 190)
     private val mainHandler = Handler(Looper.getMainLooper())
     // Keep image networking and bitmap decoding off the UI thread with a bounded worker pool.
     private val posterExecutor = Executors.newFixedThreadPool(3)
