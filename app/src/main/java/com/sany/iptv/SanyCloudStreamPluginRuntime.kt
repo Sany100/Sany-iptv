@@ -387,11 +387,32 @@ object SanyCloudStreamPluginRuntime {
                 )
             }
             val extractorStartedAt = System.currentTimeMillis()
+            val emittedMovieLinks = java.util.concurrent.atomic.AtomicInteger(0)
             provider.loadLinks(
                 data = episodeData,
                 isCasting = false,
-                subtitleCallback = { subtitles.add(it) },
-                callback = { links.add(it) }
+                subtitleCallback = { subtitle ->
+                    subtitles.add(subtitle)
+                    if (isMovieProvider && subtitles.size == 1) {
+                        Log.i(
+                            "SANY-MOVIE",
+                            "Extractor emitted first subtitle: provider=${provider.name} elapsedMs=${System.currentTimeMillis() - extractorStartedAt}"
+                        )
+                    }
+                },
+                callback = { link ->
+                    links.add(link)
+                    if (isMovieProvider) {
+                        val sourceIndex = emittedMovieLinks.incrementAndGet()
+                        if (sourceIndex <= 8) {
+                            val scheme = link.url.trim().substringBefore(':', "").lowercase().ifBlank { "missing" }
+                            Log.i(
+                                "SANY-MOVIE",
+                                "Extractor emitted source: provider=${provider.name} index=$sourceIndex elapsedMs=${System.currentTimeMillis() - extractorStartedAt} scheme=$scheme urlLength=${link.url.length} type=${link.type} quality=${link.quality}"
+                            )
+                        }
+                    }
+                }
             )
             if (isMovieProvider) {
                 Log.i(
