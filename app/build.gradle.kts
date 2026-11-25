@@ -1,3 +1,6 @@
+import java.net.URL
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -28,10 +31,10 @@ val bundlePlayZtvProvider by tasks.registering {
         output.parentFile.mkdirs()
         val packageUrl = "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/builds/PlayZTVProvider.cs3"
         val expectedSha256 = "8541a6dbf0c8fdd6dbf698548e85a856cdd11be27d99db0ee3a1ccda5f4226b5"
-        java.net.URL(packageUrl).openStream().use { input ->
+        URL(packageUrl).openStream().use { input ->
             output.outputStream().buffered().use { destination -> input.copyTo(destination) }
         }
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val digest = MessageDigest.getInstance("SHA-256")
             .digest(output.readBytes()).joinToString("") { "%02x".format(it) }
         check(digest == expectedSha256) { "Bundled PlayZTVProvider checksum mismatch: $digest" }
     }
