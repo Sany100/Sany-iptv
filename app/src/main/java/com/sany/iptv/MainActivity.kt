@@ -385,6 +385,8 @@ class MainActivity : AppCompatActivity() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
         buildShell(showSplash = !restoringBackground && !returningFromBackground)
+        // Show a report saved by the Application-level crash handler before optional startup work.
+        showPreviousCrashReport()
         // Automatically sync and load every allowlisted Anime provider from the
         // SANY builds index. Each package is hash-verified and failures are isolated.
         thread(name = "SANY-Anime-Plugins-AutoSync") {
@@ -460,9 +462,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        // If the previous playback attempt crashed the Activity, surface the saved
-        // stack trace on the next launch so the failure can be diagnosed precisely.
-        showPreviousCrashReport()
         registerForPushUpdates()
         checkForMandatoryUpdate()
         checkMaintenanceMode()
