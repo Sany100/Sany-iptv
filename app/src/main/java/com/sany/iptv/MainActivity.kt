@@ -40,8 +40,6 @@ import android.webkit.CookieManager
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
 import androidx.appcompat.app.AppCompatActivity
-import eightbitlab.com.blurview.BlurTarget
-import eightbitlab.com.blurview.BlurView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
@@ -872,25 +870,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun createLiveGlassLayer(content: View, radius: Int, overlayAlpha: Int): FrameLayout {
-        val layer = FrameLayout(this)
-        val blur = BlurView(this).apply {
-            setupWith(root as BlurTarget).setBlurRadius(7f)
-            setOverlayColor(Color.argb(overlayAlpha, 248, 252, 255))
-            background = glass(radius)
-            outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
-            clipToOutline = radius > 0
-            isClickable = false
-            isFocusable = false
-        }
-        layer.addView(blur, FrameLayout.LayoutParams(-1, -1))
-        content.background = null
-        layer.addView(content, FrameLayout.LayoutParams(-1, -2))
-        return layer
-    }
-
     private fun buildShell(showSplash: Boolean = true) {
-        root = BlurTarget(this).apply { setBackgroundColor(bg) }
+        root = FrameLayout(this).apply { setBackgroundColor(bg) }
         home = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
@@ -1148,10 +1129,9 @@ class MainActivity : AppCompatActivity() {
             titleRow.addView(playlistButton, LinearLayout.LayoutParams(dp(142), dp(40)))
         }
         top.addView(titleRow)
-        val headerGlassLayer = createLiveGlassLayer(top, 0, if (isLight) 28 else 18)
-        homeHeaderContainer = headerGlassLayer
-        // Full-width, edge-to-edge header with a subtle live backdrop blur.
-        home.addView(headerGlassLayer, LinearLayout.LayoutParams(
+        homeHeaderContainer = top
+        // Full-width, edge-to-edge square header; remove the extra top gap.
+        home.addView(top, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             // Add a little breathing room above the full-width brand header,
@@ -1188,12 +1168,12 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(5), dp(2), dp(5), dp(2))
-            // The BlurView beneath this dock supplies the subtle live glass backdrop.
+            // Full-width Liquid Glass navigation dock; translucent in both themes.
+            background = glass(0)
             elevation = dp(18).toFloat()
             translationZ = dp(8).toFloat()
         }
-        val bottomGlassLayer = createLiveGlassLayer(bottomNav, 24, if (isLight) 30 else 20)
-        home.addView(bottomGlassLayer, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
+        home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
         renderSection()
         renderBottomNav()
         if (isTvDevice) root.post { focusInitialTvControl() }
