@@ -835,12 +835,12 @@ class MainActivity : AppCompatActivity() {
         }, 900L)
     }
     private fun applySystemBars() {
-        // Draw the app edge-to-edge and permanently hide the top Android status bar
-        // across every SANY IPTV page. Keep the bottom navigation bar available.
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        // Keep Android's status bar visible so the time, battery, and network icons show.
+        // Fit app content below the status bar instead of drawing over system indicators.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
         window.decorView.setBackgroundColor(bg)
-        window.statusBarColor = Color.TRANSPARENT
+        window.statusBarColor = bg
         window.navigationBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             window.navigationBarDividerColor = bg
@@ -850,23 +850,8 @@ class MainActivity : AppCompatActivity() {
             window.isStatusBarContrastEnforced = false
         }
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = isLight
             isAppearanceLightNavigationBars = isLight
-            systemBarsBehavior =
-                androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
-        }
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && !isFinishing && !isDestroyed) {
-            // Re-hide the status bar after returning from dialogs or system overlays.
-            window.decorView.post {
-                if (hasFocus && !isFinishing && !isDestroyed) {
-                    androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-                        .hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
-                }
-            }
         }
     }
 
