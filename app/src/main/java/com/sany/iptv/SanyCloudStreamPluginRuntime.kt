@@ -280,15 +280,16 @@ object SanyCloudStreamPluginRuntime {
                 .map { data ->
                     async(Dispatchers.IO) {
                         homePageRequestGate.withPermit {
-                            val response = kotlinx.coroutines.withTimeout(shelfTimeoutMs) {
-                                provider.getMainPage(
-                                    page,
-                                    MainPageRequest(data.name, data.data, data.horizontalImages)
-                                )
-                            }
-                            val returned = response?.items.orEmpty().map { shelf ->
-                                shelf.name to shelf.list
-                            }
+                            val returned = runCatching {
+                                kotlinx.coroutines.withTimeout(shelfTimeoutMs) {
+                                    provider.getMainPage(
+                                        page,
+                                        MainPageRequest(data.name, data.data, data.horizontalImages)
+                                    )
+                                }?.items.orEmpty().map { shelf -> shelf.name to shelf.list }
+                            }.onFailure { error ->
+                                Log.w(TAG, "$providerName category failed: ${data.name}", error)
+                            }.getOrDefault(emptyList())
                             if (returned.isEmpty()) listOf(data.name to emptyList())
                             else returned
                         }
