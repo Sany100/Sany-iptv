@@ -1816,8 +1816,16 @@ class MainActivity : AppCompatActivity() {
                     val realShelves = if (provider.hasMainPage && provider.mainPage.isNotEmpty()) {
                         runCatching {
                             kotlinx.coroutines.withTimeout(45_000L) {
-                                SanyCloudStreamPluginRuntime.homePage(providerName, 1, forceRefresh = false)
-                                    .map { shelf -> shelf.name to shelf.list }
+                                if (providerName.equals("PlayZTVProvider", true)) {
+                                    // Keep every provider-declared category visible, even when
+                                    // its event list is temporarily empty or slow to respond.
+                                    SanyCloudStreamPluginRuntime.homePageSections(
+                                        providerName, 1, shelfTimeoutMs = 20_000L
+                                    )
+                                } else {
+                                    SanyCloudStreamPluginRuntime.homePage(providerName, 1, forceRefresh = false)
+                                        .map { shelf -> shelf.name to shelf.list }
+                                }
                             }
                         }.onFailure { error ->
                             android.util.Log.w("SANY-LIVE-SPORTS", "$providerName homepage request failed; trying parallel search fallback", error)
