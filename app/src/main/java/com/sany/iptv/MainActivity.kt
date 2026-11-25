@@ -2491,9 +2491,70 @@ class MainActivity : AppCompatActivity() {
     private var movieStreamingPickerDismissed = false
     private var animeEpisodeSourceResolving = false
     private var animeSourcePickerDialog: AlertDialog? = null
+    // Anime Series only: publish each source as its extractor emits it.
+    private var animeStreamingRequestId = 0
+    private var animeStreamingSourceRequests = mutableListOf<SanyPlaybackRequest>()
+    private var animeStreamingSourceAdapter: android.widget.ArrayAdapter<String>? = null
+    private var animeStreamingPlaybackStarted = false
+    private var animeStreamingPickerDismissed = false
     private var subtitleTrackDialog: android.app.Dialog? = null
     // The catalogue item that opened the current CloudStream Anime details page.
     private var pendingCloudStreamAnimeItem: Triple<String, String, String>? = null
+
+    private fun publishAnimeStreamingSources(
+        requestId: Int,
+        title: String,
+        incoming: List<SanyPlaybackRequest>,
+        finished: Boolean
+    ) {
+        if (isFinishing || isDestroyed || requestId != animeStreamingRequestId) return
+        incoming.filter { it.url.isNotBlank() }.forEach { source ->
+            val existingIndex = animeStreamingSourceRequests.indexOfFirst { it.url == source.url }
+            if (existingIndex >= 0) animeStreamingSourceRequests[existingIndex] = source
+            else animeStreamingSourceRequests.add(source)
+        }
+        if (animeStreamingPlaybackStarted) {
+            animeFallbackRequests = animeStreamingSourceRequests.toList()
+            return
+        }
+        if (animeStreamingPickerDismissed || animeStreamingSourceRequests.isEmpty()) return
+        val labels = animeStreamingSourceRequests.mapIndexed { index, request ->
+            val provider = request.provider.ifBlank { "Source ${index + 1}" }
+            val quality = request.quality?.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty()
+            val type = request.streamMimeType?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?.let { " • ${it.uppercase()}" }.orEmpty()
+            "$provider$quality$type"
+        }
+        var adapter = animeStreamingSourceAdapter
+        if (adapter == null) {
+            adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf<String>())
+            animeStreamingSourceAdapter = adapter
+            val created = AlertDialog.Builder(this)
+                .setTitle(if (finished) title else "$title • আরও source খোঁজা হচ্ছে…")
+                .setAdapter(adapter) { _, selectedIndex ->
+                    val available = animeStreamingSourceRequests.toList()
+                    animeStreamingPlaybackStarted = true
+                    animeSourcePickerDialog = null
+                    animeStreamingSourceAdapter = null
+                    startAnimeSourceFallback(available, selectedIndex)
+                }
+                .setNegativeButton("বন্ধ", null)
+                .create()
+            animeSourcePickerDialog = created
+            created.setOnDismissListener {
+                if (animeSourcePickerDialog === created) {
+                    animeSourcePickerDialog = null
+                    animeStreamingSourceAdapter = null
+                    animeStreamingPickerDismissed = true
+                }
+            }
+            created.show()
+        }
+        adapter.clear()
+        adapter.addAll(labels)
+        adapter.notifyDataSetChanged()
+        animeSourcePickerDialog?.setTitle(if (finished) title else "$title • আরও source খোঁজা হচ্ছে…")
+    }
 
     private fun showAnimeSourcePicker(title: String, requests: List<SanyPlaybackRequest>) {
         if (requests.isEmpty() || isFinishing || isDestroyed || animeSourcePickerDialog?.isShowing == true) return
@@ -3108,13 +3169,24 @@ class MainActivity : AppCompatActivity() {
         // Ignore rapid repeated taps while resolving or while the source picker is open.
         if (animeEpisodeSourceResolving || animeSourcePickerDialog?.isShowing == true) return
         animeEpisodeSourceResolving = true
+        val requestId = ++animeStreamingRequestId
+        animeStreamingSourceRequests = mutableListOf()
+        animeStreamingSourceAdapter = null
+        animeStreamingPlaybackStarted = false
+        animeStreamingPickerDismissed = false
+        animeSourcePickerDialog?.dismiss()
+        animeSourcePickerDialog = null
         toast("এই Episode-এর Source খোঁজা হচ্ছে…")
         // Resolve the selected provider first. Waiting for every alternate provider
         // made playback feel slow even when the selected provider already had a link.
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val result = runCatching {
                 kotlinx.coroutines.withTimeout(25_000L) {
-                    SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
+                    SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData) { source ->
+                        runOnUiThread {
+                            publishAnimeStreamingSources(requestId, "$title — Sources", listOf(source), finished = false)
+                        }
+                    }
                 }
             }
             runOnUiThread {
@@ -3124,11 +3196,11 @@ class MainActivity : AppCompatActivity() {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 result.onSuccess { sources ->
                     val available = sources.distinctBy { it.url }.filter { it.url.isNotBlank() }
+                    publishAnimeStreamingSources(requestId, "$title — Sources", available, finished = true)
                     if (available.isEmpty()) {
                         toast("এই Episode-এর playable source পাওয়া যায়নি। অন্য Episode চেষ্টা করুন")
                     } else {
                         android.util.Log.i("SANY-CS", "Primary source resolved for $title: ${available.size}")
-                        showAnimeSourcePicker("$title — Sources", available)
                     }
                 }.onFailure { error ->
                     android.util.Log.w("SANY-CS", "Fast source resolve failed for $title", error)
