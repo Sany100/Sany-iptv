@@ -2110,7 +2110,7 @@ class MainActivity : AppCompatActivity() {
         thread(name = "SANY-Movie-Resolve") {
             val links = runCatching {
                 kotlinx.coroutines.runBlocking {
-                    kotlinx.coroutines.withTimeout(4_000L) {
+                    kotlinx.coroutines.withTimeout(25_000L) {
                         SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
                     }
                 }
@@ -2776,7 +2776,7 @@ class MainActivity : AppCompatActivity() {
         // made playback feel slow even when the selected provider already had a link.
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val result = runCatching {
-                kotlinx.coroutines.withTimeout(4_000L) {
+                kotlinx.coroutines.withTimeout(25_000L) {
                     SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData)
                 }
             }
