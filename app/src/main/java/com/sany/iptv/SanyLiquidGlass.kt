@@ -24,8 +24,10 @@ object SanyLiquidGlass {
         view.elevation = amountDp * density
         view.translationZ = amountDp * 0.35f * density
         view.cameraDistance = 12000f * density
-        view.clipChildren = false
-        view.clipToPadding = false
+        if (view is android.view.ViewGroup) {
+            view.clipChildren = false
+            view.clipToPadding = false
+        }
     }
 
     private class LiquidGlassDrawable(
