@@ -157,23 +157,37 @@ object SanyLiveSportsExtensionManager {
      */
     @Synchronized
     fun syncBuiltInPlayZTV(context: Context): SanyCloudStreamPluginRuntime.LoadResult {
-        val root = JSONObject(downloadText(SANY_LIVE_SPORTS_CATALOGUE, MAX_INDEX_BYTES))
-        require(root.optInt("schema") == 1) { "Unsupported SANY Live Sports catalogue schema" }
-        val entries = root.optJSONArray("extensions") ?: JSONArray()
-        val item = (0 until entries.length())
-            .mapNotNull { entries.optJSONObject(it) }
-            .firstOrNull { it.optString("id").equals("playztvprovider", true) }
-            ?: error("PlayZTVProvider is missing from the SANY Live Sports catalogue")
-
-        val extension = Extension(
-            id = item.optString("id").trim(),
-            name = item.optString("name").trim(),
-            version = item.optString("version").trim(),
-            description = item.optString("description"),
-            packageUrl = item.optString("packageUrl").trim(),
-            sha256 = item.optString("sha256").trim().lowercase(),
-            repositoryUrl = SANY_LIVE_SPORTS_CATALOGUE
-        )
+        // The APK carries a hash-pinned PlayZTVProvider package. Keep the
+        // catalogue lookup as an update source, but do not block first install
+        // when the device is offline or the catalogue host is temporarily down.
+        val extension = runCatching {
+            val root = JSONObject(downloadText(SANY_LIVE_SPORTS_CATALOGUE, MAX_INDEX_BYTES))
+            require(root.optInt("schema") == 1) { "Unsupported SANY Live Sports catalogue schema" }
+            val entries = root.optJSONArray("extensions") ?: JSONArray()
+            val item = (0 until entries.length())
+                .mapNotNull { entries.optJSONObject(it) }
+                .firstOrNull { it.optString("id").equals("playztvprovider", true) }
+                ?: error("PlayZTVProvider is missing from the SANY Live Sports catalogue")
+            Extension(
+                id = item.optString("id").trim(),
+                name = item.optString("name").trim(),
+                version = item.optString("version").trim(),
+                description = item.optString("description"),
+                packageUrl = item.optString("packageUrl").trim(),
+                sha256 = item.optString("sha256").trim().lowercase(),
+                repositoryUrl = SANY_LIVE_SPORTS_CATALOGUE
+            )
+        }.getOrElse {
+            Extension(
+                id = "playztvprovider",
+                name = "PlayZTVProvider",
+                version = "49",
+                description = "Watch Live TV channels & sports via PlayZTV",
+                packageUrl = "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/builds/PlayZTVProvider.cs3",
+                sha256 = "8541a6dbf0c8fdd6dbf698548e85a856cdd11be27d99db0ee3a1ccda5f4226b5",
+                repositoryUrl = SANY_LIVE_SPORTS_CATALOGUE
+            )
+        }
         require(extension.id == "playztvprovider" && extension.name.equals("PlayZTVProvider", true)) {
             "Unexpected built-in Live Sports provider identity"
         }
@@ -325,7 +339,26 @@ object SanyLiveSportsExtensionManager {
         if (temporary.exists()) temporary.delete()
 
         try {
-            downloadToFile(extension.packageUrl, temporary, MAX_PACKAGE_BYTES)
+            val bundledPackage = if (extension.id.equals("playztvprovider", true)) {
+                runCatching { context.assets.open("live_sports/PlayZTVProvider.cs3") }.getOrNull()
+            } else null
+            if (bundledPackage != null) {
+                bundledPackage.use { input ->
+                    temporary.outputStream().buffered().use { output ->
+                        val buffer = ByteArray(16 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            total += count
+                            require(total <= MAX_PACKAGE_BYTES) { "Bundled Live Sports package is too large" }
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                }
+            } else {
+                downloadToFile(extension.packageUrl, temporary, MAX_PACKAGE_BYTES)
+            }
             val actualHash = sha256(temporary)
             require(actualHash == extension.sha256) { "Live Sports extension checksum mismatch" }
             val old = installed(context).firstOrNull { it.id == extension.id }
