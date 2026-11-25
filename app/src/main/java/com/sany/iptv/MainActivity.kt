@@ -168,6 +168,7 @@ class MainActivity : AppCompatActivity() {
     private var movieDetailsParentView: View? = null
     private var liveSportsCatalogueView: View? = null
     @Volatile private var liveSportsProviderSyncRunning = false
+    @Volatile private var liveSportsProviderSyncAttempted = false
     private var cloudStreamProviderScreen: CloudStreamProviderHomeScreen? = null
     private var cloudStreamProviderView: View? = null
     // Keep the exact Anime parent page attached/detached across details and playback.
@@ -1567,38 +1568,51 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun syncLiveSportsProviderInBackground() {
+    private fun syncLiveSportsProviderInBackground(forceRetry: Boolean = false) {
         if (liveSportsProviderSyncRunning || isFinishing || isDestroyed) return
+        if (liveSportsProviderSyncAttempted && !forceRetry) return
+        liveSportsProviderSyncAttempted = true
         liveSportsProviderSyncRunning = true
         thread(name = "SANY-LiveSports-Provider-AutoSync") {
-            val outcome = runCatching {
-                SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
-            }
-            val loaded = outcome.getOrNull()
-            if (loaded?.success == true) {
-                android.util.Log.i("SANY-LIVE-SPORTS", "PlayZTVProvider automatically installed/updated and loaded")
-            } else {
-                android.util.Log.e(
-                    "SANY-LIVE-SPORTS",
-                    "PlayZTVProvider auto-sync failed: ${loaded?.error ?: outcome.exceptionOrNull()?.message}",
-                    outcome.exceptionOrNull()
-                )
-            }
-            SanyLiveSportsExtensionManager.loadInstalled(
-                applicationContext,
-                if (loaded?.success == true) setOf("playztvprovider") else emptySet()
-            ).forEach { result ->
-                if (result.success) android.util.Log.i(
-                    "SANY-LIVE-SPORTS", "Restored Live Sports provider: ${result.pluginName}"
-                ) else android.util.Log.e(
-                    "SANY-LIVE-SPORTS", "Live Sports provider restore failed: ${result.error}"
-                )
-            }
-            runOnUiThread {
-                liveSportsProviderSyncRunning = false
-                if (!isFinishing && !isDestroyed && section == "Live Sports") {
-                    liveSportsCatalogueView = null
-                    renderSection()
+            try {
+                val outcome = runCatching {
+                    SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
+                }
+                val loaded = outcome.getOrNull()
+                if (loaded?.success == true) {
+                    android.util.Log.i("SANY-LIVE-SPORTS", "PlayZTVProvider automatically installed/updated and loaded")
+                } else {
+                    android.util.Log.e(
+                        "SANY-LIVE-SPORTS",
+                        "PlayZTVProvider auto-sync failed: ${loaded?.error ?: outcome.exceptionOrNull()?.message}",
+                        outcome.exceptionOrNull()
+                    )
+                }
+                runCatching {
+                    SanyLiveSportsExtensionManager.loadInstalled(
+                        applicationContext,
+                        if (loaded?.success == true) setOf("playztvprovider") else emptySet()
+                    )
+                }.onSuccess { restored ->
+                    restored.forEach { result ->
+                        if (result.success) android.util.Log.i(
+                            "SANY-LIVE-SPORTS", "Restored Live Sports provider: ${result.pluginName}"
+                        ) else android.util.Log.e(
+                            "SANY-LIVE-SPORTS", "Live Sports provider restore failed: ${result.error}"
+                        )
+                    }
+                }.onFailure { error ->
+                    android.util.Log.e("SANY-LIVE-SPORTS", "Installed Live Sports provider restore crashed", error)
+                }
+            } catch (error: Throwable) {
+                android.util.Log.e("SANY-LIVE-SPORTS", "Live Sports provider sync crashed", error)
+            } finally {
+                runOnUiThread {
+                    liveSportsProviderSyncRunning = false
+                    if (!isFinishing && !isDestroyed && section == "Live Sports") {
+                        liveSportsCatalogueView = null
+                        renderSection()
+                    }
                 }
             }
         }
@@ -1643,7 +1657,7 @@ class MainActivity : AppCompatActivity() {
                 14, muted
             ).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(12)) })
             page.addView(actionButton("RETRY / REPAIR PLAYZTV") {
-                syncLiveSportsProviderInBackground()
+                syncLiveSportsProviderInBackground(forceRetry = true)
             }, LinearLayout.LayoutParams(-1, dp(46)).apply {
                 leftMargin = dp(12); rightMargin = dp(12); topMargin = dp(8)
             })
@@ -1713,34 +1727,45 @@ class MainActivity : AppCompatActivity() {
             tag = "sports-results-$providerName"
         }
         host.addView(results, LinearLayout.LayoutParams(-1, -2))
+        results.addView(text("Sports হোমপেজ লোড হচ্ছে…", 13, muted)
+            .apply { setPadding(dp(8), dp(12), dp(8), dp(8)) })
         thread(name = "SANY-LiveSports-Home") {
             val outcome = runCatching {
                 kotlinx.coroutines.runBlocking {
                     val provider = SanyCloudStreamPluginRuntime.providers()
                         .firstOrNull { it.name.equals(providerName, true) }
-                        ?: error("Provider is not loaded")
+                        ?: error("Provider is not loaded: $providerName")
                     val realShelves = if (provider.hasMainPage && provider.mainPage.isNotEmpty()) {
                         runCatching {
-                            kotlinx.coroutines.withTimeout(24_000L) {
+                            kotlinx.coroutines.withTimeout(14_000L) {
                                 SanyCloudStreamPluginRuntime.homePage(providerName, 1, forceRefresh = true)
                                     .map { shelf -> shelf.name to shelf.list }
                             }
+                        }.onFailure { error ->
+                            android.util.Log.w("SANY-LIVE-SPORTS", "$providerName homepage request failed; trying parallel search fallback", error)
                         }.getOrDefault(emptyList())
                     } else emptyList()
                     if (realShelves.isNotEmpty()) {
                         realShelves
                     } else {
-                        val collected = mutableListOf<com.lagradost.cloudstream3.SearchResponse>()
-                        for (query in listOf("sports", "football", "cricket", "live", "wwe")) {
-                            val matches = runCatching {
-                                kotlinx.coroutines.withTimeout(8_000L) {
-                                    SanyCloudStreamPluginRuntime.search(providerName, query, forceRefresh = true)
+                        // Search fallback runs concurrently; the old sequential loop could
+                        // leave the Sports page blank for up to 40 seconds.
+                        val queries = listOf("sports", "football", "cricket", "live", "wwe")
+                        val queryResults = kotlinx.coroutines.coroutineScope {
+                            queries.map { query ->
+                                kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+                                    runCatching {
+                                        kotlinx.coroutines.withTimeout(8_000L) {
+                                            SanyCloudStreamPluginRuntime.search(providerName, query, forceRefresh = true)
+                                        }
+                                    }.onFailure { error ->
+                                        android.util.Log.w("SANY-LIVE-SPORTS", "$providerName search failed for $query", error)
+                                    }.getOrDefault(emptyList())
                                 }
-                            }.getOrDefault(emptyList())
-                            collected.addAll(matches)
-                            if (collected.size >= 80) break
+                            }.let { jobs -> kotlinx.coroutines.withTimeout(9_000L) { jobs.awaitAll() } }
                         }
-                        collected.distinctBy { it.url.trim().lowercase() }
+                        queryResults.flatten()
+                            .distinctBy { it.url.trim().lowercase() }
                             .filter { it.name.isNotBlank() && it.url.isNotBlank() }
                             .groupBy { sportsCategory(it.name) }
                             .toList()
@@ -1756,6 +1781,9 @@ class MainActivity : AppCompatActivity() {
                     android.util.Log.e("SANY-LIVE-SPORTS", "$providerName catalogue failed: $message", outcome.exceptionOrNull())
                     results.addView(text("Catalogue load failed: $message", 13, muted)
                         .apply { setPadding(dp(8), dp(12), dp(8), dp(8)) })
+                    results.addView(actionButton("RETRY LOAD SPORTS HOME") {
+                        loadLiveSportsHome(providerName, host)
+                    }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
                 } else {
                     val shelves = outcome.getOrDefault(emptyList())
                     android.util.Log.i("SANY-LIVE-SPORTS", "$providerName returned ${shelves.size} category shelves")
@@ -1763,6 +1791,9 @@ class MainActivity : AppCompatActivity() {
                     if (visibleShelves.isEmpty()) {
                         results.addView(text("এই extension-এ এখন কোনো Sports category পাওয়া যায়নি। SEARCH দিয়ে চেষ্টা করুন।", 13, muted)
                             .apply { setPadding(dp(8), dp(12), dp(8), dp(8)) })
+                        results.addView(actionButton("RELOAD SPORTS HOME") {
+                            loadLiveSportsHome(providerName, host)
+                        }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
                     } else {
                         visibleShelves.forEach { (categoryName, rawItems) ->
                             val categoryItems = rawItems.distinctBy { it.url.trim().lowercase() }
