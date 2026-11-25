@@ -1025,8 +1025,8 @@ class MainActivity : AppCompatActivity() {
         home.removeAllViews()
         // No reserved blank welcome slot: keep the selected page content directly below the player.
         val settingsHeader = section == "Settings"
-        val settingsHeaderText = Color.rgb(13, 28, 54)
-        val settingsHeaderMuted = Color.rgb(76, 96, 126)
+        val settingsHeaderText = if (isLight) Color.rgb(13, 28, 54) else Color.WHITE
+        val settingsHeaderMuted = if (isLight) Color.rgb(76, 96, 126) else Color.rgb(166, 183, 207)
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(
@@ -1036,9 +1036,12 @@ class MainActivity : AppCompatActivity() {
                 dp(if (isTvDevice) 14 else 12)
             )
             // Settings uses the approved cool blue-grey header; other sections retain glass.
-            background = if (settingsHeader) GradientDrawable(
+            background = if (settingsHeader && isLight) GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(Color.rgb(224, 232, 244), Color.rgb(184, 199, 220), Color.rgb(207, 218, 235))
+            ) else if (settingsHeader) GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(8, 20, 39), Color.rgb(13, 31, 56), Color.rgb(7, 17, 34))
             ) else glassWithoutTopStroke(0)
             cameraDistance = 11000f * resources.displayMetrics.density
             rotationX = 0f
@@ -1052,7 +1055,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         val brand = text("SANY IPTV", if (isTvDevice) 23 else 29,
-            if (settingsHeader) Color.rgb(38, 119, 245) else accent, true).apply {
+            if (settingsHeader && isLight) Color.rgb(38, 119, 245) else accent, true).apply {
             letterSpacing = 0.06f
             if (!settingsHeader) setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(8), 0, 0, 0)
@@ -1063,12 +1066,12 @@ class MainActivity : AppCompatActivity() {
         val connectionStatus = text(
             if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED",
             9,
-            if (settingsHeader) Color.rgb(38, 119, 245) else if (channels.isEmpty()) muted else accent, true
+            if (settingsHeader && isLight) Color.rgb(38, 119, 245) else if (channels.isEmpty()) muted else accent, true
         ).apply {
             gravity = Gravity.CENTER
             setPadding(dp(9), dp(5), dp(9), dp(5))
             letterSpacing = 0.035f
-            background = if (settingsHeader) rounded(Color.WHITE, 28) else glass(18)
+            background = if (settingsHeader && isLight) rounded(Color.WHITE, 28) else if (settingsHeader) rounded(Color.rgb(20, 39, 64), 28) else glass(18)
         }
         brandLine.addView(connectionStatus, LinearLayout.LayoutParams(-2, -2).apply {
             leftMargin = dp(8)
