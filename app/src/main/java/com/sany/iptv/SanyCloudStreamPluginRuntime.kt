@@ -333,8 +333,15 @@ object SanyCloudStreamPluginRuntime {
                 callback = { links.add(it) }
             )
             if (provider.name.equals("PlayZTVProvider", ignoreCase = true)) {
-                fun shortValueCodePoints(value: String): String =
-                    value.take(8).joinToString("-") { it.code.toString(16) }
+                fun shortValueCodePoints(value: String): String {
+                    val encoded = StringBuilder()
+                    val limit = minOf(8, value.length)
+                    for (index in 0 until limit) {
+                        if (index > 0) encoded.append('-')
+                        encoded.append(value[index].toInt().toString(16))
+                    }
+                    return encoded.toString()
+                }
                 Log.i(
                     "SANY-LIVE-SPORTS",
                     "PlayZTV resolver: itemDataLength=${episodeData.length} " +
