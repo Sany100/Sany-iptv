@@ -7023,13 +7023,14 @@ class MainActivity : AppCompatActivity() {
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
         if (!enabled) { applySystemBars(); return }
-        // Keep the real Android status bar visible in fullscreen video so the
-        // phone clock, battery and network indicators remain available.
-        // Only the navigation bar is immersive-hidden.
+        // Fullscreen video hides both Android system bars. Fit Screen restores
+        // the normal app layout and the real status bar through applySystemBars().
         window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     }
 
