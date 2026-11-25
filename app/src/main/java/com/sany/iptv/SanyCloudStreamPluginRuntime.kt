@@ -360,12 +360,28 @@ object SanyCloudStreamPluginRuntime {
                     Log.i(
                         "SANY-LIVE-SPORTS",
                         "PlayZTV link[$index]: source=${link.source} name=${link.name} " +
-                            "scheme=$scheme length=${link.url.length} " +
-                            "shortUrlHex=${if (link.url.length <= 8) shortValueCodePoints(link.url) else "redacted"}"
+                            "scheme=$scheme length=${link.url.length} type=${link.type} " +
+                            "quality=${link.quality} headerNames=${link.getAllHeaders().keys.joinToString(",")}"
                     )
                 }
             }
-            val requests = links.map { link ->
+            val playbackLinks = if (isPlayZtv) {
+                val valid = links.filter { link ->
+                    val scheme = link.url.trim().substringBefore(':', "").lowercase()
+                    scheme in setOf("http", "https", "ftp")
+                }
+                val rejected = links.size - valid.size
+                if (rejected > 0) {
+                    Log.w(
+                        "SANY-LIVE-SPORTS",
+                        "PlayZTV filtered $rejected non-URL extractor result(s); playableLinks=${valid.size}"
+                    )
+                }
+                valid
+            } else {
+                links
+            }
+            val requests = playbackLinks.map { link ->
                 CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles, provider.name)
             }.distinctBy { it.url }
             if (requests.isNotEmpty()) {
