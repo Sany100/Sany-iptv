@@ -877,7 +877,7 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
-         renderHome()
+        renderHome()
         if (showSplash) showStartupAnimation() else scheduleAutoUpdateCheck()
     }
 
@@ -1141,7 +1141,7 @@ class MainActivity : AppCompatActivity() {
             playlistSelectorContainer = playlistButton
             titleRow.addView(playlistButton, LinearLayout.LayoutParams(dp(142), dp(40)))
         }
-         top.addView(titleRow)
+        top.addView(titleRow)
         homeHeaderContainer = top
         // Full-width, edge-to-edge square header; remove the extra top gap.
         home.addView(top, LinearLayout.LayoutParams(
@@ -1609,11 +1609,13 @@ class MainActivity : AppCompatActivity() {
         liveSportsProviderLastAttemptAt = System.currentTimeMillis()
         liveSportsProviderSyncRunning = true
         thread(name = "SANY-LiveSports-Provider-AutoSync") {
+            var loaded: SanyCloudStreamPluginRuntime.LoadResult? = null
+            var syncError: String? = null
             try {
                 val outcome = runCatching {
                     SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
                 }
-                val loaded = outcome.getOrNull()
+                loaded = outcome.getOrNull()
                 if (loaded?.success == true) {
                     android.util.Log.i("SANY-LIVE-SPORTS", "PlayZTVProvider automatically installed/updated and loaded")
                 } else {
@@ -1640,13 +1642,14 @@ class MainActivity : AppCompatActivity() {
                     android.util.Log.e("SANY-LIVE-SPORTS", "Installed Live Sports provider restore crashed", error)
                 }
             } catch (error: Throwable) {
+                syncError = error.message ?: error.javaClass.simpleName
                 android.util.Log.e("SANY-LIVE-SPORTS", "Live Sports provider sync crashed", error)
             } finally {
                 if (loaded?.success == true) {
                     liveSportsProviderLastError = null
                 } else {
                     liveSportsProviderLastError =
-                        loaded?.error ?: outcome.exceptionOrNull()?.message ?: "Provider sync failed"
+                        loaded?.error ?: syncError ?: "Provider sync failed"
                     // Permit a later visit to retry after the short retry window.
                     liveSportsProviderSyncAttempted = false
                 }
@@ -6109,7 +6112,7 @@ class MainActivity : AppCompatActivity() {
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
-         if (isAnimeEpisode) {
+        if (isAnimeEpisode) {
             val loading = FrameLayout(this).apply {
                 setBackgroundColor(Color.BLACK)
                 visibility = View.GONE
@@ -7066,7 +7069,7 @@ class MainActivity : AppCompatActivity() {
         player = null
         trackSelector = null
         playerView = null
-         animeEpisodePanel = null
+        animeEpisodePanel = null
         animeCenterPlayButton = null
         animePlayerTitleOverlay = null
         playerScreen?.let { root.removeView(it) }
@@ -7544,7 +7547,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-         // Swiping this task away from Recents finishes SANY IPTV only.
+        // Swiping this task away from Recents finishes SANY IPTV only.
         if (isFinishing) {
             prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
         }
