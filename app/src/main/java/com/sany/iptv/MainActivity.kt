@@ -1031,9 +1031,9 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(
                 dp(if (isTvDevice) 18 else if (settingsHeader) 24 else 16),
-                dp(if (isTvDevice) 4 else if (settingsHeader) 12 else 6),
+                dp(if (isTvDevice) 4 else 6),
                 dp(if (isTvDevice) 18 else if (settingsHeader) 24 else 16),
-                dp(if (isTvDevice) 14 else if (settingsHeader) 22 else 12)
+                dp(if (isTvDevice) 14 else 12)
             )
             // Settings uses the approved cool blue-grey header; other sections retain glass.
             background = if (settingsHeader) GradientDrawable(
@@ -1051,7 +1051,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val brand = text("SANY IPTV", if (isTvDevice) 23 else if (settingsHeader) 42 else 29,
+        val brand = text("SANY IPTV", if (isTvDevice) 23 else 29,
             if (settingsHeader) Color.rgb(38, 119, 245) else accent, true).apply {
             letterSpacing = 0.06f
             if (!settingsHeader) setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
@@ -1062,12 +1062,11 @@ class MainActivity : AppCompatActivity() {
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         val connectionStatus = text(
             if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED",
-            if (settingsHeader) 13 else 9,
+            9,
             if (settingsHeader) Color.rgb(38, 119, 245) else if (channels.isEmpty()) muted else accent, true
         ).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(if (settingsHeader) 14 else 9), dp(if (settingsHeader) 9 else 5),
-                dp(if (settingsHeader) 14 else 9), dp(if (settingsHeader) 9 else 5))
+            setPadding(dp(9), dp(5), dp(9), dp(5))
             letterSpacing = 0.035f
             background = if (settingsHeader) rounded(Color.WHITE, 28) else glass(18)
         }
@@ -1075,19 +1074,19 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(8)
         })
         top.addView(brandLine)
-        top.addView(text("PREMIUM IPTV EXPERIENCE", if (settingsHeader) 17 else 10,
+        top.addView(text("PREMIUM IPTV EXPERIENCE", 10,
             if (settingsHeader) settingsHeaderText else white, true).apply {
             letterSpacing = 0.02f
-            setPadding(dp(8), 0, 0, dp(if (settingsHeader) 8 else 3))
+            setPadding(dp(8), 0, 0, dp(3))
         })
-        top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", if (settingsHeader) 14 else 9,
+        top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 9,
             if (settingsHeader) settingsHeaderMuted else muted, true).apply {
             letterSpacing = 0.075f
-            setPadding(0, 0, 0, dp(if (settingsHeader) 18 else 7))
+            setPadding(0, 0, 0, dp(7))
         })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         headerTitleView = text(if (section == "Series") "Anime Series" else section,
-            if (settingsHeader) 34 else 19, if (settingsHeader) settingsHeaderText else white, true)
+            19, if (settingsHeader) settingsHeaderText else white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         // Playlist selector is shared by Live TV and Checker only.
         // Keep it out of Movies, Development, and Settings.
