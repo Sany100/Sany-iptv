@@ -188,7 +188,13 @@ object SanyCloudStreamPluginRuntime {
             System.currentTimeMillis() - it.savedAt < SEARCH_CACHE_TTL_MS
         }?.let { return it.items }
         val result = provider.search(normalizedQuery).orEmpty()
-        searchCache[cacheKey] = CachedSearch(System.currentTimeMillis(), result)
+        // Never cache an empty response: transient provider/network failures must
+        // be retried on the next Sports homepage visit instead of staying blank.
+        if (result.isNotEmpty()) {
+            searchCache[cacheKey] = CachedSearch(System.currentTimeMillis(), result)
+        } else {
+            searchCache.remove(cacheKey)
+        }
         return result
     }
 
