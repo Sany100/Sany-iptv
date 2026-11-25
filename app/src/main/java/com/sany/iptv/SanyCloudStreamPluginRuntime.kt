@@ -183,11 +183,23 @@ object SanyCloudStreamPluginRuntime {
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         val normalizedQuery = query.trim()
+        val isMovieProvider = provider.supportedTypes.any {
+            it == com.lagradost.cloudstream3.TvType.Movie ||
+                it == com.lagradost.cloudstream3.TvType.AnimeMovie
+        }
+        val startedAt = System.currentTimeMillis()
         val cacheKey = "${provider.name.lowercase()}:${normalizedQuery.lowercase()}"
         if (!forceRefresh) searchCache[cacheKey]?.takeIf {
             System.currentTimeMillis() - it.savedAt < SEARCH_CACHE_TTL_MS
-        }?.let { return it.items }
+        }?.let {
+            if (isMovieProvider) Log.i("SANY-MOVIE", "Search cache hit: provider=${provider.name} results=${it.items.size}")
+            return it.items
+        }
         val result = provider.search(normalizedQuery).orEmpty()
+        if (isMovieProvider) Log.i(
+            "SANY-MOVIE",
+            "Search completed: provider=${provider.name} elapsedMs=${System.currentTimeMillis() - startedAt} results=${result.size}"
+        )
         // Never cache an empty response: transient provider/network failures must
         // be retried on the next Sports homepage visit instead of staying blank.
         if (result.isNotEmpty()) {
@@ -213,16 +225,27 @@ object SanyCloudStreamPluginRuntime {
         require(provider.hasMainPage && provider.mainPage.isNotEmpty()) {
             "$providerName does not publish a homepage catalogue"
         }
+        val isMovieProvider = provider.supportedTypes.any {
+            it == com.lagradost.cloudstream3.TvType.Movie ||
+                it == com.lagradost.cloudstream3.TvType.AnimeMovie
+        }
+        val startedAt = System.currentTimeMillis()
         val cacheKey = "${provider.name.lowercase()}:$page"
         fun cachedResult(): List<HomePageList>? = homePageCache[cacheKey]?.takeIf {
             System.currentTimeMillis() - it.savedAt < HOME_PAGE_CACHE_TTL_MS
         }?.shelves
-        if (!forceRefresh) cachedResult()?.let { return it }
+        if (!forceRefresh) cachedResult()?.let {
+            if (isMovieProvider) Log.i("SANY-MOVIE", "Homepage cache hit: provider=${provider.name} shelves=${it.size}")
+            return it
+        }
 
         // If the same screen/provider is requested twice, share one network fetch.
         val requestLock = homePageLocks.computeIfAbsent(cacheKey) { Mutex() }
         return requestLock.withLock {
-            if (!forceRefresh) cachedResult()?.let { return@withLock it }
+            if (!forceRefresh) cachedResult()?.let {
+                if (isMovieProvider) Log.i("SANY-MOVIE", "Homepage cache hit after lock: provider=${provider.name} shelves=${it.size}")
+                return@withLock it
+            }
 
             val failedShelves = java.util.Collections.synchronizedList(mutableListOf<String>())
             val shelves = coroutineScope {
@@ -258,6 +281,10 @@ object SanyCloudStreamPluginRuntime {
                 error("Homepage returned no items for ${provider.mainUrl}. Failed/empty categories: ${failedShelves.joinToString("; ")}")
             }
             homePageCache[cacheKey] = CachedHomePage(System.currentTimeMillis(), shelves)
+            if (isMovieProvider) Log.i(
+                "SANY-MOVIE",
+                "Homepage loaded: provider=${provider.name} elapsedMs=${System.currentTimeMillis() - startedAt} shelves=${shelves.size} failedOrEmpty=${failedShelves.size}"
+            )
             shelves
         }
     }
@@ -316,14 +343,29 @@ object SanyCloudStreamPluginRuntime {
         providersContext()?.let { SanyNetworkBypasses.configureCloudStream(it) }
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
+        val isMovieProvider = provider.supportedTypes.any {
+            it == com.lagradost.cloudstream3.TvType.Movie ||
+                it == com.lagradost.cloudstream3.TvType.AnimeMovie
+        }
+        val resolveStartedAt = System.currentTimeMillis()
+        if (isMovieProvider) Log.i(
+            "SANY-MOVIE",
+            "Source resolve started: provider=${provider.name} title=$title dataLength=${episodeData.length}"
+        )
         val cacheKey = provider.name.lowercase() + ":" + episodeData.hashCode() + ":" + episodeData.length
         fun cached(): List<SanyPlaybackRequest>? = playbackCache[cacheKey]?.takeIf {
             System.currentTimeMillis() - it.savedAt < PLAYBACK_CACHE_TTL_MS
         }?.requests
-        cached()?.let { return it }
+        cached()?.let {
+            if (isMovieProvider) Log.i("SANY-MOVIE", "Source cache hit: provider=${provider.name} sources=${it.size}")
+            return it
+        }
         val requestLock = playbackLocks.computeIfAbsent(cacheKey) { Mutex() }
         return requestLock.withLock {
-            cached()?.let { return@withLock it }
+            cached()?.let {
+                if (isMovieProvider) Log.i("SANY-MOVIE", "Source cache hit after lock: provider=${provider.name} sources=${it.size}")
+                return@withLock it
+            }
             val links = mutableListOf<ExtractorLink>()
             val subtitles = mutableListOf<SubtitleFile>()
             val isPlayZtv = providerName.contains("PlayZTV", ignoreCase = true) ||
@@ -344,12 +386,26 @@ object SanyCloudStreamPluginRuntime {
                         "itemDataLength=${episodeData.length} itemDataHex=${shortValueCodePoints(episodeData)}"
                 )
             }
+            val extractorStartedAt = System.currentTimeMillis()
             provider.loadLinks(
                 data = episodeData,
                 isCasting = false,
                 subtitleCallback = { subtitles.add(it) },
                 callback = { links.add(it) }
             )
+            if (isMovieProvider) {
+                Log.i(
+                    "SANY-MOVIE",
+                    "Extractor completed: provider=${provider.name} elapsedMs=${System.currentTimeMillis() - extractorStartedAt} links=${links.size} subtitles=${subtitles.size}"
+                )
+                links.forEachIndexed { index, link ->
+                    val scheme = link.url.trim().substringBefore(':', "").lowercase().ifBlank { "missing" }
+                    Log.i(
+                        "SANY-MOVIE",
+                        "Source[$index]: provider=${provider.name} name=${link.name} scheme=$scheme urlLength=${link.url.length} type=${link.type} quality=${link.quality} headers=${link.getAllHeaders().keys.joinToString(",")}"
+                    )
+                }
+            }
             if (isPlayZtv) {
                 Log.i(
                     "SANY-LIVE-SPORTS",
@@ -384,6 +440,10 @@ object SanyCloudStreamPluginRuntime {
             val requests = playbackLinks.map { link ->
                 CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles, provider.name)
             }.distinctBy { it.url }
+            if (isMovieProvider) Log.i(
+                "SANY-MOVIE",
+                "Source resolve finished: provider=${provider.name} elapsedMs=${System.currentTimeMillis() - resolveStartedAt} playableSources=${requests.size}"
+            )
             if (requests.isNotEmpty()) {
                 if (playbackCache.size > 120) playbackCache.clear()
                 playbackCache[cacheKey] = CachedPlayback(System.currentTimeMillis(), requests)
