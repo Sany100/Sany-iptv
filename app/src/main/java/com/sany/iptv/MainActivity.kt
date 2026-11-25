@@ -4152,14 +4152,41 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
         }
-        box.addView(text("ISP BYPASSES", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Clone Site", "Save an alternate HTTPS URL for an extension/repository host") {
+        val ispBypassesDropdown = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = glass(14)
+        }
+        val ispBypassesHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+        }
+        val ispBypassesLabels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        ispBypassesLabels.addView(text("ISP BYPASSES", 15, white, true))
+        ispBypassesLabels.addView(text("Clone Site • DNS • DNS Provider • GitHub Proxy", 11, muted).apply {
+            setPadding(0, dp(4), 0, 0)
+        })
+        ispBypassesHeader.addView(ispBypassesLabels, LinearLayout.LayoutParams(0, -2, 1f))
+        val ispBypassesArrow = text("⌄", 22, accent, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(4), 0)
+        }
+        ispBypassesHeader.addView(ispBypassesArrow)
+        ispBypassesDropdown.addView(ispBypassesHeader, LinearLayout.LayoutParams(-1, -2))
+        val ispBypassesContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(12), 0, 0)
+        }
+        settingsCard(ispBypassesContent, "Clone Site", "Save an alternate HTTPS URL for an extension/repository host") {
             showCloneSiteDialog()
         }
-        settingsToggleCard(box, "DNS over HTTPS", "Encrypted DNS enabled by default for extension, provider and supported playback requests", "bypass_doh_enabled", true) { enabled ->
+        settingsToggleCard(ispBypassesContent, "DNS over HTTPS", "Encrypted DNS enabled by default for extension, provider and supported playback requests", "bypass_doh_enabled", true) { enabled ->
             getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putBoolean("doh_enabled", enabled).apply()
         }
-        settingsCard(box, "DNS Provider", "Choose Cloudflare, Google or Quad9") {
+        settingsCard(ispBypassesContent, "DNS Provider", "Choose Cloudflare, Google or Quad9") {
             val labels = arrayOf("Cloudflare", "Google", "Quad9")
             val current = getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).getString("doh_provider", "Cloudflare")
             AlertDialog.Builder(this).setTitle("DNS over HTTPS provider")
@@ -4169,9 +4196,18 @@ class MainActivity : AppCompatActivity() {
                     toast("DNS provider saved")
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "GitHub Proxy", "Use jsDelivr CDN for raw GitHub extension files by default", "bypass_github_proxy", true) { enabled ->
+        settingsToggleCard(ispBypassesContent, "GitHub Proxy", "Use jsDelivr CDN for raw GitHub extension files by default", "bypass_github_proxy", true) { enabled ->
             getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putBoolean("github_proxy", enabled).apply()
         }
+        ispBypassesDropdown.addView(ispBypassesContent, LinearLayout.LayoutParams(-1, -2))
+        ispBypassesHeader.setOnClickListener {
+            val expanded = ispBypassesContent.visibility != View.VISIBLE
+            ispBypassesContent.visibility = if (expanded) View.VISIBLE else View.GONE
+            ispBypassesArrow.text = if (expanded) "⌃" else "⌄"
+        }
+        box.addView(ispBypassesDropdown, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(12)
+        })
         box.addView(text("PLAYBACK SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         settingsToggleCard(
             box,
