@@ -34,7 +34,7 @@ object SanyLiveSportsExtensionManager {
     private const val KEY_INSTALLED = "installed"
     private const val KEY_SELECTED = "selected_live_sports_extension_ids"
     private const val KEY_DEFAULT_REPOSITORY_SEEDED = "default_repository_seeded"
-    private const val DEFAULT_LIVE_SPORTS_REPOSITORY = "https://raw.githubusercontent.com/Sany100/SANY-iptv/migration/cloudstream-runtime-toolchain/live-sports-extensions/index.json"
+    private const val DEFAULT_LIVE_SPORTS_REPOSITORY = "https://raw.githubusercontent.com/Sany100/SANY-iptv/migration/cloudstream-runtime-toolchain/live_sports-extensions/index.json"
     private const val SANY_LIVE_SPORTS_CATALOGUE = "https://raw.githubusercontent.com/Sany100/Sany-iptv/migration/cloudstream-runtime-toolchain/live_sports-extensions/index.json"
     private const val CONNECT_TIMEOUT_MS = 12_000
     private const val READ_TIMEOUT_MS = 25_000
