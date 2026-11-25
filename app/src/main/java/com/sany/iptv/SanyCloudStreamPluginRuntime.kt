@@ -178,13 +178,13 @@ object SanyCloudStreamPluginRuntime {
     private val playbackLocks = ConcurrentHashMap<String, Mutex>()
     private const val PLAYBACK_CACHE_TTL_MS = 60 * 1000L
 
-    suspend fun search(providerName: String, query: String): List<SearchResponse> {
+    suspend fun search(providerName: String, query: String, forceRefresh: Boolean = false): List<SearchResponse> {
         providersContext()?.let { SanyNetworkBypasses.configureCloudStream(it) }
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
         val normalizedQuery = query.trim()
         val cacheKey = "${provider.name.lowercase()}:${normalizedQuery.lowercase()}"
-        searchCache[cacheKey]?.takeIf {
+        if (!forceRefresh) searchCache[cacheKey]?.takeIf {
             System.currentTimeMillis() - it.savedAt < SEARCH_CACHE_TTL_MS
         }?.let { return it.items }
         val result = provider.search(normalizedQuery).orEmpty()
@@ -200,7 +200,7 @@ object SanyCloudStreamPluginRuntime {
     private val homePageRequestGate = Semaphore(4)
 
     /** Fetches and briefly caches the selected provider's real CloudStream homepage shelves. */
-    suspend fun homePage(providerName: String, page: Int = 1): List<HomePageList> {
+    suspend fun homePage(providerName: String, page: Int = 1, forceRefresh: Boolean = false): List<HomePageList> {
         providersContext()?.let { SanyNetworkBypasses.configureCloudStream(it) }
         val provider = providers().firstOrNull { it.name.equals(providerName, ignoreCase = true) }
             ?: error("CloudStream provider is not loaded: $providerName")
@@ -211,12 +211,12 @@ object SanyCloudStreamPluginRuntime {
         fun cachedResult(): List<HomePageList>? = homePageCache[cacheKey]?.takeIf {
             System.currentTimeMillis() - it.savedAt < HOME_PAGE_CACHE_TTL_MS
         }?.shelves
-        cachedResult()?.let { return it }
+        if (!forceRefresh) cachedResult()?.let { return it }
 
         // If the same screen/provider is requested twice, share one network fetch.
         val requestLock = homePageLocks.computeIfAbsent(cacheKey) { Mutex() }
         return requestLock.withLock {
-            cachedResult()?.let { return@withLock it }
+            if (!forceRefresh) cachedResult()?.let { return@withLock it }
 
             val failedShelves = java.util.Collections.synchronizedList(mutableListOf<String>())
             val shelves = coroutineScope {
