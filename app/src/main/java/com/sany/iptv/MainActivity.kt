@@ -2483,12 +2483,21 @@ class MainActivity : AppCompatActivity() {
         // Keep all Anime loading feedback attached to the actual video surface.
         // PlayerView has the same bounds in FIT and fullscreen, so the spinner
         // never covers the page or appears outside the video.
-        val isSupportedPlayback = section == "Live TV" || section == "Live Sports" ||
+        // This overlay is only for the three requested playback sections.
+        val isSupportedPlayback = section == "Live Sports" ||
             section == "Movies" || section == "Series"
+        val activePlayer = player
+        // isLoading can remain true while Media3 is downloading ahead of the
+        // playhead; it is NOT a reason to cover video that is already playing.
+        // Show rebuffering only when playback is actually stalled and the user
+        // still intends to play. Initial loading remains controlled by the
+        // explicit request / first-frame gate.
+        val isGenuineRebuffer = activePlayer?.playbackState == Player.STATE_BUFFERING &&
+            activePlayer.playWhenReady && !activePlayer.isPlaying
         val shouldShow = isSupportedPlayback && playerView != null &&
             (animePlaybackLoadingRequested ||
-                (!animeFirstFrameRendered && player?.playbackState != Player.STATE_IDLE) ||
-                player?.playbackState == Player.STATE_BUFFERING || player?.isLoading == true)
+                (!animeFirstFrameRendered && activePlayer?.playbackState != Player.STATE_IDLE) ||
+                isGenuineRebuffer)
         animeFullscreenBufferingOverlay?.visibility = if (shouldShow) View.VISIBLE else View.GONE
     }
 
