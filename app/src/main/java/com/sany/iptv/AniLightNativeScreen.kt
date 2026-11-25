@@ -140,12 +140,12 @@ class AniLightNativeScreen(
 
     private class FastAnimeScrollView(context: Context) : ScrollView(context) {
         override fun fling(velocityY: Int) {
-            super.fling((velocityY * 1.45f).toInt())
+            super.fling((velocityY * 2.0f).toInt())
         }
     }
     private class FastAnimeHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
         override fun fling(velocityX: Int) {
-            super.fling((velocityX * 1.45f).toInt())
+            super.fling((velocityX * 2.0f).toInt())
         }
     }
 
