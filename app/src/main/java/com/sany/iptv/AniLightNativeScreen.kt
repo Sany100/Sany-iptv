@@ -279,9 +279,10 @@ class AniLightNativeScreen(
             clipToPadding = false
         }
         body.addView(contentHost, bottom(12))
+        addAnimeHomeHeader()
         val loading = label("নতুন Bangla ও Hindi Anime Extension লোড হচ্ছে…", 14, muted, false).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(36), dp(12), dp(36))
+            setPadding(dp(12), dp(24), dp(12), dp(36))
         }
         contentHost.addView(loading)
 
@@ -292,6 +293,7 @@ class AniLightNativeScreen(
                 // The loading view may already have been detached; clear safely rather than
                 // calling removeViews() with an invalid start index on an empty container.
                 contentHost.removeAllViews()
+                addAnimeHomeHeader()
                 if (providerShelves.isEmpty()) {
                     contentHost.addView(label(
                         "নতুন Anime Extension পাওয়া যায়নি। Internet connection ও Extension sync পরীক্ষা করো।",
@@ -310,16 +312,8 @@ class AniLightNativeScreen(
         }
     }
 
-    /** Show exactly six Anime categories per numbered homepage page. */
-    private fun renderHomeCategoryPage() {
-        if (!isHomePage || !::contentHost.isInitialized) return
-        // Page rendering can be called after the async loader has already cleared the host.
-        // removeViews(1, 0) is still invalid on Android when childCount is 0 or 1.
-        contentHost.removeAllViews()
-        val pageCount = ((cachedProviderShelves.size + homeCategoriesPerPage - 1) / homeCategoriesPerPage).coerceAtLeast(1)
-        homeCategoryPage = homeCategoryPage.coerceIn(1, pageCount)
-        val from = (homeCategoryPage - 1) * homeCategoriesPerPage
-        // Compact search action in the top-right corner of the Anime home.
+    /** Render the Anime header immediately, before provider network requests complete. */
+    private fun addAnimeHomeHeader() {
         val homeHeader = row().apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(5), dp(12), dp(8))
@@ -335,6 +329,17 @@ class AniLightNativeScreen(
             setOnClickListener { openAnimeSearch() }
         })
         contentHost.addView(homeHeader, bottom(5))
+    }
+
+    /** Show exactly six Anime categories per numbered homepage page. */
+    private fun renderHomeCategoryPage() {
+        if (!isHomePage || !::contentHost.isInitialized) return
+        // Page rendering can be called after the async loader has already cleared the host.
+        // removeViews(1, 0) is still invalid on Android when childCount is 0 or 1.
+        contentHost.removeAllViews()
+        val pageCount = ((cachedProviderShelves.size + homeCategoriesPerPage - 1) / homeCategoriesPerPage).coerceAtLeast(1)
+        homeCategoryPage = homeCategoryPage.coerceIn(1, pageCount)
+        val from = (homeCategoryPage - 1) * homeCategoriesPerPage
         cachedProviderShelves.drop(from).take(homeCategoriesPerPage).forEach { shelf ->
             addProviderShelf(shelf)
         }
