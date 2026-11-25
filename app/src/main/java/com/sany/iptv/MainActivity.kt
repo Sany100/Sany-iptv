@@ -300,7 +300,13 @@ class MainActivity : AppCompatActivity() {
         pipPlaybackActionHandler = {
             runOnUiThread {
                 player?.let { activePlayer ->
-                    if (activePlayer.isPlaying) activePlayer.pause() else activePlayer.play()
+                    // PiP controls must follow the user's playback intent, not
+                    // isPlaying (which becomes false during temporary buffering).
+                    if (activePlayer.playWhenReady) {
+                        activePlayer.pause()
+                    } else {
+                        activePlayer.play()
+                    }
                     refreshPictureInPictureParams()
                 }
             }
@@ -6355,8 +6361,16 @@ class MainActivity : AppCompatActivity() {
                         if (section == "Series") runOnUiThread { updateAnimeFullscreenBuffering() }
                     }
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        // Enable PiP auto-entry only while an actual video is playing.
-                        // Pausing/stopping immediately unregisters the PiP entry path.
+                        // Auto-entry depends on actual playback; keep PiP action
+                        // labels synchronized with the player as well.
+                        refreshPictureInPictureParams()
+                    }
+                    override fun onPlayWhenReadyChanged(
+                        playWhenReady: Boolean,
+                        reason: Int
+                    ) {
+                        // Refresh the Pause/Resume RemoteAction on every user-intent
+                        // change, including while the stream is buffering.
                         refreshPictureInPictureParams()
                     }
                 })
@@ -7454,7 +7468,9 @@ class MainActivity : AppCompatActivity() {
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(Rational(16, 9))
         if (playerView != null && player != null) {
-            val isPlaying = player?.isPlaying == true
+            // Use playWhenReady for the action state so PiP does not
+            // incorrectly switch to Resume during a short rebuffer.
+            val isPlaying = player?.playWhenReady == true
             val actionIntent = Intent(this, PipPlaybackActionReceiver::class.java)
                 .setAction(ACTION_PIP_TOGGLE_PLAYBACK)
             val pendingAction = PendingIntent.getBroadcast(
