@@ -3204,7 +3204,13 @@ class MainActivity : AppCompatActivity() {
         // repeatedly scanned the complete playlist once per category, which made
         // returning to Live TV noticeably slower on large playlists.
         val directoryChannels = if (section == "Live TV") {
-            channels.filter { !isMovie(it) && !isSeries(it) }
+            // Once checking has started or saved results exist, build the Live TV
+            // category menu from verified working channels only. Before the first
+            // check, retain playlist categories so the user can start checking.
+            val liveChannels = if (checkerRunning || streamChecks.isNotEmpty()) {
+                liveTvVisibleCandidates()
+            } else channels
+            liveChannels.filter { !isMovie(it) && !isSeries(it) }
         } else channels
         val groupCounts = LinkedHashMap<String, Int>()
         var allCount = 0
@@ -5175,15 +5181,10 @@ class MainActivity : AppCompatActivity() {
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        // Scale checker concurrency by Android version.
-        // Android 14+ uses 48 workers; Android 10-13 uses 32.
-        // Android 6-9 uses 8 workers.
-        // Actual throughput still depends on device resources and server throttling.
-        val maxWorkers = when {
-            Build.VERSION.SDK_INT >= 34 -> 48
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 32
-            else -> 8
-        }
+        // Use higher parallelism on Android 10+ while keeping older devices
+        // conservative to avoid memory pressure and excessive socket contention.
+        // Android 10+ uses 48 workers; Android 6-9 uses 8 workers.
+        val maxWorkers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) 48 else 8
         val workerCount = minOf(maxWorkers, snapshot.size)
         val workers = (0 until workerCount).map { worker ->
             thread(name = "SANY-Stream-Check-$worker") {
