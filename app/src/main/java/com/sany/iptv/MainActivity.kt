@@ -502,6 +502,10 @@ class MainActivity : AppCompatActivity() {
             }
             com.google.firebase.messaging.FirebaseMessaging.getInstance()
                 .subscribeToTopic("sany_iptv_all")
+        } catch (e: LinkageError) {
+            // Firebase is optional in migration/CI builds. A missing runtime
+            // Firebase class must never prevent the main IPTV screen from opening.
+            android.util.Log.w("SANY-FCM", "Firebase runtime unavailable; skipping push registration", e)
         } catch (e: Exception) {
             android.util.Log.w("SANY-FCM", "Push registration unavailable", e)
         }
