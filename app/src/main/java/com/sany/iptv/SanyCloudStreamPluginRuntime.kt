@@ -332,6 +332,25 @@ object SanyCloudStreamPluginRuntime {
                 subtitleCallback = { subtitles.add(it) },
                 callback = { links.add(it) }
             )
+            if (provider.name.equals("PlayZTVProvider", ignoreCase = true)) {
+                fun shortValueCodePoints(value: String): String =
+                    value.take(8).joinToString("-") { it.code.toString(16) }
+                Log.i(
+                    "SANY-LIVE-SPORTS",
+                    "PlayZTV resolver: itemDataLength=${episodeData.length} " +
+                        "itemDataHex=${shortValueCodePoints(episodeData)} " +
+                        "extractorLinks=${links.size}"
+                )
+                links.forEachIndexed { index, link ->
+                    val scheme = link.url.substringBefore(':', "").takeIf { it.isNotBlank() } ?: "missing"
+                    Log.i(
+                        "SANY-LIVE-SPORTS",
+                        "PlayZTV link[$index]: source=${link.source} name=${link.name} " +
+                            "scheme=$scheme length=${link.url.length} " +
+                            "shortUrlHex=${if (link.url.length <= 8) shortValueCodePoints(link.url) else "redacted"}"
+                    )
+                }
+            }
             val requests = links.map { link ->
                 CloudStreamPlaybackBridge.toSanyRequest(title, link, subtitles, provider.name)
             }.distinctBy { it.url }
