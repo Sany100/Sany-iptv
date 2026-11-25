@@ -157,10 +157,24 @@ object SanyLiveSportsExtensionManager {
      */
     @Synchronized
     fun syncBuiltInPlayZTV(context: Context): SanyCloudStreamPluginRuntime.LoadResult {
-        // The APK carries a hash-pinned PlayZTVProvider package. Keep the
-        // catalogue lookup as an update source, but do not block first install
-        // when the device is offline or the catalogue host is temporarily down.
-        val extension = runCatching {
+        // Prefer the package and metadata bundled in the APK immediately. This
+        // avoids a catalogue network wait on fresh installs; older APKs without
+        // the asset retain the online catalogue fallback.
+        val hasBundledProvider = runCatching {
+            context.assets.open("live_sports/PlayZTVProvider.cs3").use { }
+            true
+        }.getOrDefault(false)
+        val extension = if (hasBundledProvider) {
+            Extension(
+                id = "playztvprovider",
+                name = "PlayZTVProvider",
+                version = "49",
+                description = "Watch Live TV channels & sports via PlayZTV",
+                packageUrl = "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/builds/PlayZTVProvider.cs3",
+                sha256 = "8541a6dbf0c8fdd6dbf698548e85a856cdd11be27d99db0ee3a1ccda5f4226b5",
+                repositoryUrl = SANY_LIVE_SPORTS_CATALOGUE
+            )
+        } else {
             val root = JSONObject(downloadText(SANY_LIVE_SPORTS_CATALOGUE, MAX_INDEX_BYTES))
             require(root.optInt("schema") == 1) { "Unsupported SANY Live Sports catalogue schema" }
             val entries = root.optJSONArray("extensions") ?: JSONArray()
@@ -175,16 +189,6 @@ object SanyLiveSportsExtensionManager {
                 description = item.optString("description"),
                 packageUrl = item.optString("packageUrl").trim(),
                 sha256 = item.optString("sha256").trim().lowercase(),
-                repositoryUrl = SANY_LIVE_SPORTS_CATALOGUE
-            )
-        }.getOrElse {
-            Extension(
-                id = "playztvprovider",
-                name = "PlayZTVProvider",
-                version = "49",
-                description = "Watch Live TV channels & sports via PlayZTV",
-                packageUrl = "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/builds/PlayZTVProvider.cs3",
-                sha256 = "8541a6dbf0c8fdd6dbf698548e85a856cdd11be27d99db0ee3a1ccda5f4226b5",
                 repositoryUrl = SANY_LIVE_SPORTS_CATALOGUE
             )
         }
