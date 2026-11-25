@@ -328,16 +328,16 @@ object SanyCloudStreamPluginRuntime {
             val subtitles = mutableListOf<SubtitleFile>()
             val isPlayZtv = providerName.contains("PlayZTV", ignoreCase = true) ||
                 provider.name.contains("PlayZTV", ignoreCase = true)
-            if (isPlayZtv) {
-                fun shortValueCodePoints(value: String): String {
-                    val encoded = StringBuilder()
-                    val limit = minOf(8, value.length)
-                    for (index in 0 until limit) {
-                        if (index > 0) encoded.append('-')
-                        encoded.append(value[index].toInt().toString(16))
-                    }
-                    return encoded.toString()
+            fun shortValueCodePoints(value: String): String {
+                val encoded = StringBuilder()
+                val limit = minOf(8, value.length)
+                for (index in 0 until limit) {
+                    if (index > 0) encoded.append('-')
+                    encoded.append(value[index].toInt().toString(16))
                 }
+                return encoded.toString()
+            }
+            if (isPlayZtv) {
                 Log.i(
                     "SANY-LIVE-SPORTS",
                     "PlayZTV resolver input: providerArg=$providerName loadedProvider=${provider.name} " +
