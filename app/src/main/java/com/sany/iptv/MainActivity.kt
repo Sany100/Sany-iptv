@@ -2249,11 +2249,23 @@ class MainActivity : AppCompatActivity() {
                 .apply()
             pendingCloudStreamAnimeItem = null
         }
-        val parsedUrl = runCatching { Uri.parse(request.url.trim()) }.getOrNull()
-        if (parsedUrl?.scheme !in setOf("http", "https")) {
+        val streamUrl = request.url.trim()
+        val parsedUrl = runCatching { Uri.parse(streamUrl) }.getOrNull()
+        // The shared CloudStream playback bridge serves Anime, Movies and Live Sports.
+        // SANY's player also supports FTP, so accept the same schemes here.
+        if (parsedUrl?.scheme?.lowercase() !in setOf("http", "https", "ftp")) {
             showAnimePlaybackLoading("", false)
-            toast("AniLight-এর stream link সঠিক নয়")
-            android.util.Log.e("SANY-PLAYER", "Rejected AniLight URL: invalid or unsupported scheme")
+            val sectionLabel = when (section) {
+                "Live Sports" -> "Live Sports"
+                "Movies" -> "Movies"
+                "Series" -> "AniLight"
+                else -> provider
+            }
+            toast("${sectionLabel}-এর stream link সঠিক নয়")
+            android.util.Log.e(
+                "SANY-PLAYER",
+                "Rejected provider URL: section=${section} provider=${provider} scheme=${parsedUrl?.scheme ?: "missing"} length=${streamUrl.length}"
+            )
             return
         }
         try {
