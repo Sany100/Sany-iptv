@@ -203,7 +203,7 @@ class MainActivity : AppCompatActivity() {
     }
     private val initialDisplayedLimit: Int get() = if (isLowMemoryDevice) 24 else 60
     private val displayedLimitIncrement: Int get() = if (isLowMemoryDevice) 48 else 120
-    private var displayedLimit = initialDisplayedLimit
+    private var displayedLimit = 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
@@ -296,6 +296,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Resolve device RAM capabilities only after the Activity has an attached Context.
+        displayedLimit = initialDisplayedLimit
         // Install crash capture before any app/CloudStream initialization.
         installSanyCrashLogger()
         CommonActivity.setActivityInstance(this)
