@@ -167,6 +167,7 @@ class MainActivity : AppCompatActivity() {
     private var moviesNativeView: View? = null
     private var movieDetailsParentView: View? = null
     private var liveSportsCatalogueView: View? = null
+    @Volatile private var liveSportsProviderSyncRunning = false
     private var cloudStreamProviderScreen: CloudStreamProviderHomeScreen? = null
     private var cloudStreamProviderView: View? = null
     // Keep the exact Anime parent page attached/detached across details and playback.
@@ -435,34 +436,11 @@ class MainActivity : AppCompatActivity() {
                         android.util.Log.e("SANY-MOVIE", "Movie extension restore failed: ${result.error}")
                     }
                 }
-                val playZtvAutoSync = runCatching {
-                    SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(this@MainActivity)
-                }.onFailure { error ->
-                    android.util.Log.e("SANY-LIVE-SPORTS", "Built-in PlayZTVProvider auto-install/update failed", error)
-                }.getOrNull()
-                if (playZtvAutoSync != null) {
-                    if (playZtvAutoSync.success) {
-                        android.util.Log.i("SANY-LIVE-SPORTS", "Built-in PlayZTVProvider v49 auto-installed/updated, selected and loaded")
-                    } else {
-                        android.util.Log.e("SANY-LIVE-SPORTS", "Built-in PlayZTVProvider auto-load failed: ${playZtvAutoSync.error}")
-                    }
-                }
-                SanyLiveSportsExtensionManager.loadInstalled(
-                    this@MainActivity,
-                    if (playZtvAutoSync?.success == true) setOf("playztvprovider") else emptySet()
-                ).forEach { result ->
-                    if (result.success) {
-                        android.util.Log.i("SANY-LIVE-SPORTS", "Live Sports extension restored: ${result.pluginName}")
-                    } else {
-                        android.util.Log.e("SANY-LIVE-SPORTS", "Live Sports extension restore failed: ${result.error}")
-                    }
-                }
             } catch (error: Throwable) {
                 android.util.Log.e("SANY-CS", "Anime plugin auto-sync failed", error)
             } finally {
-                // Anime Series can open while the background sync is still running.
-                // Rebuild it after the verified plugins have either loaded or failed,
-                // so its first catalogue request never races the startup sync.
+                // Rebuild only Anime/Movies after their own providers finish syncing.
+                // Live Sports has an independent startup sync and must not delay these headers.
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed &&
                         (section == "Series" || section == "Movies")
@@ -470,6 +448,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        // Sports provider installation is independent from Anime/Movie downloads.
+        // This also restores the provider automatically after a completely fresh reinstall.
+        syncLiveSportsProviderInBackground()
         registerForPushUpdates()
         checkForMandatoryUpdate()
         checkMaintenanceMode()
@@ -1245,6 +1226,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Live Sports") {
+            // A fresh visit always rebuilds the provider directory and fetches live homepage data.
+            liveSportsCatalogueView = null
             renderLiveSportsExtensions()
             return
         }
@@ -1582,6 +1565,43 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun syncLiveSportsProviderInBackground() {
+        if (liveSportsProviderSyncRunning || isFinishing || isDestroyed) return
+        liveSportsProviderSyncRunning = true
+        thread(name = "SANY-LiveSports-Provider-AutoSync") {
+            val outcome = runCatching {
+                SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(applicationContext)
+            }
+            val loaded = outcome.getOrNull()
+            if (loaded?.success == true) {
+                android.util.Log.i("SANY-LIVE-SPORTS", "PlayZTVProvider automatically installed/updated and loaded")
+            } else {
+                android.util.Log.e(
+                    "SANY-LIVE-SPORTS",
+                    "PlayZTVProvider auto-sync failed: ${loaded?.error ?: outcome.exceptionOrNull()?.message}",
+                    outcome.exceptionOrNull()
+                )
+            }
+            SanyLiveSportsExtensionManager.loadInstalled(
+                applicationContext,
+                if (loaded?.success == true) setOf("playztvprovider") else emptySet()
+            ).forEach { result ->
+                if (result.success) android.util.Log.i(
+                    "SANY-LIVE-SPORTS", "Restored Live Sports provider: ${result.pluginName}"
+                ) else android.util.Log.e(
+                    "SANY-LIVE-SPORTS", "Live Sports provider restore failed: ${result.error}"
+                )
+            }
+            runOnUiThread {
+                liveSportsProviderSyncRunning = false
+                if (!isFinishing && !isDestroyed && section == "Live Sports") {
+                    liveSportsCatalogueView = null
+                    renderSection()
+                }
+            }
+        }
+    }
+
     private fun renderLiveSportsExtensions() {
         liveSportsCatalogueView?.let { existing ->
             (existing.parent as? ViewGroup)?.removeView(existing)
@@ -1617,9 +1637,16 @@ class MainActivity : AppCompatActivity() {
 
         if (providers.isEmpty()) {
             page.addView(text(
-                "PlayZTVProvider এখনো লোড হয়নি। INSTALL / REPAIR PLAYZTV চাপুন; ইনস্টল সফল হলে এখানে Sports catalogue দেখাবে।",
+                "PlayZTVProvider স্বয়ংক্রিয়ভাবে ইনস্টল ও লোড হচ্ছে…",
                 14, muted
-            ).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(28)) })
+            ).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(12)) })
+            page.addView(actionButton("RETRY / REPAIR PLAYZTV") {
+                syncLiveSportsProviderInBackground()
+            }, LinearLayout.LayoutParams(-1, dp(46)).apply {
+                leftMargin = dp(12); rightMargin = dp(12); topMargin = dp(8)
+            })
+            // If startup sync failed or was interrupted, opening this page retries it automatically.
+            syncLiveSportsProviderInBackground()
         } else {
             providers.forEach { provider ->
                 val card = LinearLayout(this).apply {
@@ -1693,7 +1720,7 @@ class MainActivity : AppCompatActivity() {
                     val realShelves = if (provider.hasMainPage && provider.mainPage.isNotEmpty()) {
                         runCatching {
                             kotlinx.coroutines.withTimeout(24_000L) {
-                                SanyCloudStreamPluginRuntime.homePage(providerName, 1)
+                                SanyCloudStreamPluginRuntime.homePage(providerName, 1, forceRefresh = true)
                                     .map { shelf -> shelf.name to shelf.list }
                             }
                         }.getOrDefault(emptyList())
@@ -1705,7 +1732,7 @@ class MainActivity : AppCompatActivity() {
                         for (query in listOf("sports", "football", "cricket", "live", "wwe")) {
                             val matches = runCatching {
                                 kotlinx.coroutines.withTimeout(8_000L) {
-                                    SanyCloudStreamPluginRuntime.search(providerName, query)
+                                    SanyCloudStreamPluginRuntime.search(providerName, query, forceRefresh = true)
                                 }
                             }.getOrDefault(emptyList())
                             collected.addAll(matches)
