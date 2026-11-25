@@ -1058,7 +1058,7 @@ class MainActivity : AppCompatActivity() {
             background = if (settingsHeader) GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(Color.rgb(224, 232, 244), Color.rgb(184, 199, 220), Color.rgb(207, 218, 235))
-            ) else glass(0)
+            ) else glassWithoutTopStroke(0)
             cameraDistance = 11000f * resources.displayMetrics.density
             rotationX = 0f
             translationZ = dp(10).toFloat()
@@ -1156,7 +1156,7 @@ class MainActivity : AppCompatActivity() {
             val edgeToEdgeSection = section == "Series" || section == "Movies" || section == "Live Sports"
             setPadding(if (edgeToEdgeSection) 0 else dp(18), 0,
                 if (edgeToEdgeSection) 0 else dp(18), 0)
-            setBackgroundColor(bg)
+            setBackgroundColor(if (edgeToEdgeSection && isLight) Color.WHITE else bg)
         }
         home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
         bottomNav = LinearLayout(this).apply {
@@ -2352,7 +2352,7 @@ class MainActivity : AppCompatActivity() {
         val nativeView = aniLightNativeView ?: return
         (nativeView.parent as? android.view.ViewGroup)?.removeView(nativeView)
         val animePage = LinearLayout(this).apply {
-            setBackgroundColor(bg)
+            setBackgroundColor(if (isLight) Color.WHITE else bg)
         }
         animePage.addView(nativeView, LinearLayout.LayoutParams(-1, -1))
         contentArea.addView(animePage, LinearLayout.LayoutParams(-1, -1))
@@ -4077,6 +4077,17 @@ class MainActivity : AppCompatActivity() {
                 .setSingleChoiceItems(modes, values.indexOf(current).coerceAtLeast(0)) { dialog, which ->
                     prefs.edit().putString("app_theme", values[which]).apply()
                     dialog.dismiss()
+                    // Recreate only the three theme-aware catalogues so cached Views
+                    // cannot keep the previous theme's background colors.
+                    moviesNativeView = null
+                    movieDetailsParentView = null
+                    liveSportsCatalogueView = null
+                    aniLightNativeScreen = null
+                    aniLightNativeView = null
+                    cloudStreamProviderScreen = null
+                    cloudStreamProviderView = null
+                    animeExternalPageActive = false
+                    animeExternalPageReturnToProvider = false
                     applySystemBars()
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
@@ -7354,6 +7365,44 @@ class MainActivity : AppCompatActivity() {
             else Color.argb(205, 174, 211, 255)
         )
     }
+    // The brand header keeps its left, right and bottom glass outline, but
+    // deliberately omits the bright top rim so Android's status indicators have
+    // a clean edge above the header.
+    private fun glassWithoutTopStroke(radius: Int): android.graphics.drawable.Drawable {
+        val fill = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            if (isLight) intArrayOf(
+                Color.argb(246, 255, 255, 255),
+                Color.argb(232, 255, 255, 255),
+                Color.argb(216, 239, 247, 255),
+                Color.argb(236, 255, 255, 255)
+            ) else intArrayOf(
+                Color.argb(166, 100, 145, 205),
+                Color.argb(132, 20, 38, 68),
+                Color.argb(158, 30, 48, 82)
+            )
+        ).apply {
+            cornerRadius = dp(radius).toFloat()
+            setStroke(dp(1), if (isLight) Color.argb(250, 255, 255, 255)
+                else Color.argb(205, 174, 211, 255))
+        }
+        return object : android.graphics.drawable.Drawable() {
+            override fun draw(canvas: android.graphics.Canvas) {
+                fill.bounds = bounds
+                val save = canvas.save()
+                canvas.clipRect(bounds.left, bounds.top + dp(1), bounds.right, bounds.bottom)
+                fill.draw(canvas)
+                canvas.restoreToCount(save)
+            }
+            override fun setAlpha(alpha: Int) { fill.alpha = alpha }
+            override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+                fill.colorFilter = colorFilter
+            }
+            @Deprecated("Deprecated in Android")
+            override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+        }
+    }
+
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
     private fun dp(v: Int): Int {
