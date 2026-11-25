@@ -326,13 +326,9 @@ object SanyCloudStreamPluginRuntime {
             cached()?.let { return@withLock it }
             val links = mutableListOf<ExtractorLink>()
             val subtitles = mutableListOf<SubtitleFile>()
-            provider.loadLinks(
-                data = episodeData,
-                isCasting = false,
-                subtitleCallback = { subtitles.add(it) },
-                callback = { links.add(it) }
-            )
-            if (provider.name.equals("PlayZTVProvider", ignoreCase = true)) {
+            val isPlayZtv = providerName.contains("PlayZTV", ignoreCase = true) ||
+                provider.name.contains("PlayZTV", ignoreCase = true)
+            if (isPlayZtv) {
                 fun shortValueCodePoints(value: String): String {
                     val encoded = StringBuilder()
                     val limit = minOf(8, value.length)
@@ -344,9 +340,20 @@ object SanyCloudStreamPluginRuntime {
                 }
                 Log.i(
                     "SANY-LIVE-SPORTS",
-                    "PlayZTV resolver: itemDataLength=${episodeData.length} " +
-                        "itemDataHex=${shortValueCodePoints(episodeData)} " +
-                        "extractorLinks=${links.size}"
+                    "PlayZTV resolver input: providerArg=$providerName loadedProvider=${provider.name} " +
+                        "itemDataLength=${episodeData.length} itemDataHex=${shortValueCodePoints(episodeData)}"
+                )
+            }
+            provider.loadLinks(
+                data = episodeData,
+                isCasting = false,
+                subtitleCallback = { subtitles.add(it) },
+                callback = { links.add(it) }
+            )
+            if (isPlayZtv) {
+                Log.i(
+                    "SANY-LIVE-SPORTS",
+                    "PlayZTV resolver result: extractorLinks=${links.size}"
                 )
                 links.forEachIndexed { index, link ->
                     val scheme = link.url.substringBefore(':', "").takeIf { it.isNotBlank() } ?: "missing"
