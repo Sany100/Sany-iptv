@@ -1701,17 +1701,33 @@ class MainActivity : AppCompatActivity() {
         }.distinctBy { it.name.lowercase() }.sortedBy { it.name.lowercase() }
 
         if (providers.isEmpty()) {
-            page.addView(text(
-                "PlayZTVProvider স্বয়ংক্রিয়ভাবে ইনস্টল ও লোড হচ্ছে…",
-                14, muted
-            ).apply { gravity = Gravity.CENTER; setPadding(dp(12), dp(28), dp(12), dp(12)) })
-            page.addView(actionButton("RETRY / REPAIR PLAYZTV") {
+            // Keep the built-in provider visible even while its runtime is restoring,
+            // or when the extension is installed but has not registered its provider yet.
+            val builtIn = installed.firstOrNull { it.id.equals("playztvprovider", true) }
+            val providerCard = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(14), dp(12), dp(12))
+                background = glass(16)
+                elevation = dp(5).toFloat()
+            }
+            providerCard.addView(text("PlayZTVProvider", 18, white, true))
+            providerCard.addView(text(
+                if (builtIn != null) "Installed • Version ${builtIn.version} • Restoring provider…"
+                else "Built-in Live Sports provider • Installing…",
+                12, muted
+            ).apply { setPadding(0, dp(5), 0, dp(10)) })
+            providerCard.addView(actionButton("RETRY / REPAIR PLAYZTV") {
                 syncLiveSportsProviderInBackground(forceRetry = true)
-            }, LinearLayout.LayoutParams(-1, dp(46)).apply {
-                leftMargin = dp(12); rightMargin = dp(12); topMargin = dp(8)
+            }, LinearLayout.LayoutParams(-1, dp(44)))
+            page.addView(providerCard, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(12)
+                leftMargin = dp(12)
+                rightMargin = dp(12)
             })
-            // If startup sync failed or was interrupted, opening this page retries it automatically.
-            syncLiveSportsProviderInBackground()
+            page.addView(text(
+                "Provider প্রস্তুত হলে এর Live Sports categories এখানে স্বয়ংক্রিয়ভাবে দেখাবে।",
+                12, muted
+            ).apply { setPadding(dp(12), dp(10), dp(12), dp(8)) })
         } else {
             providers.forEach { provider ->
                 val card = LinearLayout(this).apply {
