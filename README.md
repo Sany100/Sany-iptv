@@ -50,3 +50,14 @@ Use only playlists and streams you are authorized to access.
 
 - Mandatory updates are disabled by default and are enabled only when explicitly requested by the project owner.
 - When the remote mandatory-update policy is disabled, the app clears any previously cached mandatory-update prompt.
+
+
+## Android TV edition (separate build)
+
+- The TV edition is built from the stable `v1.2.452` release on the isolated `tv/v1.2.452-base` branch.
+- Build variant: `tvDebug` / `tvRelease`.
+- Package ID: `com.sany.iptv.tv` (installs separately from the phone app).
+- Minimum Android version: Android 10 (API 29).
+- TV launcher entry requires Leanback; touchscreen is optional.
+- Build locally with JDK 17: `gradle assembleTvDebug`.
+- The TV workflow uploads a debug APK artifact for remote and low-memory device testing.
