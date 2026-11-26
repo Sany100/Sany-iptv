@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <application android:name=".SanyApplication" android:allowBackup="true" android:label="SANY IPTV" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:theme="@style/AppTheme" android:usesCleartextTraffic="true">
+    <application android:name=".SanyApplication" android:allowBackup="true" android:label="SANY IPTV" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:theme="@style/AppTheme" android:usesCleartextTraffic="true" android:hardwareAccelerated="true" android:largeHeap="false">
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="sany_updates" />
         <service android:name=".SanyFirebaseMessagingService" android:exported="false">
             <intent-filter>
