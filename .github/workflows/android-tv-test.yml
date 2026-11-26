@@ -92,13 +92,14 @@ jobs:
                   '<manifest xmlns:tools="http://schemas.android.com/tools" ',
                   1
               )
-          app_tag = re.search(r'<application\b[^>]*>', manifest_source)
-          if not app_tag:
+          app_start = manifest_source.find("<application")
+          app_end = manifest_source.find(">", app_start) if app_start >= 0 else -1
+          if app_start < 0 or app_end < 0:
               raise SystemExit("Could not locate main application manifest tag; refusing an unsafe manifest edit.")
-          application_tag = app_tag.group(0)
+          application_tag = manifest_source[app_start:app_end + 1]
           if 'tools:replace=' not in application_tag:
               updated_tag = application_tag[:-1] + ' tools:replace="android:label">'
-              manifest_source = manifest_source[:app_tag.start()] + updated_tag + manifest_source[app_tag.end():]
+              manifest_source = manifest_source[:app_start] + updated_tag + manifest_source[app_end + 1:]
           main_manifest.write_text(manifest_source)
 
           tv_manifest = Path("app/src/tv/AndroidManifest.xml")
