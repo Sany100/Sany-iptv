@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
     private var animeEpisodePanel: View? = null
     private var animeCenterPlayButton: TextView? = null
     private var animePlayerTitleOverlay: TextView? = null
-    private var displayedLimit = if (isTvDevice) 24 else 60
+    private var displayedLimit = 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
@@ -196,7 +196,7 @@ class MainActivity : AppCompatActivity() {
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
                     // Decode logos near their on-screen size instead of allocating full-resolution
                     // bitmaps for every visible channel (reduces TV memory pressure / OOM risk).
-                    val targetPixels = (dp(64) * resources.displayMetrics.density).toInt().coerceAtLeast(64)
+                    val targetPixels = dp(64).coerceAtLeast(64)
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
                     var sample = 1
@@ -224,6 +224,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Resolve TV capabilities only after Activity attachment; keep constructor safe.
+        displayedLimit = if (isTvDevice) 24 else 60
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
         // Refresh EPG on every fresh app launch, without blocking the first screen.
