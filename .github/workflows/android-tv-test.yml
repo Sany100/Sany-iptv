@@ -28,7 +28,10 @@ jobs:
           gradle-version: '9.3.1'
       - name: Install Android API 37 compile platform
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37"
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -n "$SDKMANAGER" || (echo "Android SDK Manager not found" && exit 1)
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "platforms;android-37"
       - name: Add separate Android TV product flavor to the released source
         run: |
           python3 - <<'PY'
