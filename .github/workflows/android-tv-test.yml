@@ -2,7 +2,6 @@ name: Android TV Test APK (No Release)
 on:
   push:
     branches:
-      - fix/android-tv-performance-20261126
       - main
     paths:
       - 'app/**'
@@ -53,9 +52,9 @@ jobs:
           test -n "$SANY_KEYSTORE_PASSWORD" || (echo "Missing SANY_RELEASE_STORE_PASSWORD repository secret" && exit 1)
           test -n "$SANY_KEY_ALIAS" || (echo "Missing SANY_RELEASE_KEY_ALIAS repository secret" && exit 1)
           test -n "$SANY_KEY_PASSWORD" || (echo "Missing SANY_RELEASE_KEY_PASSWORD repository secret" && exit 1)
-          gradle assembleRelease -PAPP_VERSION_NAME="1.2.367-tvtest" -PAPP_VERSION_CODE="367"
+          gradle assembleTvRelease -PAPP_VERSION_NAME="1.2.368-tvtest" -PAPP_VERSION_CODE="368"
       - uses: actions/upload-artifact@v4
         with:
-          name: sany-iptv-android-tv-test-1.2.367
-          path: app/build/outputs/apk/release/app-release.apk
+          name: sany-iptv-android-tv-test-1.2.368
+          path: app/build/outputs/apk/tv/release/app-tv-release.apk
           retention-days: 14
