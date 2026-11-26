@@ -1,4 +1,4 @@
-name: Android TV Test APK (No Release)
+name: Android TV Release APK
 on:
   push:
     branches:
@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  build-test-apk:
+  build-release-apk:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
           test -n "$KEYSTORE_BASE64" || (echo "Missing SANY_RELEASE_KEYSTORE_BASE64 repository secret" && exit 1)
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sany-release.jks"
           echo "SANY_KEYSTORE_PATH=$RUNNER_TEMP/sany-release.jks" >> "$GITHUB_ENV"
-      - name: Build signed test APK (no GitHub Release)
+      - name: Build signed production release APK (artifact only; no GitHub Release)
         env:
           SANY_KEYSTORE_PASSWORD: ${{ secrets.SANY_RELEASE_STORE_PASSWORD }}
           SANY_KEY_ALIAS: ${{ secrets.SANY_RELEASE_KEY_ALIAS }}
@@ -52,7 +52,7 @@ jobs:
           test -n "$SANY_KEYSTORE_PASSWORD" || (echo "Missing SANY_RELEASE_STORE_PASSWORD repository secret" && exit 1)
           test -n "$SANY_KEY_ALIAS" || (echo "Missing SANY_RELEASE_KEY_ALIAS repository secret" && exit 1)
           test -n "$SANY_KEY_PASSWORD" || (echo "Missing SANY_RELEASE_KEY_PASSWORD repository secret" && exit 1)
-          gradle assembleTvRelease -PAPP_VERSION_NAME="1.2.369-tvtest" -PAPP_VERSION_CODE="369"
+          gradle assembleTvRelease -PAPP_VERSION_NAME="1.2.369" -PAPP_VERSION_CODE="369"
           APK="app/build/outputs/apk/tv/release/app-tv-release.apk"
           test -s "$APK"
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
@@ -60,6 +60,6 @@ jobs:
           "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|uses-feature:)"
       - uses: actions/upload-artifact@v4
         with:
-          name: sany-iptv-android-tv-test-1.2.369
+          name: sany-iptv-android-tv-release-1.2.369
           path: app/build/outputs/apk/tv/release/app-tv-release.apk
           retention-days: 14
