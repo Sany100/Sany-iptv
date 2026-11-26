@@ -1,6 +1,7 @@
 package com.sany.iptv
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.animation.ValueAnimator
 import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
@@ -59,6 +60,15 @@ class MainActivity : AppCompatActivity() {
     private val isTvDevice: Boolean
         get() = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
             (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
+
+    // Some Android TV boxes expose only 1 GB RAM. Detect the platform's low-RAM
+    // classification and keep UI, artwork, stream checks and playback buffers smaller.
+    private val isLowRamTvDevice: Boolean
+        get() {
+            if (!isTvDevice) return false
+            val manager = getSystemService(ActivityManager::class.java) ?: return false
+            return manager.isLowRamDevice || manager.memoryClass <= 128
+        }
     private val isLight: Boolean
         get() = when (prefs.getString("app_theme", "dark")) {
             "light" -> true
@@ -161,9 +171,8 @@ class MainActivity : AppCompatActivity() {
     // A small bounded pool prevents one thread per channel logo on low-memory phones.
     private val logoExecutor by lazy {
         java.util.concurrent.Executors.newFixedThreadPool(
-            // 2 GB Android TV devices have very limited headroom; keep logo
-            // downloads/decodes to two workers to avoid bursts of bitmap memory.
-            if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
+            // A 1 GB TV gets one logo worker; other TVs keep two to limit bitmap bursts.
+            if (isLowRamTvDevice) 1 else if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
         )
     }
 
@@ -198,7 +207,7 @@ class MainActivity : AppCompatActivity() {
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
                     // Decode logos near their on-screen size instead of allocating full-resolution
                     // bitmaps for every visible channel (reduces TV memory pressure / OOM risk).
-                    val targetPixels = dp(64).coerceAtLeast(64)
+                    val targetPixels = dp(if (isLowRamTvDevice) 48 else 64).coerceAtLeast(48)
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
                     var sample = 1
@@ -227,7 +236,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Resolve TV capabilities only after Activity attachment; keep constructor safe.
-        displayedLimit = if (isTvDevice) 24 else 60
+        displayedLimit = if (isTvDevice) if (isLowRamTvDevice) 12 else 24 else 60
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
         // Refresh EPG on every fresh app launch, without blocking the first screen.
@@ -3179,13 +3188,15 @@ class MainActivity : AppCompatActivity() {
                     val checkedCount = checkerProgressCount.get()
                     val publishLimit = when {
                         !checkerRunning -> Int.MAX_VALUE
+                        isLowRamTvDevice && channels.isNotEmpty() && checkedCount * 2 >= channels.size -> 24
+                        isLowRamTvDevice -> 12
                         channels.isNotEmpty() && checkedCount * 2 >= channels.size -> 60
                         else -> 30
                     }
                     val readyCount = channels.count { streamChecks[it.url]?.first == "Working" }.coerceAtMost(publishLimit)
                     // On TV, batch successful stream updates. Rebuilding the complete
                     // channel view for every probe result creates visible frame drops.
-                    val refreshStep = if (isTvDevice) 6 else 1
+                    val refreshStep = if (isLowRamTvDevice) 12 else if (isTvDevice) 6 else 1
                     if (readyCount >= liveTvPublishedCount + refreshStep ||
                         (!checkerRunning && liveTvPublishedCount != readyCount)) {
                         liveTvPublishedCount = readyCount
@@ -3310,7 +3321,7 @@ class MainActivity : AppCompatActivity() {
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
         // TV boxes commonly have tighter CPU/RAM budgets than phones.
         // Keep background probes bounded so checking cannot starve video/UI rendering.
-        val maxWorkers = if (isTvDevice) 6 else when {
+        val maxWorkers = if (isLowRamTvDevice) 2 else if (isTvDevice) 6 else when {
             Build.VERSION.SDK_INT >= 34 -> 48
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 32
             else -> 8
@@ -3741,6 +3752,33 @@ class MainActivity : AppCompatActivity() {
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(streamDataSourceFactory)
 
+        // Reduce ExoPlayer's target memory footprint on 1 GB Android TV devices.
+        val loadControlBuilder = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                if (isLowRamTvDevice) 1500 else if (highSpeedStreaming) 3000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                    "low" -> 1500
+                    "high" -> 3500
+                    else -> 2500
+                },
+                if (isLowRamTvDevice) 12000 else if (highSpeedStreaming) 24000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                    "low" -> 12000
+                    "high" -> 30000
+                    else -> 20000
+                },
+                if (isLowRamTvDevice) 750 else if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                    "low" -> 750
+                    "high" -> 1500
+                    else -> 1000
+                },
+                if (isLowRamTvDevice) 2000 else if (highSpeedStreaming) 3500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                    "low" -> 2000
+                    "high" -> 5000
+                    else -> 3000
+                }
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+        if (isLowRamTvDevice) loadControlBuilder.setTargetBufferBytes(8 * 1024 * 1024)
+
         // Use Media3's platform-default decoder ordering for every section.
         // A custom codec-priority selector can force a broken software/hardware decoder
         // to the front of the list and crash playback across Live TV, Movies and Anime.
@@ -3764,33 +3802,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 applyVideoQuality(selector)
             })
-            .setLoadControl(
-                DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(
-                        if (highSpeedStreaming) 3000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 1500
-                            "high" -> 3500
-                            else -> 2500
-                        },
-                        if (highSpeedStreaming) 24000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 12000
-                            "high" -> 30000
-                            else -> 20000
-                        },
-                        if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 750
-                            "high" -> 1500
-                            else -> 1000
-                        },
-                        if (highSpeedStreaming) 3500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                            "low" -> 2000
-                            "high" -> 5000
-                            else -> 3000
-                        }
-                    )
-                    .setPrioritizeTimeOverSizeThresholds(true)
-                    .build()
-            )
+            .setLoadControl(loadControlBuilder.build())
             .build().also { created ->
                 created.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
@@ -4491,9 +4503,9 @@ class MainActivity : AppCompatActivity() {
                 "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(4_000_000)
                 "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(8_000_000)
                 else -> {
-                    // Auto lets HLS/DASH adaptive selection choose the best supported
-                    // rendition for the current bandwidth and device decoder.
-                    builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
+                    // A 1 GB TV uses a 720p ceiling in Auto mode to reduce decoder/GPU pressure.
+                    if (isLowRamTvDevice) builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(3_500_000)
+                    else builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
                 }
             }
             target.setParameters(builder)
@@ -4503,7 +4515,10 @@ class MainActivity : AppCompatActivity() {
             "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
             "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
             "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
-            else -> if (prefs.getBoolean("high_speed_streaming", true)) {
+            else -> if (isLowRamTvDevice) {
+                // Keep adaptive playback within 720p on 1 GB Android TV hardware.
+                builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(3_500_000)
+            } else if (prefs.getBoolean("high_speed_streaming", true)) {
                 // In high-speed mode, allow the source's highest available adaptive track.
                 builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
             } else if (prefs.getBoolean("low_data_mode", defaultLowInternetMode)) {
