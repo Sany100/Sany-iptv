@@ -115,8 +115,6 @@ jobs:
 
   sany-release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -202,13 +200,3 @@ jobs:
           name: sany-cloudstream-library-release-v1.2.452
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-      - name: Publish GitHub Release automatically
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          name: SANY IPTV v${{ env.RELEASE_VERSION }}
-          target_commitish: ${{ github.sha }}
-          files: app/build/outputs/apk/release/app-release.apk
-          generate_release_notes: true
-          make_latest: true
-          fail_on_unmatched_files: true
