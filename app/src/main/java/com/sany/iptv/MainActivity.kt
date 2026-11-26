@@ -1502,7 +1502,7 @@ class MainActivity : AppCompatActivity() {
                     searchQuery = value.trim()
                     liveTvSearchQuery = searchQuery
                     prefs.edit().putString("live_tv_search", liveTvSearchQuery).apply()
-                    displayedLimit = 60
+                    displayedLimit = if (isTvDevice) 24 else 60
                     renderChannelRows(listContainer)
                 })
             }
@@ -1568,7 +1568,7 @@ class MainActivity : AppCompatActivity() {
                             .putString("ui_search", "")
                             .apply()
                     }
-                    displayedLimit = 60
+                    displayedLimit = if (isTvDevice) 24 else 60
                     renderListOnly()
                 }
             }
@@ -1902,7 +1902,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += 120
+                displayedLimit += if (isTvDevice) 24 else 120
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(50)).apply {
                 topMargin = dp(8)
@@ -2017,7 +2017,7 @@ class MainActivity : AppCompatActivity() {
                         selectedGroup = "All"
                         searchQuery = ""
                     }
-                    displayedLimit = 60
+                    displayedLimit = if (isTvDevice) 24 else 60
                     // Reuse the existing shell and header; rebuild only the page content
                     // and the five small navigation items. This avoids a full-screen layout
                     // pass on every menu tap.
