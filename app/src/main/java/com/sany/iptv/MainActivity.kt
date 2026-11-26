@@ -161,7 +161,9 @@ class MainActivity : AppCompatActivity() {
     // A small bounded pool prevents one thread per channel logo on low-memory phones.
     private val logoExecutor by lazy {
         java.util.concurrent.Executors.newFixedThreadPool(
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
+            // 2 GB Android TV devices have very limited headroom; keep logo
+            // downloads/decodes to two workers to avoid bursts of bitmap memory.
+            if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
         )
     }
 
@@ -194,8 +196,19 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
+                    // Decode logos near their on-screen size instead of allocating full-resolution
+                    // bitmaps for every visible channel (reduces TV memory pressure / OOM risk).
+                    val targetPixels = dp(64).coerceAtLeast(64)
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
+                    var sample = 1
+                    while (bounds.outWidth / (sample * 2) >= targetPixels &&
+                        bounds.outHeight / (sample * 2) >= targetPixels) {
+                        sample *= 2
+                    }
                     val options = BitmapFactory.Options().apply {
                         inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                        inSampleSize = sample
                     }
                     val bitmap = BitmapFactory.decodeFile(cachedFile.absolutePath, options)
                     if (bitmap != null) runOnUiThread {
@@ -213,6 +226,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Resolve TV capabilities only after Activity attachment; keep constructor safe.
+        displayedLimit = if (isTvDevice) 24 else 60
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
         // Refresh EPG on every fresh app launch, without blocking the first screen.
@@ -319,6 +334,9 @@ class MainActivity : AppCompatActivity() {
         } else if (channels.isNotEmpty()) {
             startPlaylistCheck(false)
         }
+        // On the next launch, surface the previous uncaught-crash report so TV users
+        // can copy it without needing ADB or Logcat access.
+        showPreviousCrashReport()
     }
 
     // Register this installation for owner-wide update announcements through Firebase Cloud Messaging.
@@ -1010,15 +1028,13 @@ class MainActivity : AppCompatActivity() {
         view.isFocusable = true
         view.isFocusableInTouchMode = false
         view.setOnFocusChangeListener { focusedView, hasFocus ->
+            // Keep TV focus feedback crisp without per-item scale animations.
             focusedView.foreground = if (hasFocus) GradientDrawable().apply {
-                setColor(Color.TRANSPARENT)
+                setColor(Color.argb(34, 55, 145, 255))
                 cornerRadius = dp(12).toFloat()
-                setStroke(dp(2), accent)
+                setStroke(dp(3), accent)
             } else null
-            focusedView.animate().cancel()
-            focusedView.animate().scaleX(if (hasFocus) 1.035f else 1f)
-                .scaleY(if (hasFocus) 1.035f else 1f)
-                .setDuration(110).start()
+            focusedView.elevation = if (hasFocus) dp(3).toFloat() else 0f
             if (hasFocus) focusedView.requestRectangleOnScreen(
                 android.graphics.Rect(0, 0, focusedView.width, focusedView.height), true
             )
@@ -1468,7 +1484,7 @@ class MainActivity : AppCompatActivity() {
                         .putString("ui_group", selectedGroup)
                         .putString("ui_search", "")
                         .apply()
-                    displayedLimit = 60
+                    displayedLimit = if (isTvDevice) 24 else 60
                     renderListOnly()
                 }
             }
@@ -1493,7 +1509,7 @@ class MainActivity : AppCompatActivity() {
                     searchQuery = value.trim()
                     liveTvSearchQuery = searchQuery
                     prefs.edit().putString("live_tv_search", liveTvSearchQuery).apply()
-                    displayedLimit = 60
+                    displayedLimit = if (isTvDevice) 24 else 60
                     renderChannelRows(listContainer)
                 })
             }
@@ -1559,7 +1575,7 @@ class MainActivity : AppCompatActivity() {
                             .putString("ui_search", "")
                             .apply()
                     }
-                    displayedLimit = 60
+                    displayedLimit = if (isTvDevice) 24 else 60
                     renderListOnly()
                 }
             }
@@ -1743,12 +1759,15 @@ class MainActivity : AppCompatActivity() {
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV blinking live indicator"
                 alpha = 1f
-                startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
-                    duration = 900L
-                    repeatMode = android.view.animation.Animation.REVERSE
-                    repeatCount = android.view.animation.Animation.INFINITE
-                    startOffset = (index % 6) * 110L
-                })
+                // Avoid one infinite animation per channel on Android TV.
+                if (!isTvDevice) {
+                    startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
+                        duration = 900L
+                        repeatMode = android.view.animation.Animation.REVERSE
+                        repeatCount = android.view.animation.Animation.INFINITE
+                        startOffset = (index % 6) * 110L
+                    })
+                }
             }
             watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
@@ -1794,7 +1813,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += 120
+                displayedLimit += if (isTvDevice) 24 else 120
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8); bottomMargin = dp(12) })
         }
@@ -1890,7 +1909,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += 120
+                displayedLimit += if (isTvDevice) 24 else 120
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(50)).apply {
                 topMargin = dp(8)
@@ -2005,7 +2024,7 @@ class MainActivity : AppCompatActivity() {
                         selectedGroup = "All"
                         searchQuery = ""
                     }
-                    displayedLimit = 60
+                    displayedLimit = if (isTvDevice) 24 else 60
                     // Reuse the existing shell and header; rebuild only the page content
                     // and the five small navigation items. This avoids a full-screen layout
                     // pass on every menu tap.
@@ -3164,7 +3183,11 @@ class MainActivity : AppCompatActivity() {
                         else -> 30
                     }
                     val readyCount = channels.count { streamChecks[it.url]?.first == "Working" }.coerceAtMost(publishLimit)
-                    if (readyCount > liveTvPublishedCount || (!checkerRunning && liveTvPublishedCount != readyCount)) {
+                    // On TV, batch successful stream updates. Rebuilding the complete
+                    // channel view for every probe result creates visible frame drops.
+                    val refreshStep = if (isTvDevice) 6 else 1
+                    if (readyCount >= liveTvPublishedCount + refreshStep ||
+                        (!checkerRunning && liveTvPublishedCount != readyCount)) {
                         liveTvPublishedCount = readyCount
                         renderListOnly()
                     }
@@ -3285,11 +3308,9 @@ class MainActivity : AppCompatActivity() {
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        // Scale checker concurrency by Android version.
-        // Android 14+ uses 48 workers; Android 10-13 uses 32.
-        // Android 6-9 uses 8 workers.
-        // Actual throughput still depends on device resources and server throttling.
-        val maxWorkers = when {
+        // TV boxes commonly have tighter CPU/RAM budgets than phones.
+        // Keep background probes bounded so checking cannot starve video/UI rendering.
+        val maxWorkers = if (isTvDevice) 6 else when {
             Build.VERSION.SDK_INT >= 34 -> 48
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 32
             else -> 8
@@ -5181,7 +5202,7 @@ class MainActivity : AppCompatActivity() {
         background = glass(30)
     }
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value; textSize = (size * if (isTvDevice) 1.15f else 1f); setTextColor(color)
+        text = value; textSize = size.toFloat(); setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
     private fun premiumBackdrop() = GradientDrawable(
@@ -5218,8 +5239,8 @@ class MainActivity : AppCompatActivity() {
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
     private fun dp(v: Int): Int {
-        val tvScale = if (isTvDevice) 1.15f else 1f
-        return (v * resources.displayMetrics.density * tvScale).toInt()
+        // Use native Android density scaling; avoid an extra 15% TV oversize factor.
+        return (v * resources.displayMetrics.density).toInt()
     }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }
