@@ -141,7 +141,7 @@ class MainActivity : AppCompatActivity() {
     private var animeEpisodePanel: View? = null
     private var animeCenterPlayButton: TextView? = null
     private var animePlayerTitleOverlay: TextView? = null
-    private var displayedLimit = 60
+    private var displayedLimit = if (isTvDevice) 24 else 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
@@ -194,8 +194,19 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
+                    // Decode logos near their on-screen size instead of allocating full-resolution
+                    // bitmaps for every visible channel (reduces TV memory pressure / OOM risk).
+                    val targetPixels = (dp(64) * resources.displayMetrics.density).toInt().coerceAtLeast(64)
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
+                    var sample = 1
+                    while (bounds.outWidth / (sample * 2) >= targetPixels &&
+                        bounds.outHeight / (sample * 2) >= targetPixels) {
+                        sample *= 2
+                    }
                     val options = BitmapFactory.Options().apply {
                         inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                        inSampleSize = sample
                     }
                     val bitmap = BitmapFactory.decodeFile(cachedFile.absolutePath, options)
                     if (bitmap != null) runOnUiThread {
@@ -1010,15 +1021,13 @@ class MainActivity : AppCompatActivity() {
         view.isFocusable = true
         view.isFocusableInTouchMode = false
         view.setOnFocusChangeListener { focusedView, hasFocus ->
+            // Keep TV focus feedback crisp without per-item scale animations.
             focusedView.foreground = if (hasFocus) GradientDrawable().apply {
-                setColor(Color.TRANSPARENT)
+                setColor(Color.argb(34, 55, 145, 255))
                 cornerRadius = dp(12).toFloat()
-                setStroke(dp(2), accent)
+                setStroke(dp(3), accent)
             } else null
-            focusedView.animate().cancel()
-            focusedView.animate().scaleX(if (hasFocus) 1.035f else 1f)
-                .scaleY(if (hasFocus) 1.035f else 1f)
-                .setDuration(110).start()
+            focusedView.elevation = if (hasFocus) dp(3).toFloat() else 0f
             if (hasFocus) focusedView.requestRectangleOnScreen(
                 android.graphics.Rect(0, 0, focusedView.width, focusedView.height), true
             )
@@ -1468,7 +1477,7 @@ class MainActivity : AppCompatActivity() {
                         .putString("ui_group", selectedGroup)
                         .putString("ui_search", "")
                         .apply()
-                    displayedLimit = 60
+                    displayedLimit = if (isTvDevice) 24 else 60
                     renderListOnly()
                 }
             }
@@ -1743,12 +1752,15 @@ class MainActivity : AppCompatActivity() {
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV blinking live indicator"
                 alpha = 1f
-                startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
-                    duration = 900L
-                    repeatMode = android.view.animation.Animation.REVERSE
-                    repeatCount = android.view.animation.Animation.INFINITE
-                    startOffset = (index % 6) * 110L
-                })
+                // Avoid one infinite animation per channel on Android TV.
+                if (!isTvDevice) {
+                    startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
+                        duration = 900L
+                        repeatMode = android.view.animation.Animation.REVERSE
+                        repeatCount = android.view.animation.Animation.INFINITE
+                        startOffset = (index % 6) * 110L
+                    })
+                }
             }
             watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
@@ -1794,7 +1806,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += 120
+                displayedLimit += if (isTvDevice) 24 else 120
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8); bottomMargin = dp(12) })
         }
@@ -5181,7 +5193,7 @@ class MainActivity : AppCompatActivity() {
         background = glass(30)
     }
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value; textSize = (size * if (isTvDevice) 1.15f else 1f); setTextColor(color)
+        text = value; textSize = size.toFloat(); setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
     private fun premiumBackdrop() = GradientDrawable(
@@ -5218,8 +5230,8 @@ class MainActivity : AppCompatActivity() {
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
     private fun dp(v: Int): Int {
-        val tvScale = if (isTvDevice) 1.15f else 1f
-        return (v * resources.displayMetrics.density * tvScale).toInt()
+        // Use native Android density scaling; avoid an extra 15% TV oversize factor.
+        return (v * resources.displayMetrics.density).toInt()
     }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }
