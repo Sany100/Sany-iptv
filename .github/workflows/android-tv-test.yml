@@ -82,8 +82,11 @@ jobs:
           # Override only the TV flavor launcher label; mobile remains "SANY IPTV".
           tv_manifest = Path("app/src/tv/AndroidManifest.xml")
           tv_manifest.parent.mkdir(parents=True, exist_ok=True)
-          tv_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application android:label="SANY IPTV Android TV" />
+          tv_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:tools="http://schemas.android.com/tools">
+              <application
+                  android:label="SANY IPTV Android TV"
+                  tools:replace="android:label" />
           </manifest>
           """)
 
