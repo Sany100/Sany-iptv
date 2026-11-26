@@ -14,10 +14,10 @@ jobs:
   build-release-apk:
     runs-on: ubuntu-latest
     steps:
-      # Build the exact source snapshot used by the latest released Android app.
+      # Build the current Android app source so the TV APK receives the latest mobile features and fixes.
       - uses: actions/checkout@v4
         with:
-          ref: v1.2.452
+          ref: main
           submodules: recursive
       - uses: actions/setup-java@v4
         with:
@@ -67,10 +67,16 @@ jobs:
               if marker not in source:
                   raise SystemExit("Could not locate buildTypes block; refusing an unsafe Gradle edit.")
               source = source.replace(marker, flavor_block + marker, 1)
-          if "compileSdk = 36" in source:
-              source = source.replace("compileSdk = 36", "compileSdk = 37", 1)
-          elif "compileSdk = 37" not in source:
-              raise SystemExit("Unexpected compileSdk value; refusing an unsafe Gradle edit.")
+          # Use the installed Android 37 compile platform regardless of the current mobile baseline.
+          compile_sdk_matches = list(re.finditer(r"(?m)^(\\s*compileSdk\\s*=\\s*)\\d+\\s*$", source))
+          if len(compile_sdk_matches) != 1:
+              raise SystemExit("Could not uniquely locate compileSdk; refusing an unsafe Gradle edit.")
+          source = re.sub(
+              r"(?m)^(\\s*compileSdk\\s*=\\s*)\\d+\\s*$",
+              r"\\g<1>37",
+              source,
+              count=1
+          )
           if 'enableV1Signing = true' not in source:
               source = source.replace(
                   '        create("release") {',
@@ -184,19 +190,24 @@ jobs:
           '''
           main_source = main_source[:start] + static_dot + main_source[end:]
 
-          # Remove only the CONNECTED dot animator; keep its green dot and label.
+          # Remove only the CONNECTED dot animator when the source has one.
+          # Newer Android app sources already render this status as a static text indicator.
           connected_start = '            android.animation.ObjectAnimator.ofFloat(connectedDot'
           connected_end = '            connectionStatus.addView(text(" CONNECTED"'
-          if main_source.count(connected_start) != 1 or main_source.count(connected_end) != 1:
-              raise SystemExit("Could not uniquely locate CONNECTED dot animation; refusing an unsafe TV edit.")
-          start = main_source.index(connected_start)
-          end = main_source.index(connected_end, start)
-          if end <= start:
-              raise SystemExit("Unexpected CONNECTED status layout; refusing an unsafe TV edit.")
-          main_source = main_source[:start] + main_source[end:]
+          start_count = main_source.count(connected_start)
+          end_count = main_source.count(connected_end)
+          if start_count == 1 and end_count == 1:
+              start = main_source.index(connected_start)
+              end = main_source.index(connected_end, start)
+              if end <= start:
+                  raise SystemExit("Unexpected CONNECTED status layout; refusing an unsafe TV edit.")
+              main_source = main_source[:start] + main_source[end:]
+          elif start_count != 0 or end_count != 0:
+              raise SystemExit("Unexpected partial CONNECTED animation block; refusing an unsafe TV edit.")
+          # If neither marker exists, the current source already has no CONNECTED dot animator.
           main_activity.write_text(main_source)
 
-          print("TV flavor label set; channel and CONNECTED dots are static. Mobile source remains unchanged.")
+          print("TV flavor uses current Android source; TV-only display patches applied. Mobile source remains unchanged.")
           PY
       - name: Configure Firebase Analytics
         env:
