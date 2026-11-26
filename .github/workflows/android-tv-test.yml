@@ -141,6 +141,15 @@ jobs:
 
           main_activity = Path("app/src/main/java/com/sany/iptv/MainActivity.kt")
           main_source = main_activity.read_text()
+          # Always enable bounded low-memory behavior on Android TV, even if firmware misreports RAM.
+          low_ram_marker = "manager?.isLowRamDevice == true || (manager?.memoryClass ?: 256) <= 128"
+          if main_source.count(low_ram_marker) != 1:
+              raise SystemExit("Could not uniquely locate low-memory policy; refusing an unsafe TV edit.")
+          main_source = main_source.replace(
+              low_ram_marker,
+              "isTvDevice || manager?.isLowRamDevice == true || (manager?.memoryClass ?: 256) <= 128",
+              1
+          )
           on_create_pattern = re.compile(
               r"(?m)^    override fun onCreate\(savedInstanceState: Bundle\?\) \{\n        super\.onCreate\(savedInstanceState\)\n"
           )
