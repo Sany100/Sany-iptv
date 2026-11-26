@@ -68,12 +68,12 @@ jobs:
                   raise SystemExit("Could not locate buildTypes block; refusing an unsafe Gradle edit.")
               source = source.replace(marker, flavor_block + marker, 1)
           # Use the installed Android 37 compile platform regardless of the current mobile baseline.
-          compile_sdk_matches = list(re.finditer(r"(?m)^(\\s*compileSdk\\s*=\\s*)\\d+\\s*$", source))
+          compile_sdk_matches = list(re.finditer(r"(?m)^(\s*compileSdk\s*=\s*)\d+\s*$", source))
           if len(compile_sdk_matches) != 1:
               raise SystemExit("Could not uniquely locate compileSdk; refusing an unsafe Gradle edit.")
           source = re.sub(
-              r"(?m)^(\\s*compileSdk\\s*=\\s*)\\d+\\s*$",
-              r"\\g<1>37",
+              r"(?m)^(\s*compileSdk\s*=\s*)\d+\s*$",
+              r"\g<1>37",
               source,
               count=1
           )
