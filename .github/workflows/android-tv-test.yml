@@ -142,7 +142,7 @@ jobs:
           main_activity = Path("app/src/main/java/com/sany/iptv/MainActivity.kt")
           main_source = main_activity.read_text()
           on_create_pattern = re.compile(
-              r"(?m)^    override fun onCreate\\(savedInstanceState: Bundle\\?\\) \\{\\n        super\\.onCreate\\(savedInstanceState\\)\\n"
+              r"(?m)^    override fun onCreate\(savedInstanceState: Bundle\?\) \{\n        super\.onCreate\(savedInstanceState\)\n"
           )
           on_create_matches = list(on_create_pattern.finditer(main_source))
           if len(on_create_matches) != 1:
