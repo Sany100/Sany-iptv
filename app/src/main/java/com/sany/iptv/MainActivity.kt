@@ -1203,7 +1203,7 @@ class MainActivity : AppCompatActivity() {
                 if (isTvDevice) dp(8) else dp(5),
                 if (isTvDevice) dp(12) else dp(2)
             )
-            // TV uses a fixed left-side vertical navigation rail; mobile keeps its bottom dock.
+            // TV uses a compact, auto-collapsing left navigation rail; mobile keeps its bottom dock.
             background = glass(0)
             elevation = dp(18).toFloat()
             translationZ = dp(8).toFloat()
@@ -1213,8 +1213,8 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
+            tvBody.addView(bottomNav, LinearLayout.LayoutParams(dp(68), -1))
             tvBody.addView(contentArea, LinearLayout.LayoutParams(0, -1, 1f))
-            tvBody.addView(bottomNav, LinearLayout.LayoutParams(dp(184), -1))
             home.addView(tvBody, LinearLayout.LayoutParams(-1, 0, 1f))
         } else {
             home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -4191,9 +4191,40 @@ class MainActivity : AppCompatActivity() {
                 val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name, 12, if (active) Color.rgb(115, 190, 255) else muted, active).apply {
                     gravity = if (isTvDevice) Gravity.CENTER_VERTICAL or Gravity.START else Gravity.CENTER
                     setPadding(0, 0, 0, 0)
+                    if (isTvDevice) visibility = View.GONE
                 }
                 if (name == "Live TV") liveTvNavLabel = navLabel
                 item.addView(navLabel)
+            }
+            if (isTvDevice) {
+                item.setOnFocusChangeListener { focusedView, hasFocus ->
+                    focusedView.foreground = if (hasFocus) GradientDrawable().apply {
+                        setColor(Color.TRANSPARENT)
+                        cornerRadius = dp(12).toFloat()
+                        setStroke(dp(2), accent)
+                    } else null
+                    focusedView.animate().cancel()
+                    focusedView.animate().scaleX(if (hasFocus) 1.035f else 1f)
+                        .scaleY(if (hasFocus) 1.035f else 1f).setDuration(110).start()
+                    val labelView = item.getChildAt(item.childCount - 1)
+                    if (labelView is TextView) labelView.visibility = if (hasFocus) View.VISIBLE else View.GONE
+                    if (hasFocus) {
+                        bottomNav.layoutParams = bottomNav.layoutParams.apply { width = dp(184) }
+                        bottomNav.requestLayout()
+                    } else {
+                        bottomNav.postDelayed({
+                            if (!bottomNav.hasFocus()) {
+                                for (index in 0 until bottomNav.childCount) {
+                                    val navItem = bottomNav.getChildAt(index) as? ViewGroup ?: continue
+                                    val label = navItem.getChildAt(navItem.childCount - 1)
+                                    if (label is TextView) label.visibility = View.GONE
+                                }
+                                bottomNav.layoutParams = bottomNav.layoutParams.apply { width = dp(68) }
+                                bottomNav.requestLayout()
+                            }
+                        }, 900)
+                    }
+                }
             }
             bottomNav.addView(
                 item,
