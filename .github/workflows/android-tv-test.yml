@@ -92,7 +92,7 @@ jobs:
                   '<manifest xmlns:tools="http://schemas.android.com/tools" ',
                   1
               )
-          app_tag = re.search(r'<application\\b[^>]*>', manifest_source)
+          app_tag = re.search(r'<application\b[^>]*>', manifest_source)
           if not app_tag:
               raise SystemExit("Could not locate main application manifest tag; refusing an unsafe manifest edit.")
           application_tag = app_tag.group(0)
