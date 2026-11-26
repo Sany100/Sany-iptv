@@ -77,7 +77,16 @@ jobs:
                   1
               )
           path.write_text(source)
-          print("TV flavor added to v1.2.452 source; mobile source and settings remain unchanged.")
+
+          # Override only the TV flavor launcher label; mobile remains "SANY IPTV".
+          tv_manifest = Path("app/src/tv/AndroidManifest.xml")
+          tv_manifest.parent.mkdir(parents=True, exist_ok=True)
+          tv_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application android:label="SANY IPTV Android TV" />
+          </manifest>
+          """)
+
+          print("TV flavor added with launcher label SANY IPTV Android TV; mobile source and settings remain unchanged.")
           PY
       - name: Configure Firebase Analytics
         env:
