@@ -104,10 +104,25 @@ jobs:
 
           tv_manifest = Path("app/src/tv/AndroidManifest.xml")
           tv_manifest.parent.mkdir(parents=True, exist_ok=True)
+          # Android TV launchers use a wide banner, not only the phone adaptive icon.
+          # Compose the banner from the existing SANY logo so no new binary artwork is needed.
+          banner_dir = Path("app/src/main/res/drawable")
+          banner_dir.mkdir(parents=True, exist_ok=True)
+          (banner_dir / "tv_banner.xml").write_text("""<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+              <item android:drawable="@color/launcher_background" />
+              <item
+                  android:width="120dp"
+                  android:height="120dp"
+                  android:gravity="center"
+                  android:drawable="@drawable/sany_logo_icon" />
+          </layer-list>
+          """)
+
           tv_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android"
               xmlns:tools="http://schemas.android.com/tools">
               <application
                   android:label="SANY IPTV Android TV"
+                  android:banner="@drawable/tv_banner"
                   tools:replace="android:label" />
           </manifest>
           """)
