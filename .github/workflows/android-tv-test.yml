@@ -31,7 +31,13 @@ jobs:
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
           test -n "$SDKMANAGER" || (echo "Android SDK Manager not found" && exit 1)
           yes | "$SDKMANAGER" --licenses >/dev/null
-          "$SDKMANAGER" --install "platforms;android-37"
+          "$SDKMANAGER" --install "platforms;android-37.0"
+          # Android Gradle Plugin resolves compileSdk 37 using the android-37
+          # directory name, while Google's SDK package is published as 37.0.
+          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+          test -d "$ANDROID_HOME/platforms/android-37"
       - name: Add separate Android TV product flavor to the released source
         run: |
           python3 - <<'PY'
