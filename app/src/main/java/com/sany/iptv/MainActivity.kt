@@ -332,6 +332,9 @@ class MainActivity : AppCompatActivity() {
         } else if (channels.isNotEmpty()) {
             startPlaylistCheck(false)
         }
+        // On the next launch, surface the previous uncaught-crash report so TV users
+        // can copy it without needing ADB or Logcat access.
+        showPreviousCrashReport()
     }
 
     // Register this installation for owner-wide update announcements through Firebase Cloud Messaging.
