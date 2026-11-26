@@ -7511,15 +7511,23 @@ class MainActivity : AppCompatActivity() {
             home.layoutParams = FrameLayout.LayoutParams(-1, -1)
         }
         playbackRetryHandler.removeCallbacksAndMessages(null)
-        runCatching { player?.stop() }
-            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player stop failed during close", it) }
-        pipPlaybackActionHandler = null
-        runCatching { playerView?.player = null }
-            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "PlayerView detach failed during close", it) }
-        // Release codec, audio and renderer resources as soon as playback is closed.
-        runCatching { player?.release() }
-            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player release failed during close", it) }
-        player = null
+        if (isTvDevice) {
+            runCatching { player?.stop() }
+                .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player stop failed during close", it) }
+            pipPlaybackActionHandler = null
+            runCatching { playerView?.player = null }
+                .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "PlayerView detach failed during close", it) }
+            // Isolate native TV renderer teardown so one failure cannot crash TV navigation.
+            runCatching { player?.release() }
+                .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player release failed during close", it) }
+            player = null
+        } else {
+            player?.stop()
+            pipPlaybackActionHandler = null
+            playerView?.player = null
+            player?.release()
+            player = null
+        }
         trackSelector = null
         playerView = null
         animeEpisodePanel = null
@@ -8027,16 +8035,24 @@ class MainActivity : AppCompatActivity() {
         }
         // Make TV task teardown idempotent: detach UI and release native playback/WebView
         // resources independently so one cleanup failure cannot crash app exit.
-        runCatching { playerView?.player = null }
-            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "PlayerView detach failed", it) }
-        runCatching { moviesWebView?.stopLoading() }
-        runCatching { moviesWebView?.destroy() }
-            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Movies WebView destroy failed", it) }
-        moviesWebView = null
-        runCatching { player?.release() }
-            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player release failed", it) }
-        player = null
-        runCatching { logoExecutor.shutdownNow() }
+        if (isTvDevice) {
+            runCatching { playerView?.player = null }
+                .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "PlayerView detach failed", it) }
+            runCatching { moviesWebView?.stopLoading() }
+            runCatching { moviesWebView?.destroy() }
+                .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Movies WebView destroy failed", it) }
+            moviesWebView = null
+            runCatching { player?.release() }
+                .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player release failed", it) }
+            player = null
+            runCatching { logoExecutor.shutdownNow() }
+        } else {
+            playerView?.player = null
+            moviesWebView?.apply { stopLoading(); destroy() }
+            moviesWebView = null
+            player?.release(); player = null
+            logoExecutor.shutdownNow()
+        }
         if (CommonActivity.activity === this) CommonActivity.setActivityInstance(null)
         super.onDestroy()
     }
