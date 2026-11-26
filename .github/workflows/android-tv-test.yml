@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/android-tv-performance-20261126
+      - main
     paths:
       - 'app/**'
       - 'gradle/**'
