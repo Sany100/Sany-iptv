@@ -52,9 +52,14 @@ jobs:
           test -n "$SANY_KEYSTORE_PASSWORD" || (echo "Missing SANY_RELEASE_STORE_PASSWORD repository secret" && exit 1)
           test -n "$SANY_KEY_ALIAS" || (echo "Missing SANY_RELEASE_KEY_ALIAS repository secret" && exit 1)
           test -n "$SANY_KEY_PASSWORD" || (echo "Missing SANY_RELEASE_KEY_PASSWORD repository secret" && exit 1)
-          gradle assembleTvRelease -PAPP_VERSION_NAME="1.2.368-tvtest" -PAPP_VERSION_CODE="368"
+          gradle assembleTvRelease -PAPP_VERSION_NAME="1.2.369-tvtest" -PAPP_VERSION_CODE="369"
+          APK="app/build/outputs/apk/tv/release/app-tv-release.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|uses-feature:)"
       - uses: actions/upload-artifact@v4
         with:
-          name: sany-iptv-android-tv-test-1.2.368
+          name: sany-iptv-android-tv-test-1.2.369
           path: app/build/outputs/apk/tv/release/app-tv-release.apk
           retention-days: 14
