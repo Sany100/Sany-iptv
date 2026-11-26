@@ -88,20 +88,35 @@ jobs:
           """)
 
           # Keep both SANY indicators static in the TV build only.
+          # Replace the complete watermark-dot declaration by its static equivalent.
           main_activity = Path("app/src/main/java/com/sany/iptv/MainActivity.kt")
           main_source = main_activity.read_text()
-          main_source, channel_count = re.subn(
-              r'startAnimation\(android\.view\.animation\.AlphaAnimation\(0\.22f, 1f\)\.apply \{\s*duration = 900L\s*repeatMode = android\.view\.animation\.Animation\.REVERSE\s*repeatCount = android\.view\.animation\.Animation\.INFINITE\s*startOffset = \(index % 6\) \* 110L\s*\}\)',
-              '', main_source, count=1
-          )
-          main_source, connected_count = re.subn(
-              r'android\.animation\.ObjectAnimator\.ofFloat\(connectedDot, View\.ALPHA, 1f, 0\.18f\)\.apply \{\s*duration = 650L\s*repeatMode = android\.animation\.ValueAnimator\.REVERSE\s*repeatCount = android\.animation\.ValueAnimator\.INFINITE\s*start\(\)\s*\}',
-              '', main_source, count=1
-          )
-          if channel_count != 1:
-              raise SystemExit("Could not locate channel watermark animation; refusing an unsafe TV edit.")
-          if connected_count != 1:
-              raise SystemExit("Could not locate CONNECTED dot animation; refusing an unsafe TV edit.")
+
+          dot_start = '            val liveDot = text("●"'
+          dot_end = '            watermarkLine.addView(liveDot'
+          if main_source.count(dot_start) != 1 or main_source.count(dot_end) != 1:
+              raise SystemExit("Could not uniquely locate channel watermark dot; refusing an unsafe TV edit.")
+          start = main_source.index(dot_start)
+          end = main_source.index(dot_end, start)
+          if end <= start:
+              raise SystemExit("Unexpected channel watermark layout; refusing an unsafe TV edit.")
+          static_dot = '''            val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
+                  contentDescription = "SANY IPTV live indicator"
+                  alpha = 1f
+              }
+          '''
+          main_source = main_source[:start] + static_dot + main_source[end:]
+
+          # Remove only the CONNECTED dot animator; keep its green dot and label.
+          connected_start = '            android.animation.ObjectAnimator.ofFloat(connectedDot'
+          connected_end = '            connectionStatus.addView(text(" CONNECTED"'
+          if main_source.count(connected_start) != 1 or main_source.count(connected_end) != 1:
+              raise SystemExit("Could not uniquely locate CONNECTED dot animation; refusing an unsafe TV edit.")
+          start = main_source.index(connected_start)
+          end = main_source.index(connected_end, start)
+          if end <= start:
+              raise SystemExit("Unexpected CONNECTED status layout; refusing an unsafe TV edit.")
+          main_source = main_source[:start] + main_source[end:]
           main_activity.write_text(main_source)
 
           print("TV flavor label set; channel and CONNECTED dots are static. Mobile source remains unchanged.")
