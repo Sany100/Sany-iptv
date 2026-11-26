@@ -992,7 +992,8 @@ class MainActivity : AppCompatActivity() {
         splash.addView(center, FrameLayout.LayoutParams(-1, -1))
         root.addView(splash, FrameLayout.LayoutParams(-1, -1))
 
-        val logoGlow = ValueAnimator.ofFloat(0.985f, 1.02f).apply {
+        // TV uses a restrained, conventional fade-in; mobile keeps its existing intro.
+        val logoGlow = if (isTvDevice) null else ValueAnimator.ofFloat(0.985f, 1.02f).apply {
             duration = 1200L
             repeatMode = ValueAnimator.REVERSE
             repeatCount = ValueAnimator.INFINITE
@@ -1003,18 +1004,25 @@ class MainActivity : AppCompatActivity() {
             }
             start()
         }
-        logo.animate()
-            .alpha(1f).scaleX(1f).scaleY(1f)
-            .rotationY(360f).rotationX(0f)
-            .setDuration(1150)
-            .setInterpolator(DecelerateInterpolator(1.6f))
-            .start()
-        welcome.animate().alpha(1f).translationY(0f)
-            .setStartDelay(350).setDuration(650)
-            .setInterpolator(DecelerateInterpolator()).start()
-        center.getChildAt(2).animate().alpha(1f)
-            .setStartDelay(650).setDuration(500)
-            .setInterpolator(DecelerateInterpolator()).start()
+        if (isTvDevice) {
+            logo.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(220).setInterpolator(DecelerateInterpolator()).start()
+            welcome.animate().alpha(1f).setDuration(220).start()
+            center.getChildAt(2).animate().alpha(1f).setDuration(220).start()
+        } else {
+            logo.animate()
+                .alpha(1f).scaleX(1f).scaleY(1f)
+                .rotationY(360f).rotationX(0f)
+                .setDuration(1150)
+                .setInterpolator(DecelerateInterpolator(1.6f))
+                .start()
+            welcome.animate().alpha(1f).translationY(0f)
+                .setStartDelay(350).setDuration(650)
+                .setInterpolator(DecelerateInterpolator()).start()
+            center.getChildAt(2).animate().alpha(1f)
+                .setStartDelay(650).setDuration(500)
+                .setInterpolator(DecelerateInterpolator()).start()
+        }
 
         // Keep the welcome screen visible for five seconds and show live percentage progress.
         val progressAnimator = ValueAnimator.ofInt(0, 100).apply {
@@ -1027,8 +1035,8 @@ class MainActivity : AppCompatActivity() {
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
-                    logoGlow.cancel()
-                    splash.animate().alpha(0f).setDuration(350).withEndAction {
+                    logoGlow?.cancel()
+                    splash.animate().alpha(0f).setDuration(if (isTvDevice) 180 else 350).withEndAction {
                         root.removeView(splash)
                         scheduleAutoUpdateCheck()
                     }.start()
@@ -1251,9 +1259,9 @@ class MainActivity : AppCompatActivity() {
                 setStroke(dp(2), accent)
             } else null
             focusedView.animate().cancel()
-            focusedView.animate().scaleX(if (hasFocus) 1.035f else 1f)
-                .scaleY(if (hasFocus) 1.035f else 1f)
-                .setDuration(110).start()
+            val focusScale = if (hasFocus) 1.015f else 1f
+            focusedView.animate().scaleX(focusScale).scaleY(focusScale)
+                .setDuration(150).setInterpolator(DecelerateInterpolator()).start()
             if (hasFocus) focusedView.requestRectangleOnScreen(
                 android.graphics.Rect(0, 0, focusedView.width, focusedView.height), true
             )
@@ -3414,23 +3422,29 @@ class MainActivity : AppCompatActivity() {
         })
         contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
 
-        val pulse = ValueAnimator.ofFloat(0.82f, 1.04f).apply {
-            duration = 1050
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-            addUpdateListener { animator ->
-                val scale = animator.animatedValue as Float
-                title.scaleX = scale
-                title.scaleY = scale
-                title.alpha = 0.78f + (scale - 0.82f) * 1.15f
-                emblem.scaleX = 0.94f + (scale - 0.82f) * 0.35f
-                emblem.scaleY = emblem.scaleX
+        if (isTvDevice) {
+            // Static, clean TV placeholder; avoid a continuous CPU/GPU pulse.
+            title.alpha = 1f
+            emblem.alpha = 1f
+        } else {
+            val pulse = ValueAnimator.ofFloat(0.82f, 1.04f).apply {
+                duration = 1050
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+                addUpdateListener { animator ->
+                    val scale = animator.animatedValue as Float
+                    title.scaleX = scale
+                    title.scaleY = scale
+                    title.alpha = 0.78f + (scale - 0.82f) * 1.15f
+                    emblem.scaleX = 0.94f + (scale - 0.82f) * 0.35f
+                    emblem.scaleY = emblem.scaleX
+                }
             }
+            title.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(view: View) { pulse.start() }
+                override fun onViewDetachedFromWindow(view: View) { pulse.cancel() }
+            })
         }
-        title.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(view: View) { pulse.start() }
-            override fun onViewDetachedFromWindow(view: View) { pulse.cancel() }
-        })
     }
 
     private fun showChannelSearchDialog() {
@@ -4204,8 +4218,9 @@ class MainActivity : AppCompatActivity() {
                         setStroke(dp(2), accent)
                     } else null
                     focusedView.animate().cancel()
-                    focusedView.animate().scaleX(if (hasFocus) 1.035f else 1f)
-                        .scaleY(if (hasFocus) 1.035f else 1f).setDuration(110).start()
+                    val focusScale = if (hasFocus) 1.015f else 1f
+                    focusedView.animate().scaleX(focusScale).scaleY(focusScale)
+                        .setDuration(150).setInterpolator(DecelerateInterpolator()).start()
                     val labelView = item.getChildAt(item.childCount - 1)
                     if (labelView is TextView) labelView.visibility = if (hasFocus) View.VISIBLE else View.GONE
                     if (hasFocus) {
@@ -8082,7 +8097,7 @@ class MainActivity : AppCompatActivity() {
             action()
             animate().cancel()
             scaleX = 0.94f; scaleY = 0.94f
-            animate().scaleX(1f).scaleY(1f).setDuration(110)
+            animate().scaleX(1f).scaleY(1f).setDuration(if (isTvDevice) 150 else 110)
                 .setInterpolator(DecelerateInterpolator()).start()
         }
         layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply { leftMargin = dp(8) }
