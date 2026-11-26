@@ -26,6 +26,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
+      - name: Install Android API 37 compile platform
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37"
       - name: Add separate Android TV product flavor to the released source
         run: |
           python3 - <<'PY'
@@ -54,6 +57,10 @@ jobs:
               if marker not in source:
                   raise SystemExit("Could not locate buildTypes block; refusing an unsafe Gradle edit.")
               source = source.replace(marker, flavor_block + marker, 1)
+          if "compileSdk = 36" in source:
+              source = source.replace("compileSdk = 36", "compileSdk = 37", 1)
+          elif "compileSdk = 37" not in source:
+              raise SystemExit("Unexpected compileSdk value; refusing an unsafe Gradle edit.")
           if 'enableV1Signing = true' not in source:
               source = source.replace(
                   '        create("release") {',
