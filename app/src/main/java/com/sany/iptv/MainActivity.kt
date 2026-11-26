@@ -67,7 +67,11 @@ class MainActivity : AppCompatActivity() {
         get() {
             if (!isTvDevice) return false
             val manager = getSystemService(ActivityManager::class.java) ?: return false
-            return manager.isLowRamDevice || manager.memoryClass <= 128
+            val memoryInfo = ActivityManager.MemoryInfo()
+            manager.getMemoryInfo(memoryInfo)
+            return manager.isLowRamDevice ||
+                manager.memoryClass <= 128 ||
+                memoryInfo.totalMem <= 1536L * 1024L * 1024L
         }
     private val isLight: Boolean
         get() = when (prefs.getString("app_theme", "dark")) {
