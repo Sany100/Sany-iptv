@@ -105,12 +105,12 @@ jobs:
             if [ -d "$DONATION_BACKUP" ]; then mv "$DONATION_BACKUP" "$DONATION_DIR"; fi
           }
           trap restore_donation EXIT
-          gradle --stacktrace :app:compileDebugKotlin :app:assembleDebug
+          gradle --stacktrace :app:compileMobileDebugKotlin :app:assembleMobileDebug
       - name: Upload migration APK
         uses: actions/upload-artifact@v4
         with:
           name: sany-cloudstream-library-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/mobile/debug/app-mobile-debug.apk
           if-no-files-found: error
 
   sany-release:
@@ -191,12 +191,19 @@ jobs:
           VERSION="1.2.452"
           VERSION_CODE="452"
           echo "Building requested SANY IPTV release $VERSION"
-          gradle --stacktrace :app:compileReleaseKotlin :app:assembleRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
+          gradle --stacktrace :app:compileMobileReleaseKotlin :app:assembleMobileRelease :app:compileTvReleaseKotlin :app:assembleTvRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
       - name: Upload signed migration release APK
         uses: actions/upload-artifact@v4
         with:
-          name: sany-cloudstream-library-release-v1.2.452
-          path: app/build/outputs/apk/release/app-release.apk
+          name: sany-cloudstream-library-mobile-release-v1.2.452
+          path: app/build/outputs/apk/mobile/release/app-mobile-release.apk
+          if-no-files-found: error
+
+      - name: Upload signed Android TV APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sany-iptv-android-tv-v1.2.452
+          path: app/build/outputs/apk/tv/release/app-tv-release.apk
           if-no-files-found: error

@@ -62,6 +62,18 @@ android {
     sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
     sourceSets.getByName("main").assets.srcDir(playZtvAssetsDir.get().asFile)
 
+    flavorDimensions += "device"
+    productFlavors {
+        create("mobile") {
+            dimension = "device"
+        }
+        create("tv") {
+            dimension = "device"
+            applicationIdSuffix = ".tv"
+            versionNameSuffix = "-tv"
+        }
+    }
+
     defaultConfig {
         minSdk = 23
         targetSdk = 35
