@@ -1120,13 +1120,9 @@ class MainActivity : AppCompatActivity() {
             val connectedDot = text("●", 9, Color.rgb(45, 210, 115), true).apply {
                 gravity = Gravity.CENTER
             }
+            // Static connection indicator: avoid a perpetual animator in the shared
+            // mobile/Android TV header.
             connectionStatus.addView(connectedDot)
-            android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
-                duration = 650L
-                repeatMode = android.animation.ValueAnimator.REVERSE
-                repeatCount = android.animation.ValueAnimator.INFINITE
-                start()
-            }
             connectionStatus.addView(text(" CONNECTED", 9,
                 if (settingsHeader && isLight) Color.rgb(38, 119, 245) else accent, true))
         }
@@ -3819,18 +3815,10 @@ class MainActivity : AppCompatActivity() {
                 alpha = 1f
                 setPadding(0, dp(4), 0, 0)
             }
-            // Soft, continuous blinking green indicator beside every SANY IPTV watermark.
+            // Static watermark indicator. Removing one infinite animation per channel
+            // keeps scrolling and list rendering lighter on both mobile and TV.
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
-                contentDescription = "SANY IPTV blinking live indicator"
-                alpha = 1f
-                if (!isLowMemoryDevice) {
-                    startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
-                        duration = 900L
-                        repeatMode = android.view.animation.Animation.REVERSE
-                        repeatCount = android.view.animation.Animation.INFINITE
-                        startOffset = (index % 6) * 110L
-                    })
-                }
+                contentDescription = "SANY IPTV channel indicator"
             }
             watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
