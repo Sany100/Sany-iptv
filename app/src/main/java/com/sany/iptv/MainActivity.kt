@@ -6213,7 +6213,9 @@ class MainActivity : AppCompatActivity() {
                 liveTvSearchQuery = searchQuery
             }
         }
-        val keepFullscreenMode = if (wasAlreadyPlaying) isPlayerFullscreen else true
+        // Android TV always starts every section's playback in landscape fullscreen.
+        // Mobile retains the user's existing FIT/FULL presentation behavior.
+        val keepFullscreenMode = if (isTvDevice) true else if (wasAlreadyPlaying) isPlayerFullscreen else true
         val oldChannel = currentChannel
         if (oldChannel != null && oldChannel.url != channel.url) previousChannel = oldChannel
         closePlayer(keepOrientation = true)
@@ -7464,7 +7466,8 @@ class MainActivity : AppCompatActivity() {
         playerSettingsButton?.visibility = if (enabled) View.VISIBLE else View.GONE
         playerMinimizeButton?.visibility = if (enabled) View.VISIBLE else View.GONE
         playerChannelScroll?.visibility = View.GONE
-        requestedOrientation = if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        requestedOrientation = if (isTvDevice) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            else if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
         if (!enabled) { applySystemBars(); return }
@@ -7486,7 +7489,8 @@ class MainActivity : AppCompatActivity() {
         // rotate the Activity to portrait before the next fullscreen player is ready.
         if (!keepOrientation) {
             if (isPlayerFullscreen) setPlayerFullscreen(false)
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            requestedOrientation = if (isTvDevice) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             applySystemBars()
         }
         playerHeader = null
@@ -7507,11 +7511,14 @@ class MainActivity : AppCompatActivity() {
             home.layoutParams = FrameLayout.LayoutParams(-1, -1)
         }
         playbackRetryHandler.removeCallbacksAndMessages(null)
-        player?.stop()
+        runCatching { player?.stop() }
+            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player stop failed during close", it) }
         pipPlaybackActionHandler = null
-        playerView?.player = null
+        runCatching { playerView?.player = null }
+            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "PlayerView detach failed during close", it) }
         // Release codec, audio and renderer resources as soon as playback is closed.
-        player?.release()
+        runCatching { player?.release() }
+            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player release failed during close", it) }
         player = null
         trackSelector = null
         playerView = null
@@ -7834,8 +7841,16 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        // Android TV uses Back as an explicit Stop/Return action from any player mode.
+        // Keep the selected section/category visible and release the playback session.
+        if (isTvDevice && playerView != null) {
+            closePlayer()
+            lastBackPressedAt = 0L
+            return
+        }
+
         // First Back from fullscreen (or a downward swipe) changes only the
-        // presentation to FIT. The same player and playback position remain active.
+        // presentation to FIT. The same player and playback position remain active on mobile.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
             lastBackPressedAt = 0L
@@ -8010,11 +8025,18 @@ class MainActivity : AppCompatActivity() {
         if (isFinishing) {
             prefs.edit().putBoolean("resume_without_splash", false).remove("resume_stream").apply()
         }
-        playerView?.player = null
-        moviesWebView?.apply { stopLoading(); destroy() }
+        // Make TV task teardown idempotent: detach UI and release native playback/WebView
+        // resources independently so one cleanup failure cannot crash app exit.
+        runCatching { playerView?.player = null }
+            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "PlayerView detach failed", it) }
+        runCatching { moviesWebView?.stopLoading() }
+        runCatching { moviesWebView?.destroy() }
+            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Movies WebView destroy failed", it) }
         moviesWebView = null
-        player?.release(); player = null
-        logoExecutor.shutdownNow()
+        runCatching { player?.release() }
+            .onFailure { android.util.Log.w("SANY-TV-LIFECYCLE", "Player release failed", it) }
+        player = null
+        runCatching { logoExecutor.shutdownNow() }
         if (CommonActivity.activity === this) CommonActivity.setActivityInstance(null)
         super.onDestroy()
     }
