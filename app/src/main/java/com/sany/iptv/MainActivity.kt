@@ -161,7 +161,9 @@ class MainActivity : AppCompatActivity() {
     // A small bounded pool prevents one thread per channel logo on low-memory phones.
     private val logoExecutor by lazy {
         java.util.concurrent.Executors.newFixedThreadPool(
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
+            // 2 GB Android TV devices have very limited headroom; keep logo
+            // downloads/decodes to two workers to avoid bursts of bitmap memory.
+            if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
         )
     }
 
