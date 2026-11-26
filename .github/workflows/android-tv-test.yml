@@ -141,7 +141,7 @@ jobs:
 
           main_activity = Path("app/src/main/java/com/sany/iptv/MainActivity.kt")
           main_source = main_activity.read_text()
-          on_create_marker = "        super.onCreate(savedInstanceState)\\n"
+          on_create_marker = "        super.onCreate(savedInstanceState)\n"
           if main_source.count(on_create_marker) != 1:
               raise SystemExit("Could not uniquely locate MainActivity.onCreate; refusing an unsafe TV edit.")
           tv_startup = """        if (isTvDevice) {
@@ -151,7 +151,7 @@ jobs:
           """
           main_source = main_source.replace(on_create_marker, on_create_marker + tv_startup, 1)
 
-          bars_marker = "    private fun applySystemBars() {\\n"
+          bars_marker = "    private fun applySystemBars() {\n"
           if main_source.count(bars_marker) != 1:
               raise SystemExit("Could not uniquely locate system bar configuration; refusing an unsafe TV edit.")
           tv_bars = """        if (isTvDevice) {
