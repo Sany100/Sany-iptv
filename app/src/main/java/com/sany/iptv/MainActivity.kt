@@ -1194,17 +1194,32 @@ class MainActivity : AppCompatActivity() {
                 if (edgeToEdgeSection) 0 else dp(18), 0)
             setBackgroundColor(if (edgeToEdgeSection && isLight) Color.WHITE else bg)
         }
-        home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
         bottomNav = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = if (isTvDevice) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(5), dp(2), dp(5), dp(2))
-            // Full-width Liquid Glass navigation dock; translucent in both themes.
+            setPadding(
+                if (isTvDevice) dp(8) else dp(5),
+                if (isTvDevice) dp(12) else dp(2),
+                if (isTvDevice) dp(8) else dp(5),
+                if (isTvDevice) dp(12) else dp(2)
+            )
+            // TV uses a fixed left-side vertical navigation rail; mobile keeps its bottom dock.
             background = glass(0)
             elevation = dp(18).toFloat()
             translationZ = dp(8).toFloat()
         }
-        home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
+        if (isTvDevice) {
+            val tvBody = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            tvBody.addView(contentArea, LinearLayout.LayoutParams(0, -1, 1f))
+            tvBody.addView(bottomNav, LinearLayout.LayoutParams(dp(184), -1))
+            home.addView(tvBody, LinearLayout.LayoutParams(-1, 0, 1f))
+        } else {
+            home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
+            home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(74)))
+        }
         renderSection()
         renderBottomNav()
         if (isTvDevice) root.post { focusInitialTvControl() }
@@ -4078,8 +4093,8 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 isFocusableInTouchMode = false
                 applyTvFocusStyle(this)
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
+                orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+                gravity = if (isTvDevice) Gravity.CENTER_VERTICAL or Gravity.START else Gravity.CENTER
                 // Make the selected destination unmistakable with a filled glass pill,
                 // bright outline and a small top indicator; inactive tabs stay transparent.
                 background = if (active) {
@@ -4096,7 +4111,12 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
                 }
-                setPadding(dp(3), dp(4), dp(3), dp(3))
+                setPadding(
+                    if (isTvDevice) dp(16) else dp(3),
+                    if (isTvDevice) dp(10) else dp(4),
+                    if (isTvDevice) dp(10) else dp(3),
+                    if (isTvDevice) dp(10) else dp(3)
+                )
                 translationY = 0f
                 setOnClickListener {
                     if (section == name) return@setOnClickListener
@@ -4158,22 +4178,29 @@ class MainActivity : AppCompatActivity() {
                             setColor(Color.rgb(80, 175, 255))
                         }
                     }, LinearLayout.LayoutParams(dp(5), dp(5)).apply {
-                        bottomMargin = dp(2)
+                        if (isTvDevice) rightMargin = dp(10) else bottomMargin = dp(2)
                     })
                 } else {
-                    item.addView(android.view.View(this), LinearLayout.LayoutParams(dp(5), dp(5)))
+                    item.addView(android.view.View(this), LinearLayout.LayoutParams(dp(5), dp(5)).apply {
+                        if (isTvDevice) rightMargin = dp(10) else bottomMargin = dp(2)
+                    })
                 }
                 item.addView(text(symbol, if (name == "Live TV" || name == "Movies") 16 else 20, if (active) Color.rgb(95, 180, 255) else muted, true).apply {
                     gravity = Gravity.CENTER
-                })
+                }, if (isTvDevice) LinearLayout.LayoutParams(dp(34), dp(34)) else LinearLayout.LayoutParams(-2, -2))
                 val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name, 12, if (active) Color.rgb(115, 190, 255) else muted, active).apply {
-                    gravity = Gravity.CENTER
+                    gravity = if (isTvDevice) Gravity.CENTER_VERTICAL or Gravity.START else Gravity.CENTER
                     setPadding(0, 0, 0, 0)
                 }
                 if (name == "Live TV") liveTvNavLabel = navLabel
                 item.addView(navLabel)
             }
-            bottomNav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
+            bottomNav.addView(
+                item,
+                if (isTvDevice) LinearLayout.LayoutParams(-1, dp(76)).apply {
+                    bottomMargin = dp(7)
+                } else LinearLayout.LayoutParams(0, -1, 1f)
+            )
         }
     }
 
