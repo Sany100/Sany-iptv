@@ -37,12 +37,24 @@ android {
     }
     defaultConfig {
         applicationId = "com.sany.iptv"
-        // Android 6.0 (Marshmallow), API 23, is the minimum installable version.
-        // Newer Android versions are not capped here; test on actual devices.
+        // Mobile remains compatible with Android 6+; the TV flavor raises this to Android 10.
         minSdk = 23
         targetSdk = 35
         versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("365").get().toInt()
         versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.2.365").get()
+    }
+
+    // Separate APK variants keep Android TV's API 29 minimum independent of mobile support.
+    flavorDimensions += "device"
+    productFlavors {
+        create("mobile") {
+            dimension = "device"
+            minSdk = 23
+        }
+        create("tv") {
+            dimension = "device"
+            minSdk = 29
+        }
     }
 
     buildTypes {
