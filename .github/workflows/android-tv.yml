@@ -1,5 +1,8 @@
 name: Android TV Release APK
 on:
+  push:
+    branches:
+      - "tv/**"
   workflow_dispatch:
 
 permissions:
