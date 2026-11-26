@@ -52,7 +52,9 @@ jobs:
         run: |
           APK=$(find app/build/outputs/apk/tv/release -name '*.apk' -print -quit)
           test -n "$APK"
-          apksigner verify --verbose "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
       - uses: actions/upload-artifact@v4
         with:
           name: sany-iptv-tv-v1.2.452-release
