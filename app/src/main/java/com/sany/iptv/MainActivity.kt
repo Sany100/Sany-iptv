@@ -3178,7 +3178,11 @@ class MainActivity : AppCompatActivity() {
                         else -> 30
                     }
                     val readyCount = channels.count { streamChecks[it.url]?.first == "Working" }.coerceAtMost(publishLimit)
-                    if (readyCount > liveTvPublishedCount || (!checkerRunning && liveTvPublishedCount != readyCount)) {
+                    // On TV, batch successful stream updates. Rebuilding the complete
+                    // channel view for every probe result creates visible frame drops.
+                    val refreshStep = if (isTvDevice) 6 else 1
+                    if (readyCount >= liveTvPublishedCount + refreshStep ||
+                        (!checkerRunning && liveTvPublishedCount != readyCount)) {
                         liveTvPublishedCount = readyCount
                         renderListOnly()
                     }
@@ -3299,11 +3303,9 @@ class MainActivity : AppCompatActivity() {
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        // Scale checker concurrency by Android version.
-        // Android 14+ uses 48 workers; Android 10-13 uses 32.
-        // Android 6-9 uses 8 workers.
-        // Actual throughput still depends on device resources and server throttling.
-        val maxWorkers = when {
+        // TV boxes commonly have tighter CPU/RAM budgets than phones.
+        // Keep background probes bounded so checking cannot starve video/UI rendering.
+        val maxWorkers = if (isTvDevice) 6 else when {
             Build.VERSION.SDK_INT >= 34 -> 48
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 32
             else -> 8
