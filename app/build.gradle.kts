@@ -53,6 +53,9 @@ android {
         }
         create("tv") {
             dimension = "device"
+            // Keep the TV package separate from the mobile package to avoid
+            // package/signature/version conflicts during TV installation.
+            applicationIdSuffix = ".tv"
             minSdk = 29
         }
     }
