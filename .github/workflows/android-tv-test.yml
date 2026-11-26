@@ -86,7 +86,32 @@ jobs:
           </manifest>
           """)
 
-          print("TV flavor added with launcher label SANY IPTV Android TV; mobile source and settings remain unchanged.")
+          # Keep both SANY indicators static in the TV build only.
+          main_activity = Path("app/src/main/java/com/sany/iptv/MainActivity.kt")
+          main_source = main_activity.read_text()
+          channel_blink = """                if (!isLowMemoryDevice) {
+                          startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
+                              duration = 900L
+                              repeatMode = android.view.animation.Animation.REVERSE
+                              repeatCount = android.view.animation.Animation.INFINITE
+                              startOffset = (index % 6) * 110L
+                          })
+                      }"""
+          connected_blink = """            android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
+                          duration = 650L
+                          repeatMode = android.animation.ValueAnimator.REVERSE
+                          repeatCount = android.animation.ValueAnimator.INFINITE
+                          start()
+                      }"""
+          if channel_blink not in main_source:
+              raise SystemExit("Could not locate channel watermark blink block; refusing an unsafe TV edit.")
+          if connected_blink not in main_source:
+              raise SystemExit("Could not locate CONNECTED dot blink block; refusing an unsafe TV edit.")
+          main_source = main_source.replace(channel_blink, "", 1)
+          main_source = main_source.replace(connected_blink, "", 1)
+          main_activity.write_text(main_source)
+
+          print("TV flavor label set; channel and CONNECTED dots are static. Mobile source remains unchanged.")
           PY
       - name: Configure Firebase Analytics
         env:
