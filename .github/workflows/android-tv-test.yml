@@ -82,6 +82,27 @@ jobs:
           # Override only the TV flavor launcher label; mobile remains "SANY IPTV".
           tv_manifest = Path("app/src/tv/AndroidManifest.xml")
           tv_manifest.parent.mkdir(parents=True, exist_ok=True)
+          # Mark the application label as replaceable in the checked-out release manifest.
+          # This is applied only inside the CI workspace, never committed to the mobile source.
+          main_manifest = Path("app/src/main/AndroidManifest.xml")
+          manifest_source = main_manifest.read_text()
+          if 'xmlns:tools="http://schemas.android.com/tools"' not in manifest_source:
+              manifest_source = manifest_source.replace(
+                  '<manifest ',
+                  '<manifest xmlns:tools="http://schemas.android.com/tools" ',
+                  1
+              )
+          app_tag = re.search(r'<application\\b[^>]*>', manifest_source)
+          if not app_tag:
+              raise SystemExit("Could not locate main application manifest tag; refusing an unsafe manifest edit.")
+          application_tag = app_tag.group(0)
+          if 'tools:replace=' not in application_tag:
+              updated_tag = application_tag[:-1] + ' tools:replace="android:label">'
+              manifest_source = manifest_source[:app_tag.start()] + updated_tag + manifest_source[app_tag.end():]
+          main_manifest.write_text(manifest_source)
+
+          tv_manifest = Path("app/src/tv/AndroidManifest.xml")
+          tv_manifest.parent.mkdir(parents=True, exist_ok=True)
           tv_manifest.write_text("""<manifest xmlns:android="http://schemas.android.com/apk/res/android"
               xmlns:tools="http://schemas.android.com/tools">
               <application
