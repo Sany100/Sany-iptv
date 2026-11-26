@@ -119,7 +119,7 @@ jobs:
           """)
 
           # TV-only landscape, immersive display, and reduced window transitions.
-          tv_activity_patch = """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          tv_activity_patch = """<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
               <application>
                   <activity
                       android:name=".MainActivity"
