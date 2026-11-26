@@ -48,22 +48,41 @@ jobs:
           test -n "$SANY_KEY_ALIAS" || (echo "Missing SANY_RELEASE_KEY_ALIAS repository secret" && exit 1)
           test -n "$SANY_KEY_PASSWORD" || (echo "Missing SANY_RELEASE_KEY_PASSWORD repository secret" && exit 1)
           gradle assembleTvRelease -PAPP_VERSION_NAME="1.2.453-tv" -PAPP_VERSION_CODE="453"
-      - name: Verify APK signature
+      - name: Verify APK signature and Android compatibility
+        shell: bash
         run: |
+          set -euo pipefail
           APK=$(find app/build/outputs/apk/tv/release -name '*.apk' -print -quit)
-          test -n "$APK"
+          if [ -z "$APK" ]; then
+            echo "::error::TV Release APK was not produced"
+            exit 1
+          fi
+
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
-          test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose "$APK"
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)
           ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
           test -x "$AAPT"
           test -x "$ZIPALIGN"
+
+          "$APKSIGNER" verify --verbose "$APK"
           "$ZIPALIGN" -c -v 4 "$APK"
+
           BADGING=$("$AAPT" dump badging "$APK")
-          echo "$BADGING" | grep -q "sdkVersion:\x2729\x27"
-          echo "$BADGING" | grep -q "com.sany.iptv.tv"
-          echo "$BADGING" | grep "sdkVersion\|targetSdkVersion\|native-code\|package:"
+          echo "---- APK manifest metadata ----"
+          printf '%s\n' "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:)"
+          echo "--------------------------------"
+
+          if ! printf '%s\n' "$BADGING" | grep -Fq "sdkVersion:'29'"; then
+            echo "::error::Expected minSdkVersion 29 (Android 10). Actual metadata is shown above."
+            exit 1
+          fi
+          if ! printf '%s\n' "$BADGING" | grep -Fq "package: name='com.sany.iptv.tv'"; then
+            echo "::error::Unexpected TV application ID. Actual metadata is shown above."
+            exit 1
+          fi
+
+          echo "TV APK signature, alignment, package ID and Android 10 minimum verified."
       - uses: actions/upload-artifact@v4
         with:
           name: sany-iptv-tv-v1.2.453-release
