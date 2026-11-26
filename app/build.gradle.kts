@@ -27,6 +27,9 @@ android {
 
     signingConfigs {
         create("release") {
+            // Keep legacy v1 and modern v2 signatures for Android TV installers.
+            enableV1Signing = true
+            enableV2Signing = true
             if (!releaseStoreFile.isNullOrBlank()) {
                 storeFile = file(releaseStoreFile)
                 storePassword = releaseStorePassword
