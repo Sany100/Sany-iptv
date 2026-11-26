@@ -1213,8 +1213,8 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            tvBody.addView(contentArea, LinearLayout.LayoutParams(0, -1, 1f))
             tvBody.addView(bottomNav, LinearLayout.LayoutParams(dp(184), -1))
+            tvBody.addView(contentArea, LinearLayout.LayoutParams(0, -1, 1f))
             home.addView(tvBody, LinearLayout.LayoutParams(-1, 0, 1f))
         } else {
             home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
