@@ -141,15 +141,23 @@ jobs:
 
           main_activity = Path("app/src/main/java/com/sany/iptv/MainActivity.kt")
           main_source = main_activity.read_text()
-          on_create_marker = "        super.onCreate(savedInstanceState)\n"
-          if main_source.count(on_create_marker) != 1:
-              raise SystemExit("Could not uniquely locate MainActivity.onCreate; refusing an unsafe TV edit.")
+          on_create_pattern = re.compile(
+              r"(?m)^    override fun onCreate\\(savedInstanceState: Bundle\\?\\) \\{\\n        super\\.onCreate\\(savedInstanceState\\)\\n"
+          )
+          on_create_matches = list(on_create_pattern.finditer(main_source))
+          if len(on_create_matches) != 1:
+              raise SystemExit(
+                  f"Expected exactly one MainActivity.onCreate method, found {len(on_create_matches)}; "
+                  "refusing an unsafe TV edit."
+              )
           tv_startup = """        if (isTvDevice) {
                   requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                   window.setWindowAnimations(0)
               }
           """
-          main_source = main_source.replace(on_create_marker, on_create_marker + tv_startup, 1)
+          match = on_create_matches[0]
+          insert_at = match.end()
+          main_source = main_source[:insert_at] + tv_startup + main_source[insert_at:]
 
           bars_marker = "    private fun applySystemBars() {\n"
           if main_source.count(bars_marker) != 1:
