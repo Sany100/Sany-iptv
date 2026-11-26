@@ -42,6 +42,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path("app/build.gradle.kts")
           source = path.read_text()
@@ -89,26 +90,18 @@ jobs:
           # Keep both SANY indicators static in the TV build only.
           main_activity = Path("app/src/main/java/com/sany/iptv/MainActivity.kt")
           main_source = main_activity.read_text()
-          channel_blink = """                if (!isLowMemoryDevice) {
-                          startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
-                              duration = 900L
-                              repeatMode = android.view.animation.Animation.REVERSE
-                              repeatCount = android.view.animation.Animation.INFINITE
-                              startOffset = (index % 6) * 110L
-                          })
-                      }"""
-          connected_blink = """            android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
-                          duration = 650L
-                          repeatMode = android.animation.ValueAnimator.REVERSE
-                          repeatCount = android.animation.ValueAnimator.INFINITE
-                          start()
-                      }"""
-          if channel_blink not in main_source:
-              raise SystemExit("Could not locate channel watermark blink block; refusing an unsafe TV edit.")
-          if connected_blink not in main_source:
-              raise SystemExit("Could not locate CONNECTED dot blink block; refusing an unsafe TV edit.")
-          main_source = main_source.replace(channel_blink, "", 1)
-          main_source = main_source.replace(connected_blink, "", 1)
+          main_source, channel_count = re.subn(
+              r'startAnimation\\(android\\.view\\.animation\\.AlphaAnimation\\(0\\.22f, 1f\\)\\.apply \\{\\s*duration = 900L\\s*repeatMode = android\\.view\\.animation\\.Animation\\.REVERSE\\s*repeatCount = android\\.view\\.animation\\.Animation\\.INFINITE\\s*startOffset = \\(index % 6\\) \\* 110L\\s*\\}\\)',
+              '', main_source, count=1
+          )
+          main_source, connected_count = re.subn(
+              r'android\\.animation\\.ObjectAnimator\\.ofFloat\\(connectedDot, View\\.ALPHA, 1f, 0\\.18f\\)\\.apply \\{\\s*duration = 650L\\s*repeatMode = android\\.animation\\.ValueAnimator\\.REVERSE\\s*repeatCount = android\\.animation\\.ValueAnimator\\.INFINITE\\s*start\\(\\)\\s*\\}',
+              '', main_source, count=1
+          )
+          if channel_count != 1:
+              raise SystemExit("Could not locate channel watermark animation; refusing an unsafe TV edit.")
+          if connected_count != 1:
+              raise SystemExit("Could not locate CONNECTED dot animation; refusing an unsafe TV edit.")
           main_activity.write_text(main_source)
 
           print("TV flavor label set; channel and CONNECTED dots are static. Mobile source remains unchanged.")
