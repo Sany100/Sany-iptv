@@ -14,10 +14,10 @@ jobs:
   build-release-apk:
     runs-on: ubuntu-latest
     steps:
-      # Build the current Android app source so the TV APK receives the latest mobile features and fixes.
+      # Build from the latest published Android release tag; apply TV-only changes in CI.
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: v1.2.452
           submodules: recursive
       - uses: actions/setup-java@v4
         with:
@@ -26,18 +26,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
-      - name: Install Android API 37 compile platform
+      - name: Install Android API 36 compile platform
         run: |
           SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
           test -n "$SDKMANAGER" || (echo "Android SDK Manager not found" && exit 1)
           yes | "$SDKMANAGER" --licenses >/dev/null
-          "$SDKMANAGER" --install "platforms;android-37.0"
-          # Android Gradle Plugin resolves compileSdk 37 using the android-37
+          "$SDKMANAGER" --install "platforms;android-36"
+          # Android Gradle Plugin resolves compileSdk 36 using the android-36
           # directory name, while Google's SDK package is published as 37.0.
-          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
-            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          if [ -d "$ANDROID_HOME/platforms/android-36" ] && [ ! -e "$ANDROID_HOME/platforms/android-36" ]; then
+            ln -s android-36 "$ANDROID_HOME/platforms/android-36"
           fi
-          test -d "$ANDROID_HOME/platforms/android-37"
+          test -d "$ANDROID_HOME/platforms/android-36"
       - name: Add separate Android TV product flavor to the released source
         run: |
           python3 - <<'PY'
@@ -73,7 +73,7 @@ jobs:
               raise SystemExit("Could not uniquely locate compileSdk; refusing an unsafe Gradle edit.")
           source = re.sub(
               r"(?m)^(\s*compileSdk\s*=\s*)\d+\s*$",
-              r"\g<1>37",
+              r"\g<1>36",
               source,
               count=1
           )
