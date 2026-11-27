@@ -117,6 +117,22 @@ final class IOSAniLightProvider {
         }.filter { !$0.1.isEmpty }
     }
 
+    func filter(genre: String?, topRated: Bool = false, completion: @escaping ([IOSAnimeItem]) -> Void) {
+        var components = URLComponents(string: api + "/filter")!
+        var queryItems = [URLQueryItem(name: "page", value: "1"),
+                          URLQueryItem(name: "perPage", value: "30"),
+                          URLQueryItem(name: "sort", value: topRated ? "SCORE_DESC" : "POPULARITY_DESC"),
+                          URLQueryItem(name: "hideAdult", value: "true")]
+        if let genre = genre { queryItems.append(URLQueryItem(name: "genres", value: genre)) }
+        components.queryItems = queryItems
+        guard let url = components.url else { completion([]); return }
+        request(url) { data, response, _ in
+            let root = (try? JSONSerialization.jsonObject(with: data ?? Data())) as? [String: Any]
+            let items = self.media(root?["media"])
+            DispatchQueue.main.async { completion(items) }
+        }
+    }
+
     func search(_ query: String, completion: @escaping ([IOSAnimeItem]) -> Void) {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { completion([]); return }
         guard let url = URL(string: api + "/search?q=\(encoded)&hideAdult=true") else {
@@ -242,11 +258,35 @@ final class IOSAnimeHomeViewController: UITableViewController, UISearchBarDelega
         searchBar.delegate = self
         searchBar.searchBarStyle = .minimal
         tableView.tableHeaderView = searchBar
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Categories", style: .plain, target: self, action: #selector(showCategories))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Refresh", style: .plain, target: self, action: #selector(refreshHome))
         loadHome()
     }
 
-    @objc private func refreshHome() { loadHome() }
+    @objc private func showCategories() {
+        let names = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"]
+        let alert = UIAlertController(title: "Anime categories", message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "Top Rated", style: .default) { _ in
+            self.loadFilter(genre: nil, topRated: true)
+        })
+        for name in names {
+            alert.addAction(UIAlertAction(title: name, style: .default) { _ in
+                self.loadFilter(genre: name, topRated: false)
+            })
+        }
+        alert.addAction(UIAlertAction(title: "All home sections", style: .default) { _ in self.loadHome() })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func loadFilter(genre: String?, topRated: Bool) {
+        IOSAniLightProvider.shared.filter(genre: genre, topRated: topRated) { [weak self] items in
+            guard let self = self else { return }
+            self.searchResults = items
+            self.tableView.reloadData()
+        }
+    }
+
     private func loadHome() {
         IOSAniLightProvider.shared.homepage { [weak self] rows in
             self?.sections = rows
