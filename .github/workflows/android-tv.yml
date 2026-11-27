@@ -29,7 +29,7 @@ jobs:
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           yes | "$SDKMANAGER" --licenses >/dev/null
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0" "platform-tools"
       - name: Configure Firebase Analytics
         env:
           FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}
@@ -69,7 +69,7 @@ jobs:
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           yes | "$SDKMANAGER" --licenses >/dev/null
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          "$SDKMANAGER" "platforms;android-37" "build-tools;37.0.0" "platform-tools"
       - name: Configure Firebase Analytics
         env:
           FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}
@@ -98,7 +98,7 @@ jobs:
           gradle assembleTvRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
           APK="app/build/outputs/apk/tv/release/app-tv-release.apk"
           test -s "$APK" || (echo "TV release APK was not generated" && exit 1)
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose "$APK"
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=sany-iptv-android-tv-$VERSION" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
