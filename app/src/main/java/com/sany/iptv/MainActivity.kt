@@ -1157,7 +1157,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Movies") {
-            renderMoviesDevelopmentSection()
+            // Restore the native Movies library on Android TV. It supports adding
+            // personal movie links, categories, posters and Continue Watching.
+            // The heavier legacy WebView remains available separately and is not
+            // loaded automatically on low-memory TV devices.
+            renderNativeMovies(showSeries = false)
             return
         }
         if (section == "Checker") {
