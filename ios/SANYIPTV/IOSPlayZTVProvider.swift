@@ -155,7 +155,7 @@ final class IOSPlayZTVProvider {
                let second = Data(base64Encoded: secondText, options: .ignoreUnknownCharacters),
                let plain = aes(second, key: nativeKey, iv: nativeIV),
                let text = String(data: plain, encoding: .utf8),
-               text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") || text?.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("[") == true {
+               (text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") || text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("[")) {
                 return text?.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
