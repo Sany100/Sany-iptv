@@ -12,7 +12,7 @@ final class IOSPlayZTVHomeViewController: UITableViewController {
     private var errorText: String?
 
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .plain)
         title = "PlayZTV Live"
         tabBarItem = UITabBarItem(title: "Live Sports", image: IOSIcon.image("sportscourt"), selectedImage: IOSIcon.image("sportscourt.fill"))
     }
@@ -84,7 +84,7 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
 
     init(categoryPath: String) {
         self.categoryPath = categoryPath
-        super.init(style: .insetGrouped)
+        super.init(style: .plain)
         title = URL(string: categoryPath)?.lastPathComponent ?? categoryPath
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
