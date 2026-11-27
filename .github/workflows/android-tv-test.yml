@@ -1,17 +1,6 @@
 name: SANY IPTV Android TV Release APK
 # Keep this workflow_dispatch entry available for verified production release rebuilds.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/android-tv-test.yml'
-      - 'app/build.gradle.kts'
-      - 'app/src/main/**'
-      - 'app/src/tv/**'
-      - 'gradle.properties'
-      - 'settings.gradle.kts'
-      - 'build.gradle.kts'
   workflow_dispatch:
 
 permissions:
