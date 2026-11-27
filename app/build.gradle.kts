@@ -41,7 +41,7 @@ val bundlePlayZtvProvider by tasks.registering {
 
 android {
     namespace = "com.sany.iptv"
-    compileSdk = 37
+    compileSdk = 36
 
     val releaseStoreFile = System.getenv("SANY_KEYSTORE_PATH")
     val releaseStorePassword = System.getenv("SANY_KEYSTORE_PASSWORD")
