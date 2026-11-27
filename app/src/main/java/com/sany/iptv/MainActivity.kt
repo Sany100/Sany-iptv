@@ -1154,12 +1154,6 @@ class MainActivity : AppCompatActivity() {
                     gravity = Gravity.CENTER
                 }
                 connectionStatus.addView(connectedDot)
-                android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
-                    duration = 650L
-                    repeatMode = android.animation.ValueAnimator.REVERSE
-                    repeatCount = android.animation.ValueAnimator.INFINITE
-                    start()
-                }
             }
             connectionStatus.addView(text(" CONNECTED", 9,
                 if (settingsHeader && isLight) Color.rgb(38, 119, 245) else accent, true))
@@ -4011,14 +4005,6 @@ class MainActivity : AppCompatActivity() {
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV blinking live indicator"
                 alpha = 1f
-                if (!isLowMemoryDevice) {
-                    startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
-                        duration = 900L
-                        repeatMode = android.view.animation.Animation.REVERSE
-                        repeatCount = android.view.animation.Animation.INFINITE
-                        startOffset = (index % 6) * 110L
-                    })
-                }
             }
             if (!isTvDevice) watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
