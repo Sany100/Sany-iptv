@@ -221,14 +221,13 @@ final class IOSCatalogViewController: UITableViewController, UISearchBarDelegate
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "MediaItem", for: indexPath)
         let item = filtered[indexPath.row]
-        var config = UIListContentConfiguration.subtitleCell()
-        config.text = item.title
-        config.secondaryText = item.group
-        config.textProperties.color = IOSAppStyle.primaryText
-        config.secondaryTextProperties.color = IOSAppStyle.secondaryText
-        config.image = UIImage(systemName: section == .sports ? "sportscourt" : (section == .movies ? "film" : "sparkles"))
-        config.imageProperties.tintColor = IOSAppStyle.accent
-        cell.contentConfiguration = config
+        cell.textLabel?.text = item.title
+        cell.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        cell.textLabel?.textColor = IOSAppStyle.primaryText
+        cell.detailTextLabel?.text = item.group
+        cell.detailTextLabel?.textColor = IOSAppStyle.secondaryText
+        cell.imageView?.image = UIImage(systemName: section == .sports ? "sportscourt" : (section == .movies ? "film" : "sparkles"))
+        cell.imageView?.tintColor = IOSAppStyle.accent
         cell.backgroundColor = IOSAppStyle.card
         cell.accessoryType = .disclosureIndicator
         return cell
@@ -277,12 +276,11 @@ final class IOSSettingsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Setting", for: indexPath)
-        var config = UIListContentConfiguration.valueCell()
-        config.text = rows[indexPath.row]
-        config.secondaryText = indexPath.row == 0 ? (IOSAppStyle.isDark ? "Night mode" : "Day mode") : nil
-        config.textProperties.color = IOSAppStyle.primaryText
-        config.secondaryTextProperties.color = IOSAppStyle.secondaryText
-        cell.contentConfiguration = config
+        cell.textLabel?.text = rows[indexPath.row]
+        cell.textLabel?.textColor = IOSAppStyle.primaryText
+        cell.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        cell.detailTextLabel?.text = indexPath.row == 0 ? (IOSAppStyle.isDark ? "Night mode" : "Day mode") : nil
+        cell.detailTextLabel?.textColor = IOSAppStyle.secondaryText
         cell.backgroundColor = IOSAppStyle.card
         cell.accessoryType = .disclosureIndicator
         return cell
