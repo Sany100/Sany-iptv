@@ -1275,9 +1275,10 @@ class MainActivity : AppCompatActivity() {
         // A single state-list foreground gives every focused remote item a clear,
         // high-contrast outline without allocating a new drawable on each focus event.
         val focusedOverlay = GradientDrawable().apply {
-            setColor(Color.argb(if (isLight) 52 else 72, 55, 145, 255))
+            // Make the currently selected remote item unmistakable from a TV viewing distance.
+            setColor(Color.argb(if (isLight) 78 else 105, 55, 145, 255))
             cornerRadius = dp(12).toFloat()
-            setStroke(dp(3), accent)
+            setStroke(dp(4), accent)
         }
         val idleOverlay = GradientDrawable().apply {
             setColor(Color.TRANSPARENT)
@@ -1291,10 +1292,10 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= 26) view.defaultFocusHighlightEnabled = false
         view.setOnFocusChangeListener { focusedView, hasFocus ->
             focusedView.elevation = 0f
-            // Let the parent scroll container reveal focus immediately; avoid
-            // animated auto-scroll which can feel delayed on 1 GB TV boxes.
+            // Keep the focused row visible while the remote moves through long lists.
+            // Smooth scrolling prevents abrupt jumps and follows rapid DPAD key repeats.
             if (hasFocus) focusedView.requestRectangleOnScreen(
-                android.graphics.Rect(0, 0, focusedView.width, focusedView.height), false
+                android.graphics.Rect(0, 0, focusedView.width, focusedView.height), true
             )
         }
     }
