@@ -9,7 +9,7 @@ final class SANYMainTabBarController: UITabBarController {
         liveTV.tabBarItem = UITabBarItem(title: "Live TV", image: IOSIcon.image("tv"), selectedImage: IOSIcon.image("tv.fill"))
 
         let sports = UINavigationController(rootViewController: IOSCatalogViewController(section: .sports))
-        let movies = UINavigationController(rootViewController: IOSCatalogViewController(section: .movies))
+        let movies = UINavigationController(rootViewController: IOSMoviesHomeViewController())
         let anime = UINavigationController(rootViewController: IOSAnimeHomeViewController())
         let settings = UINavigationController(rootViewController: IOSSettingsViewController())
 
