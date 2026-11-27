@@ -42,6 +42,7 @@ final class ChannelListViewController: UITableViewController, UISearchBarDelegat
         refresh.addTarget(self, action: #selector(loadPlaylist), for: .valueChanged)
         tableView.refreshControl = refresh
 
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Categories", style: .plain, target: self, action: #selector(showGroups))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Refresh", style: .plain, target: self, action: #selector(loadPlaylist))
         loadPlaylist()
     }
@@ -105,6 +106,18 @@ final class ChannelListViewController: UITableViewController, UISearchBarDelegat
         }
         var seen = Set<String>()
         return output.filter { seen.insert($0.url).inserted }
+    }
+
+    @objc private func showGroups() {
+        let alert = UIAlertController(title: "Live TV categories", message: nil, preferredStyle: .actionSheet)
+        for group in groups {
+            alert.addAction(UIAlertAction(title: group == selectedGroup ? "✓ " + group : group, style: .default) { _ in
+                self.selectedGroup = group
+                self.applyFilters()
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
 
     private func applyFilters() {
