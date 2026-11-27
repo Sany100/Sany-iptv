@@ -81,7 +81,7 @@ final class IOSPlaylistStore {
                 pending = (title.isEmpty ? "Unknown" : title, group, logo)
             } else if !line.hasPrefix("#"), let meta = pending, let url = URL(string: line), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
                 result.append(IOSMediaItem(title: meta.title, url: url, group: meta.group,
-                                           logoURL: meta.logo.flatMap(URL.init(string:))))
+                                           logoURL: meta.logo.flatMap { URL(string: $0) }))
                 pending = nil
             }
         }
@@ -118,7 +118,7 @@ enum IOSCatalogSection: String {
         let value = (item.title + " " + item.group).lowercased()
         switch self {
         case .sports:
-            return ["sport", "cricket", "football", "soccer", "basketball", "tennis", "live event", "playztv"].contains(where: value.contains)
+            return ["sport", "cricket", "football", "soccer", "basketball", "tennis", "live event", "playztv"].contains(where: { value.contains($0) })
         case .movies:
             return ["movie", "movies", "film", "vod", "cinema"].contains(where: value.contains)
         case .anime:
