@@ -1,4 +1,5 @@
 name: SANY IPTV Android TV Release APK
+# Keep this workflow_dispatch entry available for verified production release rebuilds.
 on:
   push:
     branches:
