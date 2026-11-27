@@ -38,12 +38,14 @@ final class IOSPlayZTVProvider {
                             completion(.failure(ProviderError.invalidPayload)); return
                         }
                         do {
-                            let categories = try JSONDecoder().decode([IOSPlayZTVCategory].self, from: data)
+                            var categoryPaths = try JSONDecoder().decode([IOSPlayZTVCategory].self, from: data)
                                 .map { $0.cat.trimmingCharacters(in: .whitespacesAndNewlines) }
                                 .filter { !$0.isEmpty }
                             // Android PlayZTVProviderManager.fetchLiveEvents() reads this fixed endpoint.
-                            .appending("events.txt")
-                            completion(.success(Array(NSOrderedSet(array: categories)) as? [String] ?? categories))
+                            categoryPaths.append("events.txt")
+                            var seen = Set<String>()
+                            let uniquePaths = categoryPaths.filter { seen.insert($0).inserted }
+                            completion(.success(uniquePaths))
                         } catch { completion(.failure(error)) }
                     }
                 }
