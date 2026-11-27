@@ -1144,15 +1144,17 @@ class MainActivity : AppCompatActivity() {
         if (channels.isEmpty()) {
             connectionStatus.addView(text("NOT CONNECTED", 9, muted, true))
         } else {
-            val connectedDot = text("●", 9, Color.rgb(45, 210, 115), true).apply {
-                gravity = Gravity.CENTER
-            }
-            connectionStatus.addView(connectedDot)
-            android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
-                duration = 650L
-                repeatMode = android.animation.ValueAnimator.REVERSE
-                repeatCount = android.animation.ValueAnimator.INFINITE
-                start()
+            if (!isTvDevice) {
+                val connectedDot = text("●", 9, Color.rgb(45, 210, 115), true).apply {
+                    gravity = Gravity.CENTER
+                }
+                connectionStatus.addView(connectedDot)
+                android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
+                    duration = 650L
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    start()
+                }
             }
             connectionStatus.addView(text(" CONNECTED", 9,
                 if (settingsHeader && isLight) Color.rgb(38, 119, 245) else accent, true))
@@ -1257,7 +1259,7 @@ class MainActivity : AppCompatActivity() {
                 } else bottomNav.getChildAt(0)
             }
             else -> bottomNav.getChildAt(
-                listOf("Live TV", "Live Sports", "Checker", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
+                (if (isTvDevice) listOf("Live TV", "Live Sports", "Movies", "Settings") else listOf("Live TV", "Live Sports", "Checker", "Movies", "Series", "Settings")).indexOf(section).coerceAtLeast(0)
             )
         }
         target?.requestFocus()
@@ -3614,7 +3616,7 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }
             }
-            toolbar.addView(checkerShortcut, LinearLayout.LayoutParams(-2, dp(36)).apply {
+            if (!isTvDevice) toolbar.addView(checkerShortcut, LinearLayout.LayoutParams(-2, dp(36)).apply {
                 rightMargin = dp(8)
             })
             toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(36), 1f))
@@ -3955,7 +3957,7 @@ class MainActivity : AppCompatActivity() {
                     })
                 }
             }
-            watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
+            if (!isTvDevice) watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
                 letterSpacing = 0.12f
                 setPadding(dp(4), 0, 0, 0)
@@ -4207,7 +4209,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderBottomNav() {
         bottomNav.removeAllViews()
-        listOf("Live TV" to "📺", "Live Sports" to "🏆", "Checker" to "✓", "Movies" to "🎬", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
+        val navigationItems = if (isTvDevice) {
+            listOf("Live TV" to "📺", "Live Sports" to "🏆", "Movies" to "🎬", "Settings" to "⚙")
+        } else {
+            listOf("Live TV" to "📺", "Live Sports" to "🏆", "Checker" to "✓", "Movies" to "🎬", "Series" to "▥", "Settings" to "⚙")
+        }
+        navigationItems.forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
                 isFocusable = true
@@ -4263,7 +4270,7 @@ class MainActivity : AppCompatActivity() {
                     renderSection()
                     renderBottomNav()
                     if (isTvDevice) bottomNav.getChildAt(
-                        listOf("Live TV", "Live Sports", "Checker", "Movies", "Series", "Settings").indexOf(section)
+                        (if (isTvDevice) listOf("Live TV", "Live Sports", "Movies", "Settings") else listOf("Live TV", "Live Sports", "Checker", "Movies", "Series", "Settings")).indexOf(section)
                     )?.requestFocus()
                 }
             }
