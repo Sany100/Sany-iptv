@@ -156,7 +156,7 @@ final class IOSPlayZTVProvider {
                let plain = aes(second, key: nativeKey, iv: nativeIV),
                let text = String(data: plain, encoding: .utf8),
                (text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{") || text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("[")) {
-                return text?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
         let reverseMap = Dictionary(uniqueKeysWithValues: zip(to, from))
