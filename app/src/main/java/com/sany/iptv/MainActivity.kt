@@ -3926,6 +3926,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderChannelRows(container: LinearLayout) {
         container.removeAllViews()
+        val renderToken = ++channelRenderGeneration
         val filtered = filteredChannels()
         countLabel.text = if (section == "Live TV" && streamChecks.isNotEmpty() && !checkerRunning) {
             "${filtered.size} WORKING CHANNELS"
@@ -3942,7 +3943,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val channelsToRender = if (isTvDevice) filtered else filtered.take(displayedLimit)
-        val renderToken = ++channelRenderGeneration
         var renderIndex = 0
         fun renderNextChannelBatch() {
             if (renderToken != channelRenderGeneration || (isTvDevice && section != "Live TV")) return
