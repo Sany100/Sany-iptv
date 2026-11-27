@@ -72,6 +72,11 @@ android {
 
     flavorDimensions += "device"
     productFlavors {
+        // Keep the standard application ID for the Android phone release.
+        create("mobile") {
+            dimension = "device"
+            manifestPlaceholders["appLabel"] = "SANY IPTV"
+        }
         create("tv") {
             dimension = "device"
             applicationIdSuffix = ".tv"
