@@ -60,9 +60,6 @@ android {
     }
 
     sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
-    // Keep the app entrypoint and UI implementation physically separate per APK.
-    sourceSets.getByName("mobile").java.srcDir("src/mobile/java")
-    sourceSets.getByName("tv").java.srcDir("src/tv/java")
     sourceSets.getByName("main").assets.srcDir(playZtvAssetsDir.get().asFile)
 
     defaultConfig {
@@ -87,6 +84,11 @@ android {
             manifestPlaceholders["appLabel"] = "SANY IPTV Android TV"
         }
     }
+
+    // Flavor source sets exist only after productFlavors have been declared.
+    // Keep the app entrypoint and UI implementation physically separate per APK.
+    sourceSets.getByName("mobile").java.srcDir("src/mobile/java")
+    sourceSets.getByName("tv").java.srcDir("src/tv/java")
 
     buildTypes {
         release {
