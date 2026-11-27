@@ -138,9 +138,9 @@ final class IOSCatalogViewController: UITableViewController, UISearchBarDelegate
 
     init(section: IOSCatalogSection) {
         self.section = section
-        super.init(style: .insetGrouped)
+        super.init(style: .grouped)
         title = section.rawValue
-        tabBarItem = UITabBarItem(title: section.rawValue, image: UIImage(systemName: section.symbols), selectedImage: UIImage(systemName: section.symbols))
+        tabBarItem = UITabBarItem(title: section.rawValue, image: IOSIcon.image(section.symbols), selectedImage: UIImage(systemName: section.symbols))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -221,12 +221,11 @@ final class IOSCatalogViewController: UITableViewController, UISearchBarDelegate
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "MediaItem", for: indexPath)
         let item = filtered[indexPath.row]
-        cell.textLabel?.text = item.title
-        cell.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        cell.textLabel?.text = item.title + "\n" + item.group
+        cell.textLabel?.numberOfLines = 2
+        cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
         cell.textLabel?.textColor = IOSAppStyle.primaryText
-        cell.detailTextLabel?.text = item.group
-        cell.detailTextLabel?.textColor = IOSAppStyle.secondaryText
-        cell.imageView?.image = UIImage(systemName: section == .sports ? "sportscourt" : (section == .movies ? "film" : "sparkles"))
+        cell.imageView?.image = IOSIcon.image(section == .sports ? "sportscourt" : (section == .movies ? "film" : "sparkles"))
         cell.imageView?.tintColor = IOSAppStyle.accent
         cell.backgroundColor = IOSAppStyle.card
         cell.accessoryType = .disclosureIndicator
@@ -247,6 +246,13 @@ final class IOSCatalogViewController: UITableViewController, UISearchBarDelegate
     }
 }
 
+enum IOSIcon {
+    static func image(_ name: String) -> UIImage? {
+        if #available(iOS 13.0, *) { return UIImage(systemName: name) }
+        return nil
+    }
+}
+
 enum IOSAppStyle {
     static var isDark: Bool { UserDefaults.standard.string(forKey: "sany.ios.theme") != "light" }
     static var background: UIColor { isDark ? UIColor(red: 0.015, green: 0.035, blue: 0.09, alpha: 1) : UIColor(red: 0.95, green: 0.97, blue: 0.99, alpha: 1) }
@@ -262,7 +268,7 @@ final class IOSSettingsViewController: UITableViewController {
     init() {
         super.init(style: .insetGrouped)
         title = "Settings"
-        tabBarItem = UITabBarItem(title: "Settings", image: UIImage(systemName: "gearshape"), selectedImage: UIImage(systemName: "gearshape.fill"))
+        tabBarItem = UITabBarItem(title: "Settings", image: IOSIcon.image("gearshape"), selectedImage: IOSIcon.image("gearshape.fill"))
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -276,11 +282,10 @@ final class IOSSettingsViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Setting", for: indexPath)
-        cell.textLabel?.text = rows[indexPath.row]
+        let themeSuffix = indexPath.row == 0 ? " • " + (IOSAppStyle.isDark ? "Night mode" : "Day mode") : ""
+        cell.textLabel?.text = rows[indexPath.row] + themeSuffix
         cell.textLabel?.textColor = IOSAppStyle.primaryText
         cell.textLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        cell.detailTextLabel?.text = indexPath.row == 0 ? (IOSAppStyle.isDark ? "Night mode" : "Day mode") : nil
-        cell.detailTextLabel?.textColor = IOSAppStyle.secondaryText
         cell.backgroundColor = IOSAppStyle.card
         cell.accessoryType = .disclosureIndicator
         return cell
