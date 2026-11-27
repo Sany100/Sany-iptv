@@ -171,6 +171,14 @@ final class IOSCatalogViewController: UITableViewController, UISearchBarDelegate
         applyFilters()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        view.backgroundColor = IOSAppStyle.background
+        tableView.backgroundColor = IOSAppStyle.background
+        searchBar.barStyle = IOSAppStyle.isDark ? .black : .default
+        tableView.reloadData()
+    }
+
     deinit {
         if let observer = observer { NotificationCenter.default.removeObserver(observer) }
     }
