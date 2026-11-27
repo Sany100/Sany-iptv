@@ -32,7 +32,7 @@ jobs:
           else
             echo "Firebase Analytics not configured; building without analytics."
           fi
-      - name: Build universal debug APK
+      - name: Build universal debug APKs
         run: gradle assembleMobileDebug assembleTvDebug
       - uses: actions/upload-artifact@v4
         with:
@@ -40,7 +40,7 @@ jobs:
           path: |
             app/build/outputs/apk/*/debug/*.apk
 
-  # Production release is deliberately manual-only.
+  # Production releases are deliberately manual-only and main-only.
   release:
     permissions:
       contents: write
@@ -72,7 +72,7 @@ jobs:
           test -n "$KEYSTORE_BASE64" || (echo "Missing SANY_RELEASE_KEYSTORE_BASE64 repository secret" && exit 1)
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sany-release.jks"
           echo "SANY_KEYSTORE_PATH=$RUNNER_TEMP/sany-release.jks" >> "$GITHUB_ENV"
-      - name: Build signed universal release APK
+      - name: Build signed mobile and Android TV release APKs
         env:
           SANY_KEYSTORE_PASSWORD: ${{ secrets.SANY_RELEASE_STORE_PASSWORD }}
           SANY_KEY_ALIAS: ${{ secrets.SANY_RELEASE_KEY_ALIAS }}
@@ -83,14 +83,17 @@ jobs:
           test -n "$SANY_KEY_PASSWORD" || (echo "Missing SANY_RELEASE_KEY_PASSWORD repository secret" && exit 1)
           VERSION="1.2.$GITHUB_RUN_NUMBER"
           VERSION_CODE="$GITHUB_RUN_NUMBER"
-          gradle assembleMobileRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
+          gradle assembleMobileRelease assembleTvRelease -PAPP_VERSION_NAME="$VERSION" -PAPP_VERSION_CODE="$VERSION_CODE"
+          cp app/build/outputs/apk/mobile/release/app-mobile-release.apk app-release.apk
+          cp app/build/outputs/apk/tv/release/app-tv-release.apk app-tv-release.apk
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
-      - name: Publish APK to GitHub Release
+      - name: Publish signed APKs to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: SANY IPTV ${{ env.RELEASE_VERSION }}
           generate_release_notes: true
           files: |
-            app/build/outputs/apk/mobile/release/app-mobile-release.apk
+            app-release.apk
+            app-tv-release.apk
