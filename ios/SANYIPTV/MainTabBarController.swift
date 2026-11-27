@@ -15,15 +15,19 @@ final class SANYMainTabBarController: UITabBarController {
 
         viewControllers = [liveTV, sports, movies, anime, settings]
 
-        let appearance = UITabBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = IOSAppStyle.card
-        appearance.stackedLayoutAppearance.normal.iconColor = IOSAppStyle.secondaryText
-        appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: IOSAppStyle.secondaryText]
-        appearance.stackedLayoutAppearance.selected.iconColor = IOSAppStyle.accent
-        appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: IOSAppStyle.accent]
-        tabBar.standardAppearance = appearance
-        if #available(iOS 15.0, *) { tabBar.scrollEdgeAppearance = appearance }
+        tabBar.barTintColor = IOSAppStyle.card
         tabBar.tintColor = IOSAppStyle.accent
+        tabBar.unselectedItemTintColor = IOSAppStyle.secondaryText
+        if #available(iOS 13.0, *) {
+            let appearance = UITabBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = IOSAppStyle.card
+            appearance.stackedLayoutAppearance.normal.iconColor = IOSAppStyle.secondaryText
+            appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: IOSAppStyle.secondaryText]
+            appearance.stackedLayoutAppearance.selected.iconColor = IOSAppStyle.accent
+            appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: IOSAppStyle.accent]
+            tabBar.standardAppearance = appearance
+            if #available(iOS 15.0, *) { tabBar.scrollEdgeAppearance = appearance }
+        }
     }
 }
