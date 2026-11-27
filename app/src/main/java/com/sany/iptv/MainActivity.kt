@@ -2078,8 +2078,9 @@ class MainActivity : AppCompatActivity() {
                                     item.posterUrl?.takeIf { it.isNotBlank() }?.let {
                                         loadCachedChannelLogo(image, placeholder, it)
                                     }
+                                    val eventStatus = liveSportsEventStatus(item.name, item.url)
                                     val titleOverlay = TextView(this).apply {
-                                        text = item.name
+                                        text = item.name.replace(Regex("^(🔴|🔜|✅)\\s*"), "")
                                         textSize = 11f
                                         maxLines = 2
                                         ellipsize = android.text.TextUtils.TruncateAt.END
@@ -2092,6 +2093,19 @@ class MainActivity : AppCompatActivity() {
                                         )
                                     }
                                     card.addView(titleOverlay, FrameLayout.LayoutParams(-1, dp(42), Gravity.BOTTOM))
+                                    val statusColor = when (eventStatus) {
+                                        "LIVE NOW" -> 0xFFD92332.toInt()
+                                        "UPCOMING" -> 0xFF0875F5.toInt()
+                                        "ENDED" -> 0xFF596579.toInt()
+                                        else -> 0xFF45566F.toInt()
+                                    }
+                                    card.addView(text(eventStatus, 9, Color.WHITE, true).apply {
+                                        setPadding(dp(7), dp(5), dp(7), dp(5))
+                                        background = rounded(statusColor, 14)
+                                        elevation = dp(4).toFloat()
+                                    }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+                                        setMargins(0, dp(6), dp(6), 0)
+                                    })
                                     if (isNowPlaying) {
                                         card.addView(text("▶ PLAYING", 9, Color.WHITE, true).apply {
                                             setPadding(dp(7), dp(4), dp(7), dp(4))
@@ -2113,6 +2127,36 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * PlayZTV marks event titles with 🔴 (live), 🔜 (upcoming), and ✅ (ended).
+     * Read the serialized event times as a fallback for providers that omit the prefix.
+     */
+    private fun liveSportsEventStatus(title: String, data: String): String {
+        val cleanTitle = title.trim()
+        when {
+            cleanTitle.startsWith("🔴") -> return "LIVE NOW"
+            cleanTitle.startsWith("🔜") -> return "UPCOMING"
+            cleanTitle.startsWith("✅") -> return "ENDED"
+        }
+        return runCatching {
+            val info = org.json.JSONObject(data).optJSONObject("eventInfo")
+                ?: return@runCatching "SCHEDULED"
+            val parser = java.text.SimpleDateFormat("yyyy/MM/dd HH:mm:ss Z", java.util.Locale.US)
+            val now = System.currentTimeMillis()
+            fun eventTime(key: String): Long? = info.optString(key)
+                .takeIf { it.isNotBlank() && !it.equals("null", true) }
+                ?.let { parser.parse(it)?.time }
+            val start = eventTime("startTime")
+            val end = eventTime("endTime")
+            when {
+                end != null && now >= end -> "ENDED"
+                start != null && now >= start && (end == null || now < end) -> "LIVE NOW"
+                start != null && now < start -> "UPCOMING"
+                else -> "SCHEDULED"
+            }
+        }.getOrDefault("SCHEDULED")
     }
 
     private fun showLiveSportsSearch(providerName: String, host: LinearLayout) {
@@ -2162,8 +2206,14 @@ class MainActivity : AppCompatActivity() {
         thread(name = "SANY-LiveSports-Resolve") {
             val result = runCatching {
                 kotlinx.coroutines.runBlocking {
-                    kotlinx.coroutines.withTimeout(25_000L) {
-                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
+                    kotlinx.coroutines.withTimeout(30_000L) {
+                        // Follow CloudStream's normal Live-event flow: load the event
+                        // response first, then resolve its stream data. This validates
+                        // serialized event payloads before asking the extractor for links.
+                        val loadedEvent = SanyCloudStreamPluginRuntime.load(providerName, data)
+                            ?: error("এই Live Sports event-এর details পাওয়া যায়নি")
+                        val playbackData = loadedEvent.url.takeIf { it.isNotBlank() } ?: data
+                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, playbackData)
                     }
                 }
             }
