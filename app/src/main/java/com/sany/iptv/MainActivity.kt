@@ -4767,6 +4767,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closePlayer(keepOrientation: Boolean = false) {
+        // TV Back closes playback without jumping away from the menu currently visible
+        // behind the fullscreen player. Touch devices retain their previous return flow.
+        val tvVisibleSection = if (isTvDevice && !keepOrientation) section else null
+        val tvVisibleGroup = if (isTvDevice && !keepOrientation) selectedGroup else null
+        val tvVisibleSearch = if (isTvDevice && !keepOrientation) searchQuery else null
+        val tvVisibleScrollY = if (isTvDevice && !keepOrientation && ::listContainer.isInitialized)
+            (listContainer.parent as? ScrollView)?.scrollY else null
+
         // Save Anime Series progress before the player is stopped or released.
         saveAnimeResumePosition(player, currentChannel)
         // When changing channels, do not briefly unlock orientation: Android may
@@ -4810,9 +4818,9 @@ class MainActivity : AppCompatActivity() {
         if (!keepOrientation) {
             isPlayerFullscreen = false
             // Restore the exact list context after the player overlay is removed.
-            section = playbackReturnSection
-            selectedGroup = playbackReturnGroup
-            searchQuery = playbackReturnSearch
+            section = tvVisibleSection ?: playbackReturnSection
+            selectedGroup = tvVisibleGroup ?: playbackReturnGroup
+            searchQuery = tvVisibleSearch ?: playbackReturnSearch
             if (section == "Live TV") {
                 liveTvSelectedGroup = selectedGroup
                 liveTvSearchQuery = searchQuery
@@ -4821,7 +4829,9 @@ class MainActivity : AppCompatActivity() {
             }
             if (::listContainer.isInitialized) {
                 (listContainer.parent as? ScrollView)?.post {
-                    (listContainer.parent as? ScrollView)?.scrollTo(0, playbackReturnScrollY)
+                    (listContainer.parent as? ScrollView)?.scrollTo(
+                        0, tvVisibleScrollY ?: playbackReturnScrollY
+                    )
                 }
             }
         }
