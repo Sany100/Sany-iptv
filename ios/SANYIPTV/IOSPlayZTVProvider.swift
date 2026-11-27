@@ -134,7 +134,7 @@ final class IOSPlayZTVProvider {
         request.setValue("com.playz.tv", forHTTPHeaderField: "X-Android-Package")
         request.setValue("AIzaSyDKRqLlbaZBIpHzLBiQTUrJqr3gN-nDWWc", forHTTPHeaderField: "X-Goog-Api-Key")
         session.dataTask(with: request) { data, _, _ in
-            let value = (try? data.flatMap { try JSONSerialization.jsonObject(with: $0) as? [String: Any] }) as? [String: Any]
+            let value: [String: Any]? = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
             let entries = value?["entries"] as? [String: Any]
             completion(entries?["api_url"] as? String)
         }.resume()
