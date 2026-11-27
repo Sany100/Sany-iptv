@@ -7,7 +7,7 @@ private struct IOSPlayZTVItem {
 }
 
 final class IOSPlayZTVHomeViewController: UITableViewController {
-    private var categories: [String] = []
+    private var categories: [IOSPlayZTVCategory] = []
     private var loading = false
     private var errorText: String?
 
@@ -61,7 +61,7 @@ final class IOSPlayZTVHomeViewController: UITableViewController {
             cell.textLabel?.textColor = IOSAppStyle.secondaryText
             cell.accessoryType = .none
         } else {
-            cell.textLabel?.text = categories[indexPath.row]
+            cell.textLabel?.text = categories[indexPath.row].name
             cell.accessoryType = .disclosureIndicator
         }
         return cell
@@ -71,21 +71,21 @@ final class IOSPlayZTVHomeViewController: UITableViewController {
         tableView.deselectRow(at: indexPath, animated: true)
         guard categories.indices.contains(indexPath.row) else { return }
         let category = categories[indexPath.row]
-        let detail = IOSPlayZTVCategoryViewController(categoryPath: category)
+        let detail = IOSPlayZTVCategoryViewController(category: category)
         navigationController?.pushViewController(detail, animated: true)
     }
 }
 
 private final class IOSPlayZTVCategoryViewController: UITableViewController {
-    private let categoryPath: String
+    private let category: IOSPlayZTVCategory
     private var items: [IOSPlayZTVItem] = []
     private var loading = true
     private var errorText: String?
 
-    init(categoryPath: String) {
-        self.categoryPath = categoryPath
+    init(category: IOSPlayZTVCategory) {
+        self.category = category
         super.init(style: .plain)
-        title = categoryPath == "events.txt" ? "Live Events" : (URL(string: categoryPath)?.lastPathComponent ?? categoryPath)
+        title = category.name
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
@@ -94,7 +94,7 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
         view.backgroundColor = IOSAppStyle.background
         tableView.backgroundColor = IOSAppStyle.background
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "PlayZChannel")
-        IOSPlayZTVProvider.shared.loadCategoryPayload(path: categoryPath) { [weak self] result in
+        IOSPlayZTVProvider.shared.loadCategoryPayload(path: category.api) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.loading = false
@@ -171,7 +171,7 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
             } else if let links = dictionary["links"] as? [String] {
                 rawLinks = links
             } else {
-                for key in ["link", "url"] {
+                for key in ["link", "url", "webLink"] {
                     if let value = dictionary[key] as? String { rawLinks.append(value) }
                 }
             }
