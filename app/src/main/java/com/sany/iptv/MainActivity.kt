@@ -155,6 +155,8 @@ class MainActivity : AppCompatActivity() {
     private var animeEpisodePanel: View? = null
     private var animeCenterPlayButton: TextView? = null
     private var animePlayerTitleOverlay: TextView? = null
+    // Keep the first TV render small; 1 GB devices create fewer views and logo tasks.
+    private val tvPageSize: Int get() = if (isLowRamTvDevice) 8 else 16
     private var displayedLimit = 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
@@ -211,7 +213,7 @@ class MainActivity : AppCompatActivity() {
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
                     // Decode logos near their on-screen size instead of allocating full-resolution
                     // bitmaps for every visible channel (reduces TV memory pressure / OOM risk).
-                    val targetPixels = dp(if (isLowRamTvDevice) 48 else 64).coerceAtLeast(48)
+                    val targetPixels = dp(if (isLowRamTvDevice) 40 else if (isTvDevice) 52 else 64).coerceAtLeast(40)
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
                     var sample = 1
@@ -240,7 +242,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Resolve TV capabilities only after Activity attachment; keep constructor safe.
-        displayedLimit = if (isTvDevice) if (isLowRamTvDevice) 12 else 24 else 60
+        displayedLimit = if (isTvDevice) tvPageSize else 60
         installSanyCrashLogger()
         EpgRepository.scheduleDaily(this)
         // Refresh EPG on every fresh app launch, without blocking the first screen.
@@ -318,13 +320,14 @@ class MainActivity : AppCompatActivity() {
         // system/decor regions with the currently selected theme color.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
-        buildShell(showSplash = !restoringBackground && !returningFromBackground)
+        // Skip the animated 3-second splash on TV so low-memory boxes reach content immediately.
+        buildShell(showSplash = !isTvDevice && !restoringBackground && !returningFromBackground)
         registerForPushUpdates()
         checkForMandatoryUpdate()
         checkMaintenanceMode()
         if (!restoringBackground) {
             // Avoid costly first-frame transforms on Android 6 devices.
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
+            if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
                 home.alpha = 1f
                 home.translationY = 0f
                 home.scaleX = 1f
@@ -913,10 +916,12 @@ class MainActivity : AppCompatActivity() {
                 setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
             }
             // Premium raised header; opaque fill prevents the content behind it tinting the surface.
-            cameraDistance = 11000f * resources.displayMetrics.density
-            rotationX = 2.2f
-            translationZ = dp(10).toFloat()
-            elevation = dp(14).toFloat()
+            if (!isTvDevice) {
+                cameraDistance = 11000f * resources.displayMetrics.density
+                rotationX = 2.2f
+                translationZ = dp(10).toFloat()
+                elevation = dp(14).toFloat()
+            }
         }
         // Keep the original stacked brand header. Move connection status below
         // SANY IPTV instead of showing it as a pill on the right side.
@@ -926,7 +931,7 @@ class MainActivity : AppCompatActivity() {
         }
         val brand = text("SANY IPTV", if (isTvDevice) 23 else 29, accent, true).apply {
             letterSpacing = 0.06f
-            setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
+            if (!isTvDevice) setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(8), 0, 0, 0)
             gravity = Gravity.CENTER_VERTICAL
             translationZ = dp(10).toFloat()
@@ -980,7 +985,7 @@ class MainActivity : AppCompatActivity() {
         })
         updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
+        if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
             top.alpha = 1f
             top.translationY = 0f
             top.rotationX = 0f
@@ -1047,7 +1052,7 @@ class MainActivity : AppCompatActivity() {
                 cornerRadius = dp(12).toFloat()
                 setStroke(dp(3), accent)
             } else null
-            focusedView.elevation = if (hasFocus) dp(3).toFloat() else 0f
+            focusedView.elevation = 0f
             if (hasFocus) focusedView.requestRectangleOnScreen(
                 android.graphics.Rect(0, 0, focusedView.width, focusedView.height), true
             )
@@ -1393,6 +1398,8 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(12), 0, 0)
         })
         contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
+        // Static artwork is cheaper than a continuously invalidated pulse on TV GPUs.
+        if (isTvDevice) return
 
         val pulse = ValueAnimator.ofFloat(0.82f, 1.04f).apply {
             duration = 1050
@@ -1497,7 +1504,7 @@ class MainActivity : AppCompatActivity() {
                         .putString("ui_group", selectedGroup)
                         .putString("ui_search", "")
                         .apply()
-                    displayedLimit = if (isTvDevice) 24 else 60
+                    displayedLimit = if (isTvDevice) tvPageSize else 60
                     renderListOnly()
                 }
             }
@@ -1522,7 +1529,7 @@ class MainActivity : AppCompatActivity() {
                     searchQuery = value.trim()
                     liveTvSearchQuery = searchQuery
                     prefs.edit().putString("live_tv_search", liveTvSearchQuery).apply()
-                    displayedLimit = if (isTvDevice) 24 else 60
+                    displayedLimit = if (isTvDevice) tvPageSize else 60
                     renderChannelRows(listContainer)
                 })
             }
@@ -1588,7 +1595,7 @@ class MainActivity : AppCompatActivity() {
                             .putString("ui_search", "")
                             .apply()
                     }
-                    displayedLimit = if (isTvDevice) 24 else 60
+                    displayedLimit = if (isTvDevice) tvPageSize else 60
                     renderListOnly()
                 }
             }
@@ -1768,7 +1775,7 @@ class MainActivity : AppCompatActivity() {
                 alpha = 1f
                 setPadding(0, dp(4), 0, 0)
             }
-            // Soft, continuous blinking green indicator beside every SANY IPTV watermark.
+            // Phone-only watermark row; TV keeps fewer child views per channel for smoother scrolling.
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV blinking live indicator"
                 alpha = 1f
@@ -1787,7 +1794,7 @@ class MainActivity : AppCompatActivity() {
                 letterSpacing = 0.12f
                 setPadding(dp(4), 0, 0, 0)
             })
-            details.addView(watermarkLine)
+            if (!isTvDevice) details.addView(watermarkLine)
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
             if (isPlayingChannel) {
                 val nowPlayingBadge = TextView(this).apply {
@@ -1826,7 +1833,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += if (isTvDevice) 24 else 120
+                displayedLimit += if (isTvDevice) tvPageSize else 120
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8); bottomMargin = dp(12) })
         }
@@ -1922,7 +1929,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += if (isTvDevice) 24 else 120
+                displayedLimit += if (isTvDevice) tvPageSize else 120
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(50)).apply {
                 topMargin = dp(8)
@@ -2037,7 +2044,7 @@ class MainActivity : AppCompatActivity() {
                         selectedGroup = "All"
                         searchQuery = ""
                     }
-                    displayedLimit = if (isTvDevice) 24 else 60
+                    displayedLimit = if (isTvDevice) tvPageSize else 60
                     // Reuse the existing shell and header; rebuild only the page content
                     // and the five small navigation items. This avoids a full-screen layout
                     // pass on every menu tap.
