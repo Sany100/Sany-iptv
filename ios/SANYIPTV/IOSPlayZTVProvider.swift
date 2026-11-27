@@ -41,6 +41,8 @@ final class IOSPlayZTVProvider {
                             let categories = try JSONDecoder().decode([IOSPlayZTVCategory].self, from: data)
                                 .map { $0.cat.trimmingCharacters(in: .whitespacesAndNewlines) }
                                 .filter { !$0.isEmpty }
+                            // Android PlayZTVProviderManager.fetchLiveEvents() reads this fixed endpoint.
+                            .appending("events.txt")
                             completion(.success(Array(NSOrderedSet(array: categories)) as? [String] ?? categories))
                         } catch { completion(.failure(error)) }
                     }
