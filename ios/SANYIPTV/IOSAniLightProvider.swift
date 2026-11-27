@@ -275,6 +275,8 @@ final class IOSAnimeHomeViewController: UITableViewController, UISearchBarDelega
         loadHome()
     }
 
+    @objc private func refreshHome() { loadHome() }
+
     @objc private func showCategories() {
         let names = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror", "Mecha", "Mystery", "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports", "Supernatural", "Thriller"]
         let alert = UIAlertController(title: "Anime categories", message: nil, preferredStyle: .actionSheet)
