@@ -82,8 +82,8 @@ final class IOSPlayZTVProvider {
         }
     }
 
-    // PlayZTV categories contain provider-specific paths; callers pass the exact path
-    // returned by categories.txt rather than constructing guessed endpoint names.
+    // Each categories.txt cat entry contains JSON metadata, including its provider name and API path.
+    // Callers use that exact API path rather than constructing guessed endpoint names.
     func loadCategoryPayload(path: String, completion: @escaping (Result<String, Error>) -> Void) {
         resolveBaseURL { [weak self] result in
             guard let self else { return }
