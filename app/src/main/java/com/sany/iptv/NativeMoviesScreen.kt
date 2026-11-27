@@ -50,6 +50,7 @@ class NativeMoviesScreen(
     }
     private data class Movie(val title: String, val url: String, val category: String, val poster: String)
     private data class MovieShelfCard(val title: String, val poster: String, val onClick: () -> Unit)
+    private val useTvFocus = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
     private val prefs = context.getSharedPreferences("sany_iptv", Context.MODE_PRIVATE)
     // Daylight uses the same clean white canvas as Anime Series; dark mode is unchanged.
     private val bg = if (light) Color.WHITE else Color.BLACK
@@ -412,6 +413,7 @@ class NativeMoviesScreen(
                 gravity = Gravity.CENTER
                 setPadding(dp(12), dp(8), dp(8), dp(8))
                 isFocusable = true
+                applyTvFocusStyle(this)
                 contentDescription = "See more $title"
                 setOnClickListener { openMovieShelfPage(title, cards) }
             })
@@ -438,6 +440,7 @@ class NativeMoviesScreen(
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 isFocusable = true
+                applyTvFocusStyle(this)
                 setOnClickListener { item.onClick() }
             }
             val isNowPlaying = prefs.getString("movies_now_playing_title", "").equals(item.title, ignoreCase = true)
@@ -521,6 +524,7 @@ class NativeMoviesScreen(
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
                 isFocusable = true
+                applyTvFocusStyle(this)
                 setPadding(dp(1), 0, dp(1), dp(8))
                 setOnClickListener { item.onClick() }
             }
@@ -717,9 +721,37 @@ class NativeMoviesScreen(
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
 
+    private fun applyTvFocusStyle(view: View) {
+        if (!useTvFocus) return
+        view.isFocusable = true
+        view.isFocusableInTouchMode = false
+        val focused = GradientDrawable().apply {
+            setColor(Color.argb(if (light) 52 else 72, 55, 145, 255))
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(3), accent)
+        }
+        val idle = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            cornerRadius = dp(12).toFloat()
+        }
+        view.foreground = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), focused)
+            addState(intArrayOf(), idle)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 21) view.stateListAnimator = null
+        if (android.os.Build.VERSION.SDK_INT >= 26) view.defaultFocusHighlightEnabled = false
+        view.setOnFocusChangeListener { focusedView, hasFocus ->
+            focusedView.elevation = 0f
+            if (hasFocus) focusedView.requestRectangleOnScreen(
+                android.graphics.Rect(0, 0, focusedView.width, focusedView.height), false
+            )
+        }
+    }
+
     private fun button(value: String, action: () -> Unit) = TextView(context).apply {
         text = value; gravity = Gravity.CENTER; textSize = 12f; typeface = Typeface.DEFAULT_BOLD
-        setTextColor(Color.WHITE); isFocusable = true; setPadding(dp(8), dp(8), dp(8), dp(8))
+        setTextColor(Color.WHITE); isFocusable = true
+                applyTvFocusStyle(this); setPadding(dp(8), dp(8), dp(8), dp(8))
         background = rounded(accent, 12); setOnClickListener { action() }
     }
 
