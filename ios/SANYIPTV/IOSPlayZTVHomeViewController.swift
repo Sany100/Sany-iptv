@@ -85,7 +85,7 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
     init(categoryPath: String) {
         self.categoryPath = categoryPath
         super.init(style: .plain)
-        title = URL(string: categoryPath)?.lastPathComponent ?? categoryPath
+        title = categoryPath == "events.txt" ? "Live Events" : (URL(string: categoryPath)?.lastPathComponent ?? categoryPath)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
