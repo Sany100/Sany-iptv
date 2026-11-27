@@ -1,4 +1,4 @@
-name: iOS Simulator Build
+name: iOS Build
 on:
   push:
     branches: [ main ]
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  build-ios-simulator:
+  build-ios:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -29,10 +29,34 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
-            -derivedDataPath ios/build \
+            -derivedDataPath ios/build-simulator \
             CODE_SIGNING_ALLOWED=NO \
             build
+      - name: Archive unsigned iOS device app
+        run: |
+          xcodebuild \
+            -project ios/SANYIPTV.xcodeproj \
+            -scheme SANYIPTV \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            -archivePath ios/build/SANYIPTV.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p ios/ipa/Payload
+          cp -R "ios/build/SANYIPTV.xcarchive/Products/Applications/SANY IPTV.app" ios/ipa/Payload/
+          cd ios/ipa
+          /usr/bin/zip -qry "../../SANY-IPTV-unsigned.ipa" Payload
+          cd ../..
+          test -s SANY-IPTV-unsigned.ipa
+          unzip -l SANY-IPTV-unsigned.ipa | grep -q "Payload/SANY IPTV.app/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sany-iptv-unsigned-ipa
+          path: SANY-IPTV-unsigned.ipa
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: sany-iptv-ios-simulator
-          path: ios/build/Build/Products/Debug-iphonesimulator/SANY IPTV.app
+          path: ios/build-simulator/Build/Products/Debug-iphonesimulator/SANY IPTV.app
