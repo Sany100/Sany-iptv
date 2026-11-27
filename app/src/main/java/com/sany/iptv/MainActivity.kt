@@ -5364,8 +5364,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun settingsCard(parent: LinearLayout, title: String, subtitle: String, action: () -> Unit) {
         val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(15), dp(14), dp(15), dp(14))
-            background = glass(12); setOnClickListener { action() }
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(15), dp(14), dp(15), dp(14))
+            background = glass(12)
+            // Settings cards must be reachable with a TV remote's DPAD.
+            // Keep the phone touch interaction unchanged.
+            isFocusable = packageName.endsWith(".tv")
+            isClickable = true
+            setOnClickListener { action() }
         }
         card.addView(text(title, 15, white, true))
         card.addView(text(subtitle, 12, muted).apply { setPadding(0, dp(5), 0, 0) })
