@@ -96,6 +96,8 @@ final class IOSPlayZTVProvider {
         request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("yes", forHTTPHeaderField: "X-Google-GFE-Can-Retry")
+        request.setValue("okhttp/4.12.0", forHTTPHeaderField: "User-Agent")
         request.setValue("com.playz.tv", forHTTPHeaderField: "X-Android-Package")
         request.setValue("AIzaSyDKRqLlbaZBIpHzLBiQTUrJqr3gN-nDWWc", forHTTPHeaderField: "X-Goog-Api-Key")
         session.dataTask(with: request) { data, _, _ in
@@ -107,7 +109,12 @@ final class IOSPlayZTVProvider {
 
     private func probeFallback(index: Int, completion: @escaping (Result<URL, Error>) -> Void) {
         guard index < defaults.count, let url = URL(string: defaults[index]) else {
-            completion(.failure(ProviderError.serverUnavailable)); return
+            guard let first = URL(string: defaults[0]) else {
+                completion(.failure(ProviderError.serverUnavailable)); return
+            }
+            cachedBaseURL = first
+            completion(.success(first))
+            return
         }
         var request = URLRequest(url: url.appendingPathComponent("categories.txt"))
         request.httpMethod = "HEAD"
