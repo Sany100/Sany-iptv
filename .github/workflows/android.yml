@@ -15,13 +15,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.14.4'
+          gradle-version: '9.3.1'
+      - name: Install pinned CloudStream Android SDK
+        run: |
+          set -euo pipefail
+          sed -i 's/^compileSdk = "37"$/compileSdk = "36"/' cloudstream-upstream/gradle/libs.versions.toml
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          set -o pipefail
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - name: Configure Firebase Analytics
         env:
           FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}
@@ -48,13 +60,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.14.4'
+          gradle-version: '9.3.1'
+      - name: Install pinned CloudStream Android SDK
+        run: |
+          set -euo pipefail
+          sed -i 's/^compileSdk = "37"$/compileSdk = "36"/' cloudstream-upstream/gradle/libs.versions.toml
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          set -o pipefail
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
       - name: Configure Firebase Analytics
         env:
           FIREBASE_JSON: ${{ secrets.SANY_FIREBASE_JSON }}

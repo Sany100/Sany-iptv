@@ -26,7 +26,6 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.raghav.donation.DonationManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -41,13 +40,14 @@ class AniLightProvider : MainAPI() {
     override var name = "AniLight"
     override var lang = "en"
     override val hasMainPage = true
-    // Anime series only. Movie entries are deliberately excluded from this provider.\noverride val supportedTypes = setOf(TvType.Anime, TvType.OVA)
+    // Supports episodic anime plus one-shot AnimeMovie entries.
+    override val supportedTypes = setOf(TvType.Anime, TvType.OVA, TvType.AnimeMovie)
 
     override val mainPage = mainPageOf(
         "home:trending" to "Trending Now",
         "home:popular" to "Most Popular",
+        "home:movies" to "Anime Movies",
         "home:seasonal" to "This Season",
-        "home:movies" to "Popular Movies",
         "sort:SCORE_DESC" to "Top Rated",
         "home:recent" to "Recently Added",
         "home:upcoming" to "Upcoming",
@@ -73,7 +73,6 @@ class AniLightProvider : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        DonationManager.checkAndShow()
         AniLightApi.refreshDomain()
         mainUrl = AniLightApi.site()
         val data = request.data
@@ -84,8 +83,8 @@ class AniLightProvider : MainAPI() {
                 val items = when (data.substringAfter("home:")) {
                     "trending" -> home.trending?.media
                     "popular" -> home.popular?.media
+                    "movies" -> home.popularMovies?.media?.filter { it.format == "MOVIE" }
                     "seasonal" -> home.seasonal?.media
-                    "movies" -> home.popularMovies?.media
                     "recent" -> home.recentlyAddedEpisodes
                     "upcoming" -> home.upcoming?.media
                     else -> null
@@ -139,26 +138,36 @@ class AniLightProvider : MainAPI() {
         val anime = AniLightApi.animeDetail(slug) ?: return null
         val title = anime.title?.display() ?: return null
         val animeId = anime.id ?: return null
+        val isMovie = anime.format == "MOVIE"
 
         val watch = AniLightApi.watch(slug)
-        val entries = watch?.episodes.orEmpty()
-
-        val hasDub = entries.any { it.dub == true }
-        val hasSub = entries.any { it.sub == true }
-
-        // the app hides the sub dub switcher on movie types, so dual audio movies stay regular anime
-        val tvType = when {
-            anime.format == "MOVIE" && hasDub -> TvType.Anime
-            else -> tvTypeOf(anime.format)
+        // AniLight exposes movie streams through the same sources endpoint. If its
+        // watch response omits an episode row, use the site's single-item convention.
+        val entries = watch?.episodes.orEmpty().ifEmpty {
+            if (isMovie) listOf(EpisodeEntry(number = 1, title = "Movie", sub = true))
+            else emptyList()
         }
 
+        val hasDub = entries.any { it.dub == true }
+        // Some movie watch payloads omit explicit SUB/DUB flags; default those
+        // single-item movie rows to SUB rather than hiding the playable item.
+        val hasSub = entries.any { it.sub == true } ||
+            (isMovie && entries.none { it.sub == true || it.dub == true })
+        val tvType = tvTypeOf(anime.format)
+
         val subEpisodes = if (hasSub) {
-            entries.filter { it.sub == true }.map { it.toEpisode(animeId, "sub") }
+            entries.filter {
+                it.sub == true || (isMovie && it.dub != true)
+            }.map {
+                it.toEpisode(animeId, "sub", if (isMovie) "Movie" else null)
+            }
         } else {
             emptyList()
         }
         val dubEpisodes = if (hasDub) {
-            entries.filter { it.dub == true }.map { it.toEpisode(animeId, "dub") }
+            entries.filter { it.dub == true }.map {
+                it.toEpisode(animeId, "dub", if (isMovie) "Movie (Dub)" else null)
+            }
         } else {
             emptyList()
         }
@@ -195,7 +204,11 @@ class AniLightProvider : MainAPI() {
         return response
     }
 
-    private fun EpisodeEntry.toEpisode(animeId: Int, audio: String): Episode {
+    private fun EpisodeEntry.toEpisode(
+        animeId: Int,
+        audio: String,
+        fallbackTitle: String? = null
+    ): Episode {
         val num = number ?: 1
         val data = AniLightEpisodeData(
             animeId = animeId,
@@ -205,7 +218,7 @@ class AniLightProvider : MainAPI() {
         return newEpisode(data) {
             this.episode = num
             // blank names fall back to the plain number so the row never shows gaps
-            this.name = title?.takeIf { it.isNotBlank() } ?: "Episode $num"
+            this.name = title?.takeIf { it.isNotBlank() } ?: fallbackTitle ?: "Episode $num"
             this.posterUrl = img?.takeIf { it.startsWith("http") }
             this.description = buildString {
                 if (isFiller == true) append("Filler episode")

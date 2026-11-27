@@ -10,6 +10,7 @@ cloudstream {
     authors = listOf("KSHITIJ8473")
 
     status = 1
+    // Anime series, OVA/specials, and standalone anime movies.
     tvTypes = listOf(
         "Anime",
         "AnimeMovie",

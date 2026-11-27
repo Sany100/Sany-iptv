@@ -1,3 +1,6 @@
+import java.net.URL
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,9 +19,29 @@ tasks.configureEach {
     }
 }
 
+// Bundle the pinned Live Sports provider inside every APK so first launch can
+// install it locally without waiting for a provider download.
+val playZtvAssetsDir = layout.buildDirectory.dir("generated/liveSportsAssets")
+val bundlePlayZtvProvider by tasks.registering {
+    val bundledPackage = playZtvAssetsDir.map { it.file("live_sports/PlayZTVProvider.cs3") }
+    outputs.file(bundledPackage)
+    doLast {
+        val output = bundledPackage.get().asFile
+        output.parentFile.mkdirs()
+        val packageUrl = "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/builds/PlayZTVProvider.cs3"
+        val expectedSha256 = "8541a6dbf0c8fdd6dbf698548e85a856cdd11be27d99db0ee3a1ccda5f4226b5"
+        URL(packageUrl).openStream().use { input ->
+            output.outputStream().buffered().use { destination -> input.copyTo(destination) }
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(output.readBytes()).joinToString("") { "%02x".format(it) }
+        check(digest == expectedSha256) { "Bundled PlayZTVProvider checksum mismatch: $digest" }
+    }
+}
+
 android {
     namespace = "com.sany.iptv"
-    compileSdk = 35
+    compileSdk = 36
 
     val releaseStoreFile = System.getenv("SANY_KEYSTORE_PATH")
     val releaseStorePassword = System.getenv("SANY_KEYSTORE_PASSWORD")
@@ -27,9 +50,6 @@ android {
 
     signingConfigs {
         create("release") {
-            // Keep legacy v1 and modern v2 signatures for Android TV installers.
-            enableV1Signing = true
-            enableV2Signing = true
             if (!releaseStoreFile.isNullOrBlank()) {
                 storeFile = file(releaseStoreFile)
                 storePassword = releaseStorePassword
@@ -38,28 +58,25 @@ android {
             }
         }
     }
+
+    sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
+    sourceSets.getByName("main").assets.srcDir(playZtvAssetsDir.get().asFile)
+
     defaultConfig {
-        applicationId = "com.sany.iptv"
-        // Mobile remains compatible with Android 6+; the TV flavor raises this to Android 10.
-        minSdk = 23
+        minSdk = 29
         targetSdk = 35
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("365").get().toInt()
-        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.2.365").get()
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("452000").get().toInt()
+        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.2.452-TV").get()
+        manifestPlaceholders["appLabel"] = "SANY IPTV Android TV"
     }
 
-    // Separate APK variants keep Android TV's API 29 minimum independent of mobile support.
     flavorDimensions += "device"
     productFlavors {
-        create("mobile") {
-            dimension = "device"
-            minSdk = 23
-        }
         create("tv") {
             dimension = "device"
-            // Keep the TV package separate from the mobile package to avoid
-            // package/signature/version conflicts during TV installation.
             applicationIdSuffix = ".tv"
             minSdk = 29
+            manifestPlaceholders["appLabel"] = "SANY IPTV Android TV"
         }
     }
 
@@ -84,10 +101,12 @@ kotlin {
     }
 }
 
+tasks.named("preBuild").configure { dependsOn(bundlePlayZtvProvider) }
+
 dependencies {
+    implementation(project(":cloudstream-library"))
+
     if (file("google-services.json").exists()) {
-        // BoM 34.14.1 maps Firebase Analytics to 23.2.0, avoiding the API 24
-        // minimum introduced by Analytics 24.0.0 and retaining Android 6 support.
         implementation(platform("com.google.firebase:firebase-bom:34.14.1"))
         implementation("com.google.firebase:firebase-analytics")
         implementation("com.google.firebase:firebase-messaging")
@@ -95,9 +114,20 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
-    implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
-    implementation("androidx.media3:media3-ui:1.5.1")
+    implementation("androidx.media3:media3-exoplayer:1.9.3")
+    implementation("androidx.media3:media3-exoplayer-hls:1.9.3")
+    implementation("androidx.media3:media3-exoplayer-dash:1.9.3")
+    implementation("androidx.media3:media3-ui:1.9.3")
+    implementation("androidx.media3:media3-datasource-okhttp:1.9.3")
     implementation("commons-net:commons-net:3.11.1")
+    implementation("com.github.Blatzar:NiceHttp:0.4.18")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
+    // CloudStream plugin DEX files resolve Gson through the host app classloader.
+    // Package Gson explicitly so plugin references such as com.google.gson.JsonParser resolve at runtime.
+    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 }
+
+// TV CI compile SDK is pinned to the currently available Android 36 platform.

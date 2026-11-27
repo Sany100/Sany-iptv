@@ -1,0 +1,719 @@
+﻿package com.multimovies
+
+import com.lagradost.cloudstream3.Actor
+import com.lagradost.cloudstream3.ActorData
+import com.lagradost.cloudstream3.app
+import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import org.jsoup.nodes.Document
+
+internal object HttpKit {
+
+    private val cookieJar = object : okhttp3.CookieJar {
+        private val cookies = mutableMapOf<String, List<okhttp3.Cookie>>()
+        override fun saveFromResponse(url: okhttp3.HttpUrl, list: List<okhttp3.Cookie>) {
+            cookies[url.host] = list
+        }
+        override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> {
+            return cookies[url.host]?.filter { it.expiresAt > System.currentTimeMillis() } ?: emptyList()
+        }
+    }
+
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .cookieJar(cookieJar)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
+
+    suspend fun get(url: String, headers: Map<String, String> = emptyMap(), budgetMs: Long = 8_000L): String? =
+        withContext(Dispatchers.IO) {
+            withTimeoutOrNull(budgetMs) {
+                runCatching {
+                    val req = Request.Builder().url(url).get()
+                    headers.forEach { (k, v) -> req.header(k, v) }
+                    client.newCall(req.build()).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use null
+                        resp.body.string()
+                    }
+                }.getOrNull()
+            }
+        }
+
+    suspend fun getJson(url: String, headers: Map<String, String> = emptyMap(), budgetMs: Long = 8_000L): JSONObject? =
+        get(url, headers, budgetMs)?.let { raw ->
+            runCatching { JSONObject(raw) }.getOrNull()
+        }
+
+    suspend fun postForm(
+        url: String,
+        fields: Map<String, String>,
+        headers: Map<String, String> = emptyMap(),
+        budgetMs: Long = 8_000L,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            withTimeoutOrNull(budgetMs) {
+                runCatching {
+                    val form = fields.entries.joinToString("&") { (k, v) ->
+                        URLEncoder.encode(k, "UTF-8") + "=" + URLEncoder.encode(v, "UTF-8")
+                    }
+                    val body = form.toRequestBody("application/x-www-form-urlencoded; charset=UTF-8".toMediaType())
+                    val req = Request.Builder().url(url).post(body)
+                    headers.forEach { (k, v) -> req.header(k, v) }
+                    client.newCall(req.build()).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use null
+                        resp.body.string()
+                    }
+                }.getOrNull()
+            }
+        }
+
+    suspend fun postJson(
+        url: String,
+        json: String,
+        headers: Map<String, String> = emptyMap(),
+        budgetMs: Long = 8_000L,
+    ): String? =
+        withContext(Dispatchers.IO) {
+            withTimeoutOrNull(budgetMs) {
+                runCatching {
+                    val body = json.toRequestBody("application/json; charset=UTF-8".toMediaType())
+                    val req = Request.Builder().url(url).post(body)
+                    headers.forEach { (k, v) -> req.header(k, v) }
+                    client.newCall(req.build()).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use null
+                        resp.body.string()
+                    }
+                }.getOrNull()
+            }
+        }
+}
+
+internal object CryptoJs {
+
+    fun evpKdf(password: ByteArray, salt: ByteArray?, keyLen: Int, ivLen: Int): Pair<ByteArray, ByteArray> {
+        val md = MessageDigest.getInstance("MD5")
+        val total = keyLen + ivLen
+        val out = ByteArrayOutputStream()
+        var block = ByteArray(0)
+        while (out.size() < total) {
+            val toHash = ByteArrayOutputStream().apply {
+                write(block); write(password)
+                if (salt != null) write(salt)
+            }.toByteArray()
+            block = md.digest(toHash)
+            out.write(block)
+        }
+        val keyIv = out.toByteArray()
+        return keyIv.copyOfRange(0, keyLen) to keyIv.copyOfRange(keyLen, total)
+    }
+
+    fun base64DecodeLenient(s: String): ByteArray {
+        val b64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        val valid = s.filter { it in b64Chars }
+        val padding = (4 - (valid.length % 4)) % 4
+        return Base64.getDecoder().decode(valid + "=".repeat(padding))
+    }
+
+    fun aesDecryptCryptoJs(cipherBase64: String, passphrase: String): String? {
+        val all = runCatching { base64DecodeLenient(cipherBase64) }.getOrNull() ?: return null
+        val (salt, cipher) = if (all.size >= 16 && String(all.copyOfRange(0, 8), StandardCharsets.ISO_8859_1) == "Salted__") {
+            all.copyOfRange(8, 16) to all.copyOfRange(16, all.size)
+        } else null to all
+        val (key, iv) = evpKdf(passphrase.toByteArray(StandardCharsets.UTF_8), salt, 32, 16)
+        return runCatching {
+            val c = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            c.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+            String(c.doFinal(cipher), StandardCharsets.UTF_8)
+        }.getOrNull()
+    }
+
+    fun aesEncryptCryptoJs(plaintext: String, passphrase: String): String {
+        val salt = ByteArray(8).also { SecureRandom().nextBytes(it) }
+        val (key, iv) = evpKdf(passphrase.toByteArray(StandardCharsets.UTF_8), salt, 32, 16)
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
+        val encrypted = cipher.doFinal(plaintext.toByteArray(StandardCharsets.UTF_8))
+        val out = ByteArrayOutputStream(8 + salt.size + encrypted.size)
+        out.write("Salted__".toByteArray(StandardCharsets.ISO_8859_1))
+        out.write(salt)
+        out.write(encrypted)
+        return Base64.getEncoder().encodeToString(out.toByteArray())
+    }
+}
+
+private fun str(obj: JSONObject, key: String): String? {
+    val v: String = obj.optString(key)
+    return if (v.isBlank()) null else v
+}
+
+object TmdbService {
+
+    private const val TMDB_API_KEY = "e6333b32409e02a4a6eba6fb7ff866bb"
+    private const val SIMKL_CLIENT_ID = ""
+    private const val SEARCH_INFLIGHT_WAIT_MS = 8_000L
+    private const val TMDB_API = "https://api.themoviedb.org/3"
+    private const val SIMKL_API = "https://api.simkl.com"
+    private const val IMG_BASE = "https://image.tmdb.org/t/p/w500"
+    private const val IMG_BACKDROP = "https://image.tmdb.org/t/p/w1280"
+
+    private fun tmdbKey(): String = Settings.tmdbApiKey() ?: TMDB_API_KEY
+
+    suspend fun testTmdbKey(raw: String): String {
+        val key = raw.trim()
+        if (key.isEmpty()) return "Enter a key first"
+        if (key.startsWith("eyJ")) return "That's the Read Access Token - paste the API Key (v3)"
+        return runCatching {
+            val r = app.get("$TMDB_API/configuration?api_key=$key", timeout = 8)
+            when (r.code) {
+                in 200..299 -> "Key works - TMDB connected"
+                401 -> "Key rejected (401) - check the API Key (v3)"
+                else -> "TMDB error (${r.code})"
+            }
+        }.getOrDefault("Verify failed - no network?")
+    }
+
+    private val detailCache = ConcurrentHashMap<String, TmdbDetail>()
+    private val imdbFindCache = ConcurrentHashMap<String, Pair<Int, String>>()
+
+    data class TmdbItem(
+        val tmdbId: Int?,
+        val imdbId: String?,
+        val type: String,
+        val name: String,
+        val year: String?,
+        val poster: String?,
+        val rating: Double?,
+    )
+
+    data class TmdbDetail(
+        val tmdbId: Int? = null,
+        val imdbId: String? = null,
+        val name: String? = null,
+        val originalLanguage: String? = null,
+        val poster: String? = null,
+        val backdrop: String? = null,
+        val year: String? = null,
+        val rating: Double? = null,
+        val overview: String? = null,
+        val genres: List<String>? = null,
+        val cast: List<ActorData>? = null,
+        val runtime: Int? = null,
+    )
+
+    data class TmdbEpisode(
+        val name: String? = null,
+        val overview: String? = null,
+        val released: String? = null,
+        val thumbnail: String? = null,
+        val rating: Double? = null,
+        val runtime: Int? = null,
+    )
+
+    suspend fun search(query: String): List<TmdbItem> {
+        if (query.isBlank()) return emptyList()
+        return when {
+            SIMKL_CLIENT_ID.isNotBlank() -> searchSimkl(query)
+            else -> searchTmdbShared(query.trim().lowercase(), query)
+        }
+    }
+
+    private val searchScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val searchInFlight = ConcurrentHashMap<String, Deferred<List<TmdbItem>>>()
+
+    private suspend fun searchTmdbShared(key: String, query: String): List<TmdbItem> {
+        val mine = searchScope.async { searchTmdb(query) }
+        val existing = searchInFlight.putIfAbsent(key, mine)
+        if (existing == null) {
+            mine.invokeOnCompletion { searchInFlight.remove(key, mine) }
+        } else {
+            mine.cancel()
+        }
+        val job = existing ?: mine
+        return withTimeoutOrNull(SEARCH_INFLIGHT_WAIT_MS) { runCatching { job.await() }.getOrNull() }
+            ?: emptyList()
+    }
+
+    suspend fun fetchMeta(tmdbId: Int, type: String): TmdbDetail? {
+        if (tmdbId <= 0) return null
+        val cacheKey = "$tmdbId|$type"
+        detailCache[cacheKey]?.let { return it }
+        val path = if (type == "movie") "movie" else "tv"
+        val url = "$TMDB_API/$path/$tmdbId?api_key=${tmdbKey()}&language=en-US&append_to_response=external_ids,credits"
+        val detail = runCatching { parseTmdbDetail(app.get(url, timeout = 6).text, type) }.getOrNull()
+        if (detail != null) detailCache[cacheKey] = detail
+        return detail
+    }
+
+    suspend fun findByImdb(imdbId: String): Pair<Int, String>? {
+        if (!imdbId.startsWith("tt")) return null
+        imdbFindCache[imdbId]?.let { return it }
+        val url = "$TMDB_API/find/$imdbId?api_key=${tmdbKey()}&external_source=imdb_id&language=en-US"
+        val result = runCatching {
+            val root = JSONObject(app.get(url, timeout = 5).text)
+            val movie = root.optJSONArray("movie_results")?.optJSONObject(0)
+            val tv = root.optJSONArray("tv_results")?.optJSONObject(0)
+            when {
+                movie != null -> movie.optInt("id", -1).takeIf { it > 0 }?.let { it to "movie" }
+                tv != null -> tv.optInt("id", -1).takeIf { it > 0 }?.let { it to "series" }
+                else -> null
+            }
+        }.getOrNull()
+        if (result != null) imdbFindCache[imdbId] = result
+        return result
+    }
+
+    suspend fun fetchEpisodes(tmdbId: Int, seasons: Set<Int>): Map<Pair<Int, Int>, TmdbEpisode> {
+        if (tmdbId <= 0 || seasons.isEmpty()) return emptyMap()
+        val semaphore = Semaphore(3)
+        return coroutineScope {
+            seasons.map { season ->
+                async {
+                    semaphore.acquire()
+                    try {
+                        withTimeoutOrNull(1300L) { fetchSeason(tmdbId, season) }
+                    } finally {
+                        semaphore.release()
+                    }
+                }
+            }.awaitAll().filterNotNull().flatten().associate { (s, e, meta) -> (s to e) to meta }
+        }
+    }
+
+    internal fun List<TmdbItem>.dedupedByTitle(): List<TmdbItem> {
+        val best = LinkedHashMap<String, TmdbItem>()
+        for (item in this) {
+            val key = item.name.trim().lowercase() + "|" + (item.year ?: "")
+            val current = best[key]
+            if (current == null || (item.rating ?: 0.0) > (current.rating ?: 0.0)) {
+                best[key] = item
+            }
+        }
+        return best.values.toList()
+    }
+
+    private suspend fun searchTmdb(query: String): List<TmdbItem> {
+        val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+        val json = runCatching {
+            app.get(
+                "$TMDB_API/search/multi?api_key=${tmdbKey()}&query=$encoded&language=en-US&include_adult=false&page=1",
+                timeout = 5,
+            ).text
+        }.getOrElse { t ->
+            android.util.Log.w("Multimovies", "tmdb search NET-FAIL q='$query': ${t.javaClass.simpleName}: ${t.message?.take(200)}")
+            return emptyList()
+        }
+        val items = parseTmdbMultiSearch(json)
+        if (items.isEmpty() && json.contains("status_code"))
+            android.util.Log.w("Multimovies", "tmdb search UPSTREAM-ERR q='$query': ${json.take(200)}")
+        return items
+    }
+
+    private suspend fun searchSimkl(query: String): List<TmdbItem> {
+        val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+        val json = runCatching {
+            app.get("$SIMKL_API/search/simkl?q=$encoded&client_id=$SIMKL_CLIENT_ID", timeout = 5).text
+        }.getOrNull() ?: return emptyList()
+        val items = parseSimklSearch(json)
+        if (items.isEmpty()) return emptyList()
+        return coroutineScope {
+            items.map { item ->
+                async {
+                    if (item.tmdbId != null) item
+                    else item.imdbId?.let { imdb ->
+                        withTimeoutOrNull(1300L) { findByImdb(imdb) }
+                    }?.let { (tmdbId, type) -> item.copy(tmdbId = tmdbId, type = type) }
+                }
+            }.awaitAll().filterNotNull()
+        }.dedupedByTitle()
+    }
+
+    fun parseTmdbMultiSearch(raw: String?): List<TmdbItem> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return try {
+            val root = JSONObject(raw)
+            val results = root.optJSONArray("results") ?: return emptyList()
+            (0 until results.length()).mapNotNull { i ->
+                val m = results.optJSONObject(i) ?: return@mapNotNull null
+                val mediaType = m.optString("media_type")
+                if (mediaType != "movie" && mediaType != "tv") return@mapNotNull null
+                val id = m.optInt("id", -1)
+                if (id <= 0) return@mapNotNull null
+                val name = str(m, "title") ?: str(m, "name") ?: return@mapNotNull null
+                TmdbItem(
+                    tmdbId = id,
+                    imdbId = null,
+                    type = if (mediaType == "movie") "movie" else "series",
+                    name = name,
+                    year = (str(m, "release_date") ?: str(m, "first_air_date"))?.take(4),
+                    poster = str(m, "poster_path")?.let { "$IMG_BASE$it" },
+                    rating = m.optDouble("vote_average", -1.0).takeIf { it > 0 },
+                )
+            }.dedupedByTitle()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun parseSimklSearch(raw: String?): List<TmdbItem> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                val m = arr.optJSONObject(i) ?: return@mapNotNull null
+                val type = when (m.optString("type")) {
+                    "movie" -> "movie"
+                    "show" -> "series"
+                    else -> return@mapNotNull null
+                }
+                val name = str(m, "title") ?: return@mapNotNull null
+                val ids = m.optJSONObject("ids")
+                val ratings = m.optJSONObject("ratings")
+                val rating = ratings?.optJSONObject("imdb")?.optDouble("rating", -1.0)?.takeIf { it > 0 }
+                    ?: ratings?.optJSONObject("simkl")?.optDouble("rating", -1.0)?.takeIf { it > 0 }
+                TmdbItem(
+                    tmdbId = ids?.optInt("tmdb", -1)?.takeIf { it > 0 },
+                    imdbId = ids?.let { str(it, "imdb") },
+                    type = type,
+                    name = name,
+                    year = str(m, "year")?.take(4),
+                    poster = str(m, "poster"),
+                    rating = rating,
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun parseTmdbDetail(raw: String?, type: String): TmdbDetail? {
+        if (raw.isNullOrBlank()) return null
+        return try {
+            val m = JSONObject(raw)
+            val name = str(m, "title") ?: str(m, "name") ?: return null
+            val cast = m.optJSONObject("credits")?.optJSONArray("cast")?.let { arr ->
+                (0 until minOf(arr.length(), 20)).mapNotNull { i ->
+                    val c = arr.optJSONObject(i) ?: return@mapNotNull null
+                    val cname = str(c, "name") ?: return@mapNotNull null
+                    ActorData(
+                        Actor(cname, str(c, "profile_path")?.let { "$IMG_BASE$it" } ?: ""),
+                        roleString = str(c, "character"),
+                    )
+                }
+            }
+            TmdbDetail(
+                tmdbId = m.optInt("id", -1).takeIf { it > 0 },
+                imdbId = m.optJSONObject("external_ids")?.let { str(it, "imdb_id") },
+                name = name,
+                originalLanguage = str(m, "original_language"),
+                poster = str(m, "poster_path")?.let { "$IMG_BASE$it" },
+                backdrop = str(m, "backdrop_path")?.let { "$IMG_BACKDROP$it" },
+                year = (str(m, "release_date") ?: str(m, "first_air_date"))?.take(4),
+                rating = m.optDouble("vote_average", -1.0).takeIf { it > 0 },
+                overview = str(m, "overview"),
+                genres = m.optJSONArray("genres")?.let { arr ->
+                    (0 until arr.length()).mapNotNull { i -> str(arr.optJSONObject(i), "name") }
+                },
+                cast = cast,
+                runtime = m.optInt("runtime", -1).takeIf { it > 0 }
+                    ?: m.optJSONArray("episode_run_time")?.optInt(0, -1)?.takeIf { it > 0 },
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private suspend fun fetchSeason(tmdbId: Int, season: Int): List<Triple<Int, Int, TmdbEpisode>> {
+        val url = "$TMDB_API/tv/$tmdbId/season/$season?api_key=${tmdbKey()}&language=en-US"
+        return runCatching {
+            val root = JSONObject(app.get(url, timeout = 5).text)
+            root.optJSONArray("episodes")?.let { arr ->
+                (0 until arr.length()).mapNotNull { i ->
+                    val e = arr.optJSONObject(i) ?: return@mapNotNull null
+                    val ep = e.optInt("episode_number", -1)
+                    if (ep <= 0) return@mapNotNull null
+                    Triple(
+                        season,
+                        ep,
+                        TmdbEpisode(
+                            name = str(e, "name"),
+                            overview = str(e, "overview"),
+                            released = str(e, "air_date"),
+                            thumbnail = str(e, "still_path")?.let { "$IMG_BASE$it" },
+                            rating = e.optDouble("vote_average", -1.0).takeIf { it > 0 },
+                            runtime = e.optInt("runtime", -1).takeIf { it > 0 },
+                        ),
+                    )
+                }
+            } ?: emptyList()
+        }.getOrNull() ?: emptyList()
+    }
+
+    fun extractImdbId(doc: Document): String? {
+        doc.selectFirst("meta[property=\"og:imdb_id\"]")
+            ?.attr("content")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return normalizeImdb(it) }
+
+        doc.select("a[href*='imdb.com/title/'], a[href*='/title/tt']").firstOrNull()
+            ?.attr("href")
+            ?.let { normalizeImdb(it) }
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { return it }
+
+        doc.select("div.imdb a, span.imdb a, li.imdb a, .imdb-link a, .imdbRating a, [class*='imdb'] a")
+            .firstOrNull()
+            ?.attr("href")
+            ?.let { normalizeImdb(it) }
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { return it }
+
+        doc.select("[data-imdb], [data-imdb-id], [data-imdbid], [data-imdb_id]").firstOrNull()?.let { el ->
+            listOf("data-imdb", "data-imdb-id", "data-imdbid", "data-imdb_id").forEach { attr ->
+                el.attr(attr).takeIf { it.isNotBlank() }?.let { return normalizeImdb(it) }
+            }
+        }
+
+        doc.select("script[type=\"application/ld+json\"]").forEach { script ->
+            val text = script.html()
+            val m = Regex("""\"@id\"\s*:\s*\"https?://(?:www\.)?imdb\.com/title/(tt\d+)\"""").find(text)
+                ?: Regex("""tt\d{7,8}""").find(text)
+            m?.value?.let { return normalizeImdb(it) }
+        }
+
+        doc.select("script").forEach { script ->
+            val text = script.html()
+            val m = Regex("""imdb[_\s]*id\s*[=:]\s*['"](tt\d+)['"]""", RegexOption.IGNORE_CASE).find(text)
+                ?: Regex("""['"](?:imdb|imdb_id|imdbId|imdbid)['"]\s*:\s*['"](tt\d+)['"]""", RegexOption.IGNORE_CASE).find(text)
+            m?.groupValues?.getOrNull(1)?.let { return it }
+        }
+
+        return null
+    }
+
+    private fun normalizeImdb(value: String): String {
+        val m = Regex("""tt\d{7,8}""").find(value)
+        return m?.value ?: value
+    }
+
+    fun extractTmdbId(doc: Document): String? {
+        doc.select("[data-tmdb], [data-tmdb-id], [data-tmdbid], [data-tmdb_id]").firstOrNull()?.let { el ->
+            listOf("data-tmdb", "data-tmdb-id", "data-tmdbid", "data-tmdb_id").forEach { attr ->
+                el.attr(attr).takeIf { it.isNotBlank() }?.let { return it.trim() }
+            }
+        }
+
+        doc.select("script").forEach { script ->
+            val text = script.html()
+            Regex("""https?://(?:www\.)?themoviedb\.org/(?:movie|tv)/(\d+)""")
+                .find(text)?.groupValues?.get(1)?.let { return it }
+            Regex("""["']?(?:tmdb|tmdbId|tmdb_id|tmdbid)["']?\s*[=:]\s*["']?(\d+)["']?""", RegexOption.IGNORE_CASE)
+                .find(text)?.groupValues?.get(1)?.let { return it }
+        }
+        return null
+    }
+}
+
+private val NON_ALNUM_UNICODE = Regex("""[^\p{L}\p{M}\p{N}]+""")
+
+internal fun normalizeTitle(t: String): String =
+    t.lowercase().replace("'", "").replace("’", "").trim()
+        .replace(NON_ALNUM_UNICODE, " ").trim()
+
+internal fun titleVariants(title: String): List<String> {
+    val andWord = Regex("\\band\\b", RegexOption.IGNORE_CASE)
+    return buildList {
+        add(title)
+        if (title.contains('&')) add(title.replace("&", " and "))
+        if (andWord.containsMatchIn(title)) add(title.replace(andWord, "&"))
+        val noApostrophe = title.replace("'", "").replace("’", "")
+        if (noApostrophe != title) add(noApostrophe)
+        add(title.replace(Regex("[^\\p{L}\\p{M}\\p{N} ]+"), " "))
+    }.map { it.replace(Regex("\\s+"), " ").trim() }.distinct()
+}
+
+internal fun levenshtein(a: String, b: String): Int {
+    if (a == b) return 0
+    if (a.isEmpty()) return b.length
+    if (b.isEmpty()) return a.length
+    var prev = IntArray(b.length + 1) { it }
+    var cur = IntArray(b.length + 1)
+    for (i in 1..a.length) {
+        cur[0] = i
+        for (j in 1..b.length) {
+            val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+            cur[j] = minOf(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+        }
+        val tmp = prev
+        prev = cur
+        cur = tmp
+    }
+    return prev[b.length]
+}
+
+internal fun titleDistance(itemTitle: String, target: String): Int {
+    val a = normalizeTitle(itemTitle)
+    val b = normalizeTitle(target)
+    return when {
+        a == b -> 0
+        a.replace(" and ", " ") == b && a.contains(" and ") -> 0
+        b.replace(" and ", " ") == a && b.contains(" and ") -> 0
+        a.startsWith(b) || b.startsWith(a) -> 1
+        else -> 2
+    }
+}
+
+internal fun significantQueryTokens(query: String): List<String> =
+    normalizeTitle(query).split(' ').filter { it.length >= 2 }.distinct()
+
+internal fun tokenMatchScore(token: String, titleTokens: List<String>): Double {
+    if (titleTokens.any { it == token || it.contains(token) }) return 1.0
+    if (titleTokens.any { token.contains(it) && it.length >= 4 }) return 1.0
+    val tolerance = if (token.length <= 5) 1 else 2
+    if (titleTokens.any { levenshtein(it, token) <= tolerance }) return 0.7
+    return 0.0
+}
+
+internal data class Relevance(val score: Double, val allTokensMatched: Boolean)
+
+internal fun relevanceOf(query: String, title: String, year: String?): Relevance {
+    val qNorm = normalizeTitle(query)
+    if (qNorm.isEmpty()) return Relevance(0.0, false)
+    val tNorm = normalizeTitle(title)
+    if (qNorm == tNorm) return Relevance(1.0, true)
+
+    val qTokens = significantQueryTokens(query)
+    if (qTokens.isEmpty()) {
+        val contained = tNorm.contains(qNorm)
+        return Relevance(if (contained) 1.0 else 0.0, contained)
+    }
+    val tTokens = tNorm.split(' ').filter { it.isNotEmpty() }
+
+    var sum = 0.0
+    var matchedAll = true
+    for (token in qTokens) {
+        var best = tokenMatchScore(token, tTokens)
+        if (best < 1.0 && token.all { it.isDigit() } && year.orEmpty().contains(token)) best = 1.0
+        if (best == 0.0) matchedAll = false
+        sum += best
+    }
+    val extraTitleWords = (tTokens.size - qTokens.size).coerceAtLeast(0)
+    val score = (sum / qTokens.size - 0.03 * minOf(extraTitleWords, 5)).coerceIn(0.0, 1.0)
+    return Relevance(score, matchedAll)
+}
+
+private val TMDB_SIZE_REGEX = Regex("""/(w92|w154|w185|w342|w500|w780|w1280)/""")
+
+private val AMAZON_SIZE_REGEX = Regex("""_SX\d{2,4}(?=\.|_|$)""", RegexOption.IGNORE_CASE)
+
+internal fun upgradePosterUrl(url: String?): String? {
+    if (url.isNullOrBlank()) return null
+    var fixed = if (url.startsWith("//")) "https:$url" else url
+    fixed = stripSmallSizeSuffix(fixed)
+    fixed = TMDB_SIZE_REGEX.replace(fixed) { m ->
+        when (m.groupValues[1]) {
+            "w92", "w154", "w185", "w342", "w500" -> "/original/"
+            else -> m.value
+        }
+    }
+    fixed = AMAZON_SIZE_REGEX.replace(fixed, "_SX500")
+    val qIdx = fixed.indexOf("?")
+    if (qIdx >= 0) {
+        val base = fixed.substring(0, qIdx)
+        val kept = fixed.substring(qIdx + 1).split("&").mapNotNull { p ->
+            val k = p.substringBefore("=").trim()
+            if (k.equals("resize", ignoreCase = true) || k.equals("w", ignoreCase = true)
+                || k.equals("width", ignoreCase = true)
+                || k.equals("h", ignoreCase = true)
+                || k.equals("height", ignoreCase = true)
+                || k.equals("fit", ignoreCase = true)
+                || k.equals("im", ignoreCase = true)
+                || k.equals("q", ignoreCase = true)
+                || k.equals("quality", ignoreCase = true)
+            ) null else p
+        }.joinToString("&")
+        fixed = if (kept.isBlank()) base else "$base?$kept"
+    }
+    return fixed
+}
+
+internal fun isThumbnailish(url: String?): Boolean {
+    if (url.isNullOrBlank()) return false
+    return Regex("""-\d{2,4}x\d{2,4}""", RegexOption.IGNORE_CASE).containsMatchIn(url)
+        || Regex("""/(w92|w154|w185|w342|w500)/""", RegexOption.IGNORE_CASE).containsMatchIn(url)
+        || Regex("""_SX\d{2,4}(?=\.|_|$)""", RegexOption.IGNORE_CASE).containsMatchIn(url)
+        || Regex("""[?&](resize|w|h|width|height|fit|im|q|quality)=""", RegexOption.IGNORE_CASE).containsMatchIn(url)
+}
+
+private fun stripSmallSizeSuffix(url: String): String {
+    val m = Regex("""-(\d{2,4})x(\d{2,4})""", RegexOption.IGNORE_CASE).find(url) ?: return url
+    val w = m.groupValues[1].toInt()
+    val h = m.groupValues[2].toInt()
+    if (w > 500 || h > 500) return url
+    return url.removeRange(m.range)
+}
+
+internal fun extractImdbIdFromUrl(text: String?): String? =
+    text?.let { Regex("""tt\d{7,8}""").find(it)?.value }
+
+internal suspend fun <T> retryUntilSolved(
+    attempts: Int,
+    fetch: suspend (attempt: Int) -> T,
+    isBlocked: (T) -> Boolean,
+    onBlocked: () -> Unit = {},
+    failureMessage: (Throwable?) -> String,
+): T {
+    var lastErr: Throwable? = null
+    repeat(attempts) { i ->
+        try {
+            val result = fetch(i)
+            if (isBlocked(result)) {
+                lastErr = IllegalStateException(failureMessage(null))
+                onBlocked()
+                return@repeat
+            }
+            return result
+        } catch (e: Throwable) {
+            lastErr = e
+        }
+    }
+    throw IllegalStateException(failureMessage(lastErr))
+}
+
+internal fun isChallenge(doc: Document): Boolean =
+    doc.body()?.text().orEmpty().let { bodyText ->
+        val titleText = doc.selectFirst("title")?.text()?.lowercase() ?: ""
+        bodyText.contains("just a moment", ignoreCase = true)
+            || bodyText.contains("cf-mitigated", ignoreCase = true)
+            || bodyText.contains("verify you are human", ignoreCase = true)
+            || bodyText.contains("checking your browser", ignoreCase = true)
+            || bodyText.contains("attention required", ignoreCase = true)
+            || titleText.contains("just a moment", ignoreCase = true)
+    }
+

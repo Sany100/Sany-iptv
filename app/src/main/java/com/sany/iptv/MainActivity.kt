@@ -1,15 +1,27 @@
 package com.sany.iptv
 
+import com.lagradost.cloudstream3.CommonActivity
+
+import com.lagradost.cloudstream3.newEpisode
+
 import android.app.Activity
-import android.app.ActivityManager
+import android.content.Context
 import android.animation.ValueAnimator
 import android.view.animation.DecelerateInterpolator
 import android.app.AlertDialog
 import android.app.PictureInPictureParams
+import android.app.PendingIntent
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiInfo
+import android.net.wifi.WifiManager
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.drawable.Icon
 import android.graphics.BitmapFactory
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -40,11 +52,14 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.TrackSelectionDialogBuilder
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -53,26 +68,38 @@ import java.net.HttpURLConnection
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.concurrent.thread
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import java.io.PrintWriter
 import java.io.StringWriter
 
+private const val ACTION_PIP_TOGGLE_PLAYBACK = "com.sany.iptv.action.PIP_TOGGLE_PLAYBACK"
+private const val ACTION_PIP_SEEK_BACK = "com.sany.iptv.action.PIP_SEEK_BACK"
+private const val ACTION_PIP_SEEK_FORWARD = "com.sany.iptv.action.PIP_SEEK_FORWARD"
+
+class PipPlaybackActionReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
+        when (intent?.action) {
+            ACTION_PIP_TOGGLE_PLAYBACK -> MainActivity.dispatchPipPlaybackAction("toggle")
+            ACTION_PIP_SEEK_BACK -> MainActivity.dispatchPipPlaybackAction("back")
+            ACTION_PIP_SEEK_FORWARD -> MainActivity.dispatchPipPlaybackAction("forward")
+        }
+    }
+}
+
 class MainActivity : AppCompatActivity() {
+    /** Higher-velocity fling without changing normal finger tracking. */
+    private class FastSportsScrollView(context: Context) : ScrollView(context) {
+        override fun fling(velocityY: Int) { super.fling((velocityY * 1.45f).toInt()) }
+    }
+    private class FastSportsHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
+        override fun fling(velocityX: Int) { super.fling((velocityX * 1.45f).toInt()) }
+    }
     private val isTvDevice: Boolean
         get() = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
             (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
-
-    // Some Android TV boxes expose only 1 GB RAM. Detect the platform's low-RAM
-    // classification and keep UI, artwork, stream checks and playback buffers smaller.
-    private val isLowRamTvDevice: Boolean
-        get() {
-            if (!isTvDevice) return false
-            val manager = getSystemService(ActivityManager::class.java) ?: return false
-            val memoryInfo = ActivityManager.MemoryInfo()
-            manager.getMemoryInfo(memoryInfo)
-            return manager.isLowRamDevice ||
-                manager.memoryClass <= 128 ||
-                memoryInfo.totalMem <= 1536L * 1024L * 1024L
-        }
     private val isLight: Boolean
         get() = when (prefs.getString("app_theme", "dark")) {
             "light" -> true
@@ -109,13 +136,15 @@ class MainActivity : AppCompatActivity() {
     private val checkerProgressCount = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var liveTvPublishedCount = 0
     private var checkerFilter = "All"
+    // Copy/export controls remain hidden until the session is unlocked with the owner key.
+    private var checkerCopyUnlocked = false
     private var checkerDisplayedLimit = 250
     private var checkerSummaryView: TextView? = null
     private var checkerRunButton: TextView? = null
     private var checkerListAdapter: android.widget.BaseAdapter? = null
     private val checkerUiHandler = Handler(Looper.getMainLooper())
     private val checkerUiRefreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val permanentPlaylistUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/main/playlist.m3u"
+    private val permanentPlaylistUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/migration/cloudstream-runtime-toolchain/playlist.m3u"
     private val playlistUrls = mutableListOf<String>()
     private var selectedGroup = "All"
     private var liveTvSelectedGroup = "Select category"
@@ -124,15 +153,36 @@ class MainActivity : AppCompatActivity() {
     private var liveTvSearchQuery = ""
     private var player: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
+    // Provider-supplied track preferences remain active when the player settings are reapplied.
+    private var activeProviderAudioLanguages: List<String>? = null
+    private var activeProviderQualityHint: String? = null
     private val playbackRetryHandler = Handler(Looper.getMainLooper())
     private var playbackRetryCount = 0
+    // Ordered CloudStream sources for automatic fallback after a real Media3 playback error.
+    private var animeFallbackRequests: List<SanyPlaybackRequest> = emptyList()
+    private var animeFallbackIndex = -1
     private var animeAutoNextInProgress = false
+    private var liveSportsFirstFrameWatchdog: Runnable? = null
     private var playerView: PlayerView? = null
     private var moviesWebView: WebView? = null
     private var moviesSiteLoaded = false
     private var aniLightWebView: WebView? = null
     private var aniLightSiteLoaded = false
     private var aniLightNativeScreen: AniLightNativeScreen? = null
+    private var aniLightNativeView: View? = null
+    // Keep Movies catalogue and Live Sports provider catalogue views alive while
+    // their details/player overlays are opened, preserving filters and scroll.
+    private var moviesNativeView: View? = null
+    @Volatile private var movieProviderSyncStarted = false
+    private var movieDetailsParentView: View? = null
+    private var liveSportsCatalogueView: View? = null
+    @Volatile private var liveSportsProviderSyncRunning = false
+    @Volatile private var liveSportsProviderSyncAttempted = false
+    private var cloudStreamProviderScreen: CloudStreamProviderHomeScreen? = null
+    private var cloudStreamProviderView: View? = null
+    // Keep the exact Anime parent page attached/detached across details and playback.
+    private var animeExternalPageActive = false
+    private var animeExternalPageReturnToProvider = false
     private var currentChannel: Channel? = null
     private var playbackReturnScrollY = 0
     // Scroll position to restore after Android recreates the Activity (for example, fullscreen rotation).
@@ -155,12 +205,29 @@ class MainActivity : AppCompatActivity() {
     private var animeEpisodePanel: View? = null
     private var animeCenterPlayButton: TextView? = null
     private var animePlayerTitleOverlay: TextView? = null
-    // Keep the first TV render small; 1 GB devices create fewer views and logo tasks.
-    private val tvPageSize: Int get() = if (isLowRamTvDevice) 6 else 12
+    // Scale UI work to the device's available memory instead of assuming a flagship phone.
+    private val isLowMemoryDevice: Boolean by lazy {
+        val manager = getSystemService(android.app.ActivityManager::class.java)
+        manager?.isLowRamDevice == true || (manager?.memoryClass ?: 256) <= 128
+    }
+    private val isLowRamTvDevice: Boolean get() = isTvDevice && isLowMemoryDevice
+    private val initialDisplayedLimit: Int get() = when {
+        isLowRamTvDevice -> 6
+        isTvDevice -> 12
+        isLowMemoryDevice -> 24
+        else -> 60
+    }
+    private val displayedLimitIncrement: Int get() = when {
+        isLowRamTvDevice -> 12
+        isTvDevice -> 24
+        isLowMemoryDevice -> 48
+        else -> 120
+    }
     private var displayedLimit = 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
+    private var animeFullscreenActionButton: TextView? = null
     private var playerMinimizeButton: TextView? = null
     private var playerSettingsButton: TextView? = null
     private var playerTopActions: View? = null
@@ -168,6 +235,8 @@ class MainActivity : AppCompatActivity() {
     private var playerChannelRows: LinearLayout? = null
     private var playerControlsPanel: View? = null
     private var headerTitleView: TextView? = null
+    @Volatile private var liveSportsProviderLastAttemptAt = 0L
+    @Volatile private var liveSportsProviderLastError: String? = null
     private var homeHeaderContainer: View? = null
     private var playlistSelectorContainer: View? = null
     private var liveTvNavLabel: TextView? = null
@@ -177,8 +246,7 @@ class MainActivity : AppCompatActivity() {
     // A small bounded pool prevents one thread per channel logo on low-memory phones.
     private val logoExecutor by lazy {
         java.util.concurrent.Executors.newFixedThreadPool(
-            // A 1 GB TV gets one logo worker; other TVs keep two to limit bitmap bursts.
-            if (isLowRamTvDevice) 1 else if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) 2 else 4
+            if (isLowMemoryDevice) 1 else 2
         )
     }
 
@@ -211,19 +279,23 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
-                    // Decode logos near their on-screen size instead of allocating full-resolution
-                    // bitmaps for every visible channel (reduces TV memory pressure / OOM risk).
-                    val targetPixels = dp(if (isLowRamTvDevice) 32 else if (isTvDevice) 48 else 64).coerceAtLeast(32)
+                    // Channel marks and poster tiles are small on screen; decode only
+                    // enough pixels for their target bounds to avoid full-size bitmap RAM spikes.
+                    val targetPixels = when {
+                        isLowRamTvDevice -> dp(32)
+                        isTvDevice -> dp(48)
+                        image.scaleType == ImageView.ScaleType.CENTER_CROP -> dp(240)
+                        else -> dp(96)
+                    }
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
-                    var sample = 1
-                    while (bounds.outWidth / (sample * 2) >= targetPixels &&
-                        bounds.outHeight / (sample * 2) >= targetPixels) {
-                        sample *= 2
-                    }
+                    var sampleSize = 1
+                    while (bounds.outWidth / (sampleSize * 2) >= targetPixels &&
+                        bounds.outHeight / (sampleSize * 2) >= targetPixels
+                    ) sampleSize *= 2
                     val options = BitmapFactory.Options().apply {
                         inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-                        inSampleSize = sample
+                        inSampleSize = sampleSize
                     }
                     val bitmap = BitmapFactory.decodeFile(cachedFile.absolutePath, options)
                     if (bitmap != null) runOnUiThread {
@@ -241,10 +313,72 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Resolve TV capabilities only after Activity attachment; keep constructor safe.
-        displayedLimit = if (isTvDevice) tvPageSize else 60
+        // Resolve device RAM capabilities only after the Activity has an attached Context.
+        displayedLimit = initialDisplayedLimit
+        // Install crash capture before any app/CloudStream initialization.
         installSanyCrashLogger()
-        EpgRepository.scheduleDaily(this)
+        CommonActivity.setActivityInstance(this)
+        pipPlaybackActionHandler = { action ->
+            runOnUiThread {
+                player?.let { activePlayer ->
+                    when (action) {
+                        "back" -> activePlayer.seekTo((activePlayer.currentPosition - 10_000L).coerceAtLeast(0L))
+                        "forward" -> {
+                            val target = activePlayer.currentPosition + 10_000L
+                            val duration = activePlayer.duration
+                            activePlayer.seekTo(if (duration != C.TIME_UNSET && duration > 0L) target.coerceAtMost(duration) else target)
+                        }
+                        else -> {
+                            if (activePlayer.playWhenReady) activePlayer.pause()
+                            else if (activePlayer.playbackState == Player.STATE_ENDED) {
+                                activePlayer.seekToDefaultPosition()
+                                activePlayer.play()
+                            } else activePlayer.play()
+                        }
+                    }
+                    refreshPictureInPictureParams()
+                }
+            }
+        }
+
+        // Global host policy: suppress third-party donation/support dialogs from
+        // dynamically loaded CloudStream plugins, regardless of the plugin's own
+        // bundled DonationManager implementation or package/classloader.
+        supportFragmentManager.registerFragmentLifecycleCallbacks(
+            object : androidx.fragment.app.FragmentManager.FragmentLifecycleCallbacks() {
+                private fun dismissPluginDonation(fragment: androidx.fragment.app.Fragment) {
+                    val className = fragment.javaClass.name.lowercase(java.util.Locale.ROOT)
+                    val isDonationUi = className.contains("donat") ||
+                        className.contains("raghav") ||
+                        className.contains("supportmywork")
+                    if (isDonationUi && fragment is androidx.fragment.app.DialogFragment) {
+                        fragment.dismissAllowingStateLoss()
+                        android.util.Log.i("SANY-PluginPolicy", "Suppressed third-party donation dialog: $className")
+                    }
+                }
+
+                override fun onFragmentStarted(
+                    fm: androidx.fragment.app.FragmentManager,
+                    fragment: androidx.fragment.app.Fragment
+                ) {
+                    dismissPluginDonation(fragment)
+                }
+
+                override fun onFragmentResumed(
+                    fm: androidx.fragment.app.FragmentManager,
+                    fragment: androidx.fragment.app.Fragment
+                ) {
+                    dismissPluginDonation(fragment)
+                }
+            },
+            true
+        )
+        // WorkManager initialization must not be able to terminate the whole app at launch.
+        try {
+            EpgRepository.scheduleDaily(this)
+        } catch (error: Throwable) {
+            android.util.Log.e("SANY-STARTUP", "Daily EPG scheduling unavailable; continuing startup", error)
+        }
         // Refresh EPG on every fresh app launch, without blocking the first screen.
         // The existing daily worker remains as a background safety-net.
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
@@ -320,14 +454,76 @@ class MainActivity : AppCompatActivity() {
         // system/decor regions with the currently selected theme color.
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         applySystemBars()
-        // Skip the animated 3-second splash on TV so low-memory boxes reach content immediately.
-        buildShell(showSplash = !isTvDevice && !restoringBackground && !returningFromBackground)
+        buildShell(showSplash = !restoringBackground && !returningFromBackground)
+        // Show a report saved by the Application-level crash handler before optional startup work.
+        showPreviousCrashReport()
+        // Automatically sync and load every allowlisted Anime provider from the
+        // SANY builds index. Each package is hash-verified and failures are isolated.
+        if (!isLowRamTvDevice) {
+        thread(name = "SANY-Anime-Plugins-AutoSync") {
+            try {
+                val report = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
+                report.packages.forEach { packageFile ->
+                    val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                    if (loadResult.success) {
+                        android.util.Log.i("SANY-CS", "Anime plugin loaded: ${packageFile.name} -> ${loadResult.providerNames.joinToString()}")
+                    } else {
+                        android.util.Log.e("SANY-CS", "Anime plugin DEX load failed: ${packageFile.name}: ${loadResult.error}")
+                    }
+                }
+                report.failures.forEach { android.util.Log.e("SANY-CS", "Anime plugin sync failed: $it") }
+                val removedVegaMovies = SanyMovieExtensionManager.removeVegaMovies(applicationContext)
+                if (removedVegaMovies > 0) {
+                    android.util.Log.i("SANY-MOVIE", "Removed $removedVegaMovies retired VegaMovies extension(s)")
+                }
+                val multiMoviesAutoSync = runCatching {
+                    SanyMovieExtensionManager.syncBuiltInMultiMovies(applicationContext)
+                }.onFailure { error ->
+                    android.util.Log.e("SANY-MOVIE", "Built-in MultiMovies auto-install/update failed", error)
+                }.getOrNull()
+                if (multiMoviesAutoSync != null) {
+                    if (multiMoviesAutoSync.success) {
+                        android.util.Log.i("SANY-MOVIE", "Built-in MultiMovies v51+ auto-installed/updated, selected and loaded")
+                    } else {
+                        android.util.Log.e("SANY-MOVIE", "Built-in MultiMovies auto-load failed: ${multiMoviesAutoSync.error}")
+                    }
+                }
+                SanyMovieExtensionManager.loadInstalled(
+                    applicationContext,
+                    if (multiMoviesAutoSync?.success == true) setOf("multimovies") else emptySet()
+                ).forEach { result ->
+                    if (result.success) {
+                        android.util.Log.i("SANY-MOVIE", "Movie extension restored: ${result.pluginName}")
+                    } else {
+                        android.util.Log.e("SANY-MOVIE", "Movie extension restore failed: ${result.error}")
+                    }
+                }
+            } catch (error: Throwable) {
+                android.util.Log.e("SANY-CS", "Anime plugin auto-sync failed", error)
+            } finally {
+                // Rebuild only Anime/Movies after their own providers finish syncing.
+                // Live Sports has an independent startup sync and must not delay these headers.
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed &&
+                        (section == "Series" || section == "Movies")
+                    ) renderSection()
+                }
+            }
+        }
+        // Sports provider installation is independent from Anime/Movie downloads.
+        // This also restores the provider automatically after a completely fresh reinstall.
+        syncLiveSportsProviderInBackground()
+        } else {
+            // On 1 GB TVs, defer provider DEX loading and catalogue downloads until
+            // the user opens Anime, Movies or Live Sports. The features remain available.
+            android.util.Log.i("SANY-LOW-RAM", "Deferring Anime/Movie/Sports provider sync until their section is opened")
+        }
         registerForPushUpdates()
         checkForMandatoryUpdate()
         checkMaintenanceMode()
         if (!restoringBackground) {
             // Avoid costly first-frame transforms on Android 6 devices.
-            if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
                 home.alpha = 1f
                 home.translationY = 0f
                 home.scaleX = 1f
@@ -350,9 +546,6 @@ class MainActivity : AppCompatActivity() {
         } else if (channels.isNotEmpty()) {
             startPlaylistCheck(false)
         }
-        // On the next launch, surface the previous uncaught-crash report so TV users
-        // can copy it without needing ADB or Logcat access.
-        showPreviousCrashReport()
     }
 
     // Register this installation for owner-wide update announcements through Firebase Cloud Messaging.
@@ -370,6 +563,10 @@ class MainActivity : AppCompatActivity() {
             }
             com.google.firebase.messaging.FirebaseMessaging.getInstance()
                 .subscribeToTopic("sany_iptv_all")
+        } catch (e: LinkageError) {
+            // Firebase is optional in migration/CI builds. A missing runtime
+            // Firebase class must never prevent the main IPTV screen from opening.
+            android.util.Log.w("SANY-FCM", "Firebase runtime unavailable; skipping push registration", e)
         } catch (e: Exception) {
             android.util.Log.w("SANY-FCM", "Push registration unavailable", e)
         }
@@ -696,14 +893,12 @@ class MainActivity : AppCompatActivity() {
         }, 900L)
     }
     private fun applySystemBars() {
-        // Keep the Activity window itself in sync with the selected theme; this
-        // prevents dark gaps showing through behind transparent/scrolling views.
+        // Keep Android's status bar visible so the time, battery, and network icons show.
+        // Fit app content below the status bar instead of drawing over system indicators.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
-        // Android 15+ enforces edge-to-edge for targetSdk 35. Explicitly color
-        // the decor and system-bar surfaces so Day mode never reveals black gaps.
         window.decorView.setBackgroundColor(bg)
-        // Use fully opaque system bars in both Day and Night themes.
-        window.statusBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
+        window.statusBarColor = bg
         window.navigationBarColor = if (isLight) Color.WHITE else Color.rgb(6, 18, 38)
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             window.navigationBarDividerColor = bg
@@ -712,23 +907,17 @@ class MainActivity : AppCompatActivity() {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false
         }
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = isLight
             isAppearanceLightNavigationBars = isLight
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 23) {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = if (isLight) {
-                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                    (if (android.os.Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
-            } else 0
         }
     }
 
     private fun buildShell(showSplash: Boolean = true) {
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         home = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
@@ -903,25 +1092,33 @@ class MainActivity : AppCompatActivity() {
         restoringNavigation = false
         home.removeAllViews()
         // No reserved blank welcome slot: keep the selected page content directly below the player.
+        val tvContentColumn = if (isTvDevice) LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(bg)
+        } else null
+        val settingsHeader = section == "Settings"
+        val settingsHeaderText = if (isLight) Color.rgb(13, 28, 54) else Color.WHITE
+        val settingsHeaderMuted = if (isLight) Color.rgb(76, 96, 126) else Color.rgb(166, 183, 207)
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 8 else 12), dp(if (isTvDevice) 14 else 16), dp(if (isTvDevice) 14 else 12))
-            // Opaque theme-matched header: no translucent grey tint in either theme.
-            background = GradientDrawable(
+            setPadding(
+                dp(if (isTvDevice) 18 else if (settingsHeader) 24 else 16),
+                dp(if (isTvDevice) 4 else 6),
+                dp(if (isTvDevice) 18 else if (settingsHeader) 24 else 16),
+                dp(if (isTvDevice) 14 else 12)
+            )
+            // Settings uses the approved cool blue-grey header; other sections retain glass.
+            background = if (settingsHeader && isLight) GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                if (isLight) intArrayOf(Color.WHITE, Color.rgb(246, 250, 255))
-                else intArrayOf(Color.rgb(7, 22, 45), Color.rgb(10, 28, 55))
-            ).apply {
-                cornerRadius = dp(22).toFloat()
-                setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
-            }
-            // Premium raised header; opaque fill prevents the content behind it tinting the surface.
-            if (!isTvDevice) {
-                cameraDistance = 11000f * resources.displayMetrics.density
-                rotationX = 2.2f
-                translationZ = dp(10).toFloat()
-                elevation = dp(14).toFloat()
-            }
+                intArrayOf(Color.rgb(224, 232, 244), Color.rgb(184, 199, 220), Color.rgb(207, 218, 235))
+            ) else if (settingsHeader) GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(8, 20, 39), Color.rgb(13, 31, 56), Color.rgb(7, 17, 34))
+            ) else glassWithoutTopStroke(0)
+            cameraDistance = 11000f * resources.displayMetrics.density
+            rotationX = 0f
+            translationZ = dp(10).toFloat()
+            elevation = dp(14).toFloat()
         }
         // Keep the original stacked brand header. Move connection status below
         // SANY IPTV instead of showing it as a pill on the right side.
@@ -929,37 +1126,54 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val brand = text("SANY IPTV", if (isTvDevice) 23 else 29, accent, true).apply {
+        val brand = text("SANY IPTV", if (isTvDevice) 23 else 29,
+            if (settingsHeader && isLight) Color.rgb(38, 119, 245) else accent, true).apply {
             letterSpacing = 0.06f
-            if (!isTvDevice) setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
+            if (!settingsHeader) setShadowLayer(dp(12).toFloat(), 0f, 0f, Color.argb(150, 55, 145, 255))
             setPadding(dp(8), 0, 0, 0)
             gravity = Gravity.CENTER_VERTICAL
             translationZ = dp(10).toFloat()
         }
         brandLine.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-        val connectionStatus = text(
-            if (channels.isEmpty()) "NOT CONNECTED" else "● CONNECTED",
-            9, if (channels.isEmpty()) muted else accent, true
-        ).apply {
+        val connectionStatus = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(9), dp(5), dp(9), dp(5))
-            letterSpacing = 0.035f
-            background = glass(18)
+            background = if (settingsHeader && isLight) rounded(Color.WHITE, 28) else if (settingsHeader) rounded(Color.rgb(20, 39, 64), 28) else glass(18)
+        }
+        if (channels.isEmpty()) {
+            connectionStatus.addView(text("NOT CONNECTED", 9, muted, true))
+        } else {
+            val connectedDot = text("●", 9, Color.rgb(45, 210, 115), true).apply {
+                gravity = Gravity.CENTER
+            }
+            connectionStatus.addView(connectedDot)
+            android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
+                duration = 650L
+                repeatMode = android.animation.ValueAnimator.REVERSE
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                start()
+            }
+            connectionStatus.addView(text(" CONNECTED", 9,
+                if (settingsHeader && isLight) Color.rgb(38, 119, 245) else accent, true))
         }
         brandLine.addView(connectionStatus, LinearLayout.LayoutParams(-2, -2).apply {
             leftMargin = dp(8)
         })
         top.addView(brandLine)
-        top.addView(text("PREMIUM IPTV EXPERIENCE", 10, white, true).apply {
+        top.addView(text("PREMIUM IPTV EXPERIENCE", 10,
+            if (settingsHeader) settingsHeaderText else white, true).apply {
             letterSpacing = 0.02f
             setPadding(dp(8), 0, 0, dp(3))
         })
-        top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 9, muted, true).apply {
+        top.addView(text("✦  FAST  •  SMOOTH  •  UNLIMITED", 9,
+            if (settingsHeader) settingsHeaderMuted else muted, true).apply {
             letterSpacing = 0.075f
             setPadding(0, 0, 0, dp(7))
         })
         val titleRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        headerTitleView = text(if (section == "Series") "Anime Series" else section, 19, white, true)
+        headerTitleView = text(if (section == "Series") "Anime Series" else section,
+            19, if (settingsHeader) settingsHeaderText else white, true)
         titleRow.addView(headerTitleView, LinearLayout.LayoutParams(0, -2, 1f))
         // Playlist selector is shared by Live TV and Checker only.
         // Keep it out of Movies, Development, and Settings.
@@ -978,14 +1192,19 @@ class MainActivity : AppCompatActivity() {
         }
         top.addView(titleRow)
         homeHeaderContainer = top
-        // Lower the complete branded header card slightly, matching the requested
-        // red-marked area while keeping the content below in normal flow.
-        home.addView(top, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(if (isTvDevice) 24 else 18)
-        })
+        // Full-width, edge-to-edge square header; remove the extra top gap.
+        val headerLayoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = dp(if (isTvDevice) 4 else 10)
+            leftMargin = 0
+            rightMargin = 0
+        }
+        if (isTvDevice) tvContentColumn?.addView(top, headerLayoutParams)
+        else home.addView(top, headerLayoutParams)
         updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
-        if (isTvDevice || Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
             top.alpha = 1f
             top.translationY = 0f
             top.rotationX = 0f
@@ -1000,27 +1219,30 @@ class MainActivity : AppCompatActivity() {
 
         contentArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            // Anime Series is edge-to-edge; other sections retain the standard side gutters.
-            setPadding(if (section == "Series") 0 else dp(18), 0,
-                if (section == "Series") 0 else dp(18), 0)
-            setBackgroundColor(bg)
+            // Anime, Movies, and Live Sports use full-width layouts without black side gutters.
+            val edgeToEdgeSection = section == "Series" || section == "Movies" || section == "Live Sports"
+            setPadding(if (edgeToEdgeSection) 0 else dp(18), 0,
+                if (edgeToEdgeSection) 0 else dp(18), 0)
+            setBackgroundColor(if (edgeToEdgeSection && isLight) Color.WHITE else bg)
         }
-        home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
+        if (isTvDevice) tvContentColumn?.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
+        else home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
         bottomNav = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = if (isTvDevice) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(5), dp(2), dp(5), dp(2))
-            // Solid bottom dock keeps the gesture/navigation area visually consistent.
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                if (isLight) intArrayOf(Color.WHITE, Color.rgb(245, 249, 255))
-                else intArrayOf(Color.rgb(6, 18, 38), Color.rgb(9, 25, 49))
-            ).apply {
-                cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), if (isLight) Color.rgb(20, 30, 45) else Color.rgb(65, 125, 205))
-            }
+            setPadding(dp(if (isTvDevice) 3 else 5), dp(if (isTvDevice) 6 else 2),
+                dp(if (isTvDevice) 3 else 5), dp(if (isTvDevice) 6 else 2))
+            // TV uses a narrow left-side rail; phones keep the bottom Liquid Glass dock.
+            background = glass(0)
+            elevation = dp(18).toFloat()
+            translationZ = dp(8).toFloat()
         }
-        home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
+        if (isTvDevice) {
+            home.addView(bottomNav, LinearLayout.LayoutParams(dp(104), -1))
+            home.addView(tvContentColumn, LinearLayout.LayoutParams(0, -1, 1f))
+        } else {
+            home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(74)))
+        }
         renderSection()
         renderBottomNav()
         if (isTvDevice) root.post { focusInitialTvControl() }
@@ -1035,7 +1257,7 @@ class MainActivity : AppCompatActivity() {
                 } else bottomNav.getChildAt(0)
             }
             else -> bottomNav.getChildAt(
-                listOf("Live TV", "Checker", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
+                listOf("Live TV", "Live Sports", "Checker", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
             )
         }
         target?.requestFocus()
@@ -1157,11 +1379,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
         if (section == "Movies") {
-            // Restore the native Movies library on Android TV. It supports adding
-            // personal movie links, categories, posters and Continue Watching.
-            // The heavier legacy WebView remains available separately and is not
-            // loaded automatically on low-memory TV devices.
-            renderNativeMovies(showSeries = false)
+            renderNativeMovies(false)
+            return
+        }
+        if (section == "Live Sports") {
+            // A fresh visit always rebuilds the provider directory and fetches live homepage data.
+            liveSportsCatalogueView = null
+            renderLiveSportsExtensions()
             return
         }
         if (section == "Checker") {
@@ -1255,9 +1479,1080 @@ class MainActivity : AppCompatActivity() {
         contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
     }
 
+    private fun showMovieExtensionManager() {
+        val actions = arrayOf("Browse Movie extensions", "Add Movie repository", "Manage installed extensions")
+        AlertDialog.Builder(this)
+            .setTitle("Movie Extension Manager")
+            .setItems(actions) { _, which ->
+                when (which) {
+                    0 -> loadMovieExtensionCatalogue()
+                    1 -> {
+                        val field = EditText(this).apply {
+                            hint = "CloudStream repo URL (HTTPS or cloudstreamrepo://)"
+                            setSingleLine(true)
+                            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+                        }
+                        AlertDialog.Builder(this).setTitle("Add Movie repository").setView(field)
+                            .setNegativeButton("CANCEL", null)
+                            .setPositiveButton("ADD") { _, _ ->
+                                val url = field.text.toString().trim()
+                                runCatching { SanyMovieExtensionManager.addRepository(this, url) }
+                                    .onSuccess { toast("Movie repository added"); loadMovieExtensionCatalogue() }
+                                    .onFailure { toast("Repository error: ${it.message}") }
+                            }.show()
+                    }
+                    2 -> showInstalledMovieExtensions()
+                }
+            }.setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun loadMovieExtensionCatalogue() {
+        toast("Movie repositories loading…")
+        thread(name = "SANY-Movie-Extension-Catalogue") {
+            val result = runCatching { SanyMovieExtensionManager.catalogue(applicationContext) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { entries ->
+                    if (entries.isEmpty()) {
+                        AlertDialog.Builder(this).setTitle("Movie Extensions")
+                            .setMessage("কোনো Movie extension পাওয়া যায়নি। আগে একটি HTTPS Movie repository যোগ করো।")
+                            .setPositiveButton("ADD REPOSITORY") { _, _ -> showMovieExtensionManager() }
+                            .setNegativeButton("CLOSE", null).show()
+                        return@onSuccess
+                    }
+                    val installed = SanyMovieExtensionManager.installed(this).associateBy { it.id }
+                    val labels = entries.map { item ->
+                        val current = installed[item.id]
+                        if (current == null) "${item.name}  •  ${item.version}  •  INSTALL"
+                        else "${item.name}  •  ${item.version}  •  INSTALLED ${current.version}"
+                    }.toTypedArray()
+                    AlertDialog.Builder(this).setTitle("Movie Extension Catalogue")
+                        .setItems(labels) { _, index ->
+                            val item = entries[index]
+                            AlertDialog.Builder(this).setTitle(item.name)
+                                .setMessage(item.description.ifBlank { "Version ${item.version}" } + "\\n\\nVersion: ${item.version}")
+                                .setPositiveButton(if (installed.containsKey(item.id)) "UPDATE / REPAIR" else "INSTALL") { _, _ ->
+                                    installMovieExtension(item)
+                                }.setNegativeButton("CANCEL", null).show()
+                        }.setNegativeButton("CLOSE", null).show()
+                }.onFailure {
+                    AlertDialog.Builder(this).setTitle("Movie repository error")
+                        .setMessage(it.message ?: it.javaClass.simpleName)
+                        .setPositiveButton("OK", null).show()
+                }
+            }
+        }
+    }
+
+    private fun installMovieExtension(extension: SanyMovieExtensionManager.Extension) {
+        toast("Installing ${extension.name}…")
+        thread(name = "SANY-Movie-Extension-Install") {
+            val result = runCatching {
+                SanyMovieExtensionManager.installOrUpdate(applicationContext, extension)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { loaded ->
+                    if (loaded.success) {
+                        // Refresh the active Movies page so the newly registered provider and
+                        // its homepage catalogue appear immediately without restarting the app.
+                        if (section == "Movies") renderSection()
+                        AlertDialog.Builder(this).setTitle("Movie extension installed")
+                            .setMessage("${loaded.pluginName}\\nProviders: ${loaded.providerNames.joinToString()}")
+                            .setPositiveButton("SEARCH MOVIES") { _, _ ->
+                                loaded.providerNames.firstOrNull()?.let { showMovieExtensionSearch(it) }
+                            }.setNegativeButton("CLOSE", null).show()
+                    } else {
+                        toast("Install failed: ${loaded.error ?: "Unknown error"}")
+                    }
+                }.onFailure { toast("Install failed: ${it.message ?: it.javaClass.simpleName}") }
+            }
+        }
+    }
+
+    private fun showInstalledMovieExtensions() {
+        val installed = SanyMovieExtensionManager.installed(this)
+        if (installed.isEmpty()) {
+            AlertDialog.Builder(this).setTitle("Installed Movie Extensions")
+                .setMessage("এখনো কোনো Movie extension install করা হয়নি।")
+                .setPositiveButton("BROWSE") { _, _ -> loadMovieExtensionCatalogue() }
+                .setNegativeButton("CLOSE", null).show()
+            return
+        }
+        val selected = SanyMovieExtensionManager.selectedIds(this).toMutableSet()
+        val labels = installed.map { "${it.name}  •  ${it.version}" }.toTypedArray()
+        val checked = BooleanArray(installed.size) { installed[it].id in selected }
+        AlertDialog.Builder(this).setTitle("Select Movie Extensions")
+            .setMultiChoiceItems(labels, checked) { _, index, isChecked ->
+                if (isChecked) selected.add(installed[index].id)
+                else selected.remove(installed[index].id)
+            }
+            .setPositiveButton("SAVE SELECTION") { _, _ ->
+                SanyMovieExtensionManager.setSelectedIds(this, selected)
+                if (section == "Movies") renderSection()
+                toast("Movie extension selection saved")
+            }
+            .setNeutralButton("MANAGE / REMOVE") { _, _ ->
+                val actions = installed.map { "${it.name}  •  ${it.version}" }.toTypedArray()
+                AlertDialog.Builder(this).setTitle("Manage installed extensions")
+                    .setItems(actions) { _, index ->
+                        val item = installed[index]
+                        AlertDialog.Builder(this).setTitle(item.name)
+                            .setMessage("Version: ${item.version}")
+                            .setPositiveButton("SEARCH") {
+                                _, _ ->
+                                val provider = SanyCloudStreamPluginRuntime.providers().firstOrNull {
+                                    runCatching {
+                                        java.io.File(it.sourcePlugin).canonicalPath ==
+                                            java.io.File(item.packagePath).canonicalPath
+                                    }.getOrDefault(false) &&
+                                        it.supportedTypes.any { type ->
+                                            type == com.lagradost.cloudstream3.TvType.Movie ||
+                                                type == com.lagradost.cloudstream3.TvType.AnimeMovie
+                                        }
+                                }
+                                if (provider == null) toast("এই extension-এর active Movie provider নেই")
+                                else showMovieExtensionSearch(provider.name)
+                            }
+                            .setNeutralButton("UNINSTALL") { _, _ ->
+                                runCatching { SanyMovieExtensionManager.uninstall(this, item.id) }
+                                    .onSuccess {
+                                        selected.remove(item.id)
+                                        SanyMovieExtensionManager.setSelectedIds(this, selected)
+                                        if (section == "Movies") renderSection()
+                                        toast(if (it) "Movie extension removed" else "Remove failed")
+                                    }
+                                    .onFailure { toast("Remove failed: ${it.message}") }
+                            }.setNegativeButton("CLOSE", null).show()
+                    }.setNegativeButton("CLOSE", null).show()
+            }
+            .setNegativeButton("CANCEL", null).show()
+    }
+
+    private fun showLiveSportsExtensionManager() {
+        val actions = arrayOf("Browse Live Sports extensions", "Add Live Sports repository", "Manage installed extensions")
+        AlertDialog.Builder(this).setTitle("Live Sports Extension Manager").setItems(actions) { _, which ->
+            when (which) {
+                0 -> loadLiveSportsExtensionCatalogue()
+                1 -> {
+                    val field = EditText(this).apply { hint = "CloudStream repo URL (HTTPS or cloudstreamrepo://)"; setSingleLine(true) }
+                    AlertDialog.Builder(this).setTitle("Add Live Sports repository").setView(field)
+                        .setNegativeButton("CANCEL", null)
+                        .setPositiveButton("ADD") { _, _ ->
+                            runCatching { SanyLiveSportsExtensionManager.addRepository(this, field.text.toString().trim()) }
+                                .onSuccess { toast("Repository added"); loadLiveSportsExtensionCatalogue() }
+                                .onFailure { toast("Repository error: " + it.message) }
+                        }.show()
+                }
+                2 -> showInstalledLiveSportsExtensions()
+            }
+        }.setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun loadLiveSportsExtensionCatalogue() {
+        thread(name = "SANY-LiveSports-Catalogue") {
+            val result = runCatching { SanyLiveSportsExtensionManager.catalogue(applicationContext) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { entries ->
+                    val installed = SanyLiveSportsExtensionManager.installed(this).associateBy { it.id }
+                    if (entries.isEmpty()) toast("কোনো Live provider পাওয়া যায়নি")
+                    else AlertDialog.Builder(this).setTitle("Live Sports Extension Catalogue")
+                        .setItems(entries.map { it.name + " • " + it.version + if (installed.containsKey(it.id)) " • UPDATE" else " • INSTALL" }.toTypedArray()) { _, index ->
+                            val item = entries[index]
+                            AlertDialog.Builder(this).setTitle(item.name).setMessage(item.description)
+                                .setPositiveButton(if (installed.containsKey(item.id)) "UPDATE" else "INSTALL") { _, _ ->
+                                    thread(name = "SANY-LiveSports-Install") {
+                                        val result2 = runCatching { SanyLiveSportsExtensionManager.installOrUpdate(this@MainActivity, item) }
+                                        runOnUiThread { result2.onSuccess { loaded -> if (loaded.success) { if (section == "Live Sports") renderSection(); toast("Installed: " + loaded.providerNames.joinToString()) } else toast("Install failed: " + loaded.error) }.onFailure { toast("Install failed: " + it.message) } }
+                                    }
+                                }.setNegativeButton("CANCEL", null).show()
+                        }.setNegativeButton("CLOSE", null).show()
+                }.onFailure { toast("Repository error: " + it.message) }
+            }
+        }
+    }
+
+    private fun showInstalledLiveSportsExtensions() {
+        val installed = SanyLiveSportsExtensionManager.installed(this)
+        if (installed.isEmpty()) { toast("No Live Sports extensions installed"); loadLiveSportsExtensionCatalogue(); return }
+        AlertDialog.Builder(this).setTitle("Manage Live Sports Extensions")
+            .setItems(installed.map { it.name + " • " + it.version }.toTypedArray()) { _, index ->
+                val item = installed[index]
+                AlertDialog.Builder(this).setTitle(item.name).setMessage("Version " + item.version)
+                    .setPositiveButton("UNINSTALL") { _, _ ->
+                        val removed = runCatching { SanyLiveSportsExtensionManager.uninstall(this, item.id) }.getOrDefault(false)
+                        if (section == "Live Sports") renderSection()
+                        toast(if (removed) "Extension removed" else "Remove failed")
+                    }.setNegativeButton("CLOSE", null).show()
+            }.setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun installBuiltInPlayZTV() {
+        val progress = AlertDialog.Builder(this)
+            .setTitle("PlayZTVProvider")
+            .setMessage("Sports extension ডাউনলোড, যাচাই ও ইনস্টল হচ্ছে…")
+            .setCancelable(false)
+            .create()
+        progress.show()
+        thread(name = "SANY-PlayZTV-Install") {
+            val result = runCatching {
+                SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(this@MainActivity)
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                progress.dismiss()
+                result.onSuccess { loaded ->
+                    if (loaded.success) {
+                        toast("PlayZTVProvider ইনস্টল ও Load হয়েছে")
+                        if (section == "Live Sports") renderSection()
+                    } else {
+                        AlertDialog.Builder(this)
+                            .setTitle("PlayZTV Install Failed")
+                            .setMessage(loaded.error ?: "Provider load failed")
+                            .setPositiveButton("OK", null).show()
+                    }
+                }.onFailure { error ->
+                    AlertDialog.Builder(this)
+                        .setTitle("PlayZTV Install Failed")
+                        .setMessage(error.message ?: error.javaClass.simpleName)
+                        .setPositiveButton("OK", null).show()
+                }
+            }
+        }
+    }
+
+    private fun syncLiveSportsProviderInBackground(forceRetry: Boolean = false) {
+        if (liveSportsProviderSyncRunning || isFinishing || isDestroyed) return
+        if (liveSportsProviderSyncAttempted && !forceRetry) return
+        liveSportsProviderSyncAttempted = true
+        liveSportsProviderLastAttemptAt = System.currentTimeMillis()
+        liveSportsProviderSyncRunning = true
+        thread(name = "SANY-LiveSports-Provider-AutoSync") {
+            var loaded: SanyCloudStreamPluginRuntime.LoadResult? = null
+            var syncError: String? = null
+            try {
+                val outcome = runCatching {
+                    SanyLiveSportsExtensionManager.syncBuiltInPlayZTV(this@MainActivity)
+                }
+                loaded = outcome.getOrNull()
+                if (loaded?.success == true) {
+                    android.util.Log.i("SANY-LIVE-SPORTS", "PlayZTVProvider automatically installed/updated and loaded")
+                } else {
+                    android.util.Log.e(
+                        "SANY-LIVE-SPORTS",
+                        "PlayZTVProvider auto-sync failed: ${loaded?.error ?: outcome.exceptionOrNull()?.message}",
+                        outcome.exceptionOrNull()
+                    )
+                }
+                runCatching {
+                    SanyLiveSportsExtensionManager.loadInstalled(
+                        this@MainActivity,
+                        if (loaded?.success == true) setOf("playztvprovider") else emptySet()
+                    )
+                }.onSuccess { restored ->
+                    restored.forEach { result ->
+                        if (result.success) android.util.Log.i(
+                            "SANY-LIVE-SPORTS", "Restored Live Sports provider: ${result.pluginName}"
+                        ) else android.util.Log.e(
+                            "SANY-LIVE-SPORTS", "Live Sports provider restore failed: ${result.error}"
+                        )
+                    }
+                }.onFailure { error ->
+                    android.util.Log.e("SANY-LIVE-SPORTS", "Installed Live Sports provider restore crashed", error)
+                }
+            } catch (error: Throwable) {
+                syncError = error.message ?: error.javaClass.simpleName
+                android.util.Log.e("SANY-LIVE-SPORTS", "Live Sports provider sync crashed", error)
+            } finally {
+                if (loaded?.success == true) {
+                    liveSportsProviderLastError = null
+                } else {
+                    liveSportsProviderLastError =
+                        loaded?.error ?: syncError ?: "Provider sync failed"
+                    // Permit a later visit to retry after the short retry window.
+                    liveSportsProviderSyncAttempted = false
+                }
+                runOnUiThread {
+                    liveSportsProviderSyncRunning = false
+                    if (!isFinishing && !isDestroyed && section == "Live Sports") {
+                        liveSportsCatalogueView = null
+                        renderSection()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun renderLiveSportsExtensions() {
+        liveSportsCatalogueView?.let { existing ->
+            (existing.parent as? ViewGroup)?.removeView(existing)
+            contentArea.addView(existing, LinearLayout.LayoutParams(-1, -1))
+            return
+        }
+        contentArea.removeAllViews()
+        val scroll = FastSportsScrollView(this).apply {
+            isFillViewport = true
+            isNestedScrollingEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            setBackgroundColor(if (isLight) Color.WHITE else bg)
+        }
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(14), 0, dp(28))
+            clipChildren = false
+            clipToPadding = false
+            setBackgroundColor(if (isLight) Color.WHITE else bg)
+        }
+        page.addView(text("LIVE SPORTS", 22, white, true))
+
+        val installed = SanyLiveSportsExtensionManager.installed(this)
+        // The curated package is the source of truth. Do not hide its provider just
+        // because an extension build omits or mislabels TvType.Live in its metadata.
+        val installedPaths = installed.mapNotNull { item ->
+            runCatching { java.io.File(item.packagePath).canonicalPath }.getOrNull()
+        }.toSet()
+        val providers = SanyCloudStreamPluginRuntime.providers().filter { provider ->
+            runCatching { java.io.File(provider.sourcePlugin).canonicalPath in installedPaths }
+                .getOrDefault(false)
+        }.distinctBy { it.name.lowercase() }.sortedBy { it.name.lowercase() }
+
+        if (providers.isEmpty()) {
+            // Keep the built-in provider visible even while its runtime is restoring,
+            // or when the extension is installed but has not registered its provider yet.
+            val builtIn = installed.firstOrNull { it.id.equals("playztvprovider", true) }
+            val retryAge = System.currentTimeMillis() - liveSportsProviderLastAttemptAt
+            if (!liveSportsProviderSyncRunning &&
+                (!liveSportsProviderSyncAttempted || retryAge >= 30_000L)
+            ) {
+                // A failed first-launch download must not leave Sports empty forever.
+                // Re-entering this tab retries the pinned provider after a short backoff.
+                syncLiveSportsProviderInBackground(forceRetry = true)
+            }
+            val providerCard = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(14), dp(12), dp(12))
+                background = glass(16)
+                elevation = dp(5).toFloat()
+            }
+            providerCard.addView(text("PlayZTVProvider", 18, white, true))
+            providerCard.addView(text(
+                when {
+                    liveSportsProviderSyncRunning -> "PlayZTVProvider is installing/restoring…"
+                    !liveSportsProviderLastError.isNullOrBlank() -> "Provider load failed: ${liveSportsProviderLastError}"
+                    builtIn != null -> "Installed • Version ${builtIn.version} • Provider is not registered yet"
+                    else -> "Built-in Live Sports provider • Waiting to install…"
+                },
+                12, muted
+            ).apply { setPadding(0, dp(5), 0, dp(10)) })
+            providerCard.addView(actionButton("RETRY / REPAIR PLAYZTV") {
+                syncLiveSportsProviderInBackground(forceRetry = true)
+            }, LinearLayout.LayoutParams(-1, dp(44)))
+            page.addView(providerCard, LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(12)
+                leftMargin = dp(12)
+                rightMargin = dp(12)
+            })
+            page.addView(text(
+                "Provider প্রস্তুত হলে এর Live Sports categories এখানে স্বয়ংক্রিয়ভাবে দেখাবে।",
+                12, muted
+            ).apply { setPadding(dp(12), dp(10), dp(12), dp(8)) })
+        } else {
+            providers.forEach { provider ->
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    // Keep the provider panel full width; only its controls get inner spacing.
+                    setPadding(0, dp(10), 0, dp(10))
+                    setBackgroundColor(if (isLight) Color.WHITE else 0xFF101820.toInt())
+                }
+                card.addView(text(provider.name, 17, white, true).apply {
+                    setPadding(dp(12), dp(3), dp(12), 0)
+                })
+                card.addView(text("Live Sports provider", 12, muted).apply {
+                    setPadding(dp(12), dp(3), dp(12), dp(10))
+                })
+                val actions = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(dp(12), 0, dp(12), 0)
+                }
+                actions.addView(actionButton("LOAD HOME") { loadLiveSportsHome(provider.name, card) },
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) })
+                actions.addView(actionButton("SEARCH") { showLiveSportsSearch(provider.name, card) },
+                    LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(6) })
+                card.addView(actions)
+                page.addView(card, LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = dp(10)
+                })
+                // Load automatically so opening Live Sports never shows an empty shell.
+                loadLiveSportsHome(provider.name, card)
+            }
+        }
+        scroll.addView(page)
+        liveSportsCatalogueView = scroll
+        contentArea.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun sportsCategory(title: String): String {
+        val value = title.lowercase(java.util.Locale.ROOT)
+        return when {
+            listOf("cricket", "ipl", "t20", "test match", "odi", "ashes", "bbl", "psl").any { it in value } -> "Cricket"
+            listOf("football", "soccer", "premier league", "epl", "ucl", "uefa", "fifa", "la liga", "serie a").any { it in value } -> "Football"
+            listOf("basketball", "nba", "wnba", "euroleague").any { it in value } -> "Basketball"
+            listOf("tennis", "atp", "wta", "grand slam", "wimbledon", "us open").any { it in value } -> "Tennis"
+            listOf("wwe", "wwf", "wrestling", "aew", "wrestle").any { it in value } -> "WWE / Wrestling"
+            listOf("boxing", "mma", "ufc", "bellator", "one championship", "fight night").any { it in value } -> "Boxing / MMA"
+            listOf("badminton", "bwf").any { it in value } -> "Badminton"
+            listOf("volleyball", "volley").any { it in value } -> "Volleyball"
+            listOf("rugby", "six nations").any { it in value } -> "Rugby"
+            listOf("nfl", "american football", "super bowl").any { it in value } -> "American Football"
+            listOf("baseball", "mlb").any { it in value } -> "Baseball"
+            listOf("hockey", "nhl", "ice hockey").any { it in value } -> "Hockey"
+            listOf("formula 1", "formula one", "f1", "motogp", "nascar", "racing", "motorsport").any { it in value } -> "Motorsports"
+            listOf("golf", "pga", "lpga", "masters tournament").any { it in value } -> "Golf"
+            else -> "Other Sports"
+        }
+    }
+
+    private fun loadLiveSportsHome(providerName: String, host: LinearLayout) {
+        val old = host.findViewWithTag<View>("sports-results-$providerName")
+        if (old != null) host.removeView(old)
+        val results = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            tag = "sports-results-$providerName"
+        }
+        host.addView(results, LinearLayout.LayoutParams(-1, -2))
+        val declaredCategories = if (providerName.equals("PlayZTVProvider", true)) {
+            SanyCloudStreamPluginRuntime.providers()
+                .firstOrNull { it.name.equals(providerName, true) }
+                ?.mainPage.orEmpty().map { it.name }.filter { it.isNotBlank() }.distinct()
+        } else emptyList()
+        if (declaredCategories.isNotEmpty()) {
+            declaredCategories.forEach { category ->
+                results.addView(text("$category  •  লোড হচ্ছে…", 16, white, true)
+                    .apply { setPadding(dp(8), dp(14), dp(8), dp(7)) })
+            }
+        } else {
+            results.addView(text("Sports হোমপেজ লোড হচ্ছে…", 13, muted)
+                .apply { setPadding(dp(8), dp(12), dp(8), dp(8)) })
+        }
+        thread(name = "SANY-LiveSports-Home") {
+            val outcome = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    val provider = SanyCloudStreamPluginRuntime.providers()
+                        .firstOrNull { it.name.equals(providerName, true) }
+                        ?: error("Provider is not loaded: $providerName")
+                    val realShelves = if (provider.hasMainPage && provider.mainPage.isNotEmpty()) {
+                        runCatching {
+                            kotlinx.coroutines.withTimeout(45_000L) {
+                                if (providerName.equals("PlayZTVProvider", true)) {
+                                    // Keep every provider-declared category visible, even when
+                                    // its event list is temporarily empty or slow to respond.
+                                    SanyCloudStreamPluginRuntime.homePageSections(
+                                        providerName, 1, shelfTimeoutMs = 20_000L
+                                    )
+                                } else {
+                                    SanyCloudStreamPluginRuntime.homePage(providerName, 1, forceRefresh = false)
+                                        .map { shelf -> shelf.name to shelf.list }
+                                }
+                            }
+                        }.onFailure { error ->
+                            android.util.Log.w("SANY-LIVE-SPORTS", "$providerName homepage request failed; trying parallel search fallback", error)
+                        }.getOrDefault(emptyList())
+                    } else emptyList()
+                    if (realShelves.isNotEmpty()) {
+                        realShelves
+                    } else {
+                        // Search fallback runs concurrently; the old sequential loop could
+                        // leave the Sports page blank for up to 40 seconds.
+                        val queries = listOf("sports", "football", "cricket", "live", "wwe")
+                        val queryResults = kotlinx.coroutines.coroutineScope {
+                            queries.map { query ->
+                                async(kotlinx.coroutines.Dispatchers.IO) {
+                                    runCatching {
+                                        kotlinx.coroutines.withTimeout(8_000L) {
+                                            SanyCloudStreamPluginRuntime.search(providerName, query, forceRefresh = false)
+                                        }
+                                    }.onFailure { error ->
+                                        android.util.Log.w("SANY-LIVE-SPORTS", "$providerName search failed for $query", error)
+                                    }.getOrDefault(emptyList())
+                                }
+                            }.let { jobs -> kotlinx.coroutines.withTimeout(9_000L) { jobs.awaitAll() } }
+                        }
+                        queryResults.flatten()
+                            .distinctBy { it.url.trim().lowercase() }
+                            .filter { it.name.isNotBlank() && it.url.isNotBlank() }
+                            .groupBy { sportsCategory(it.name) }
+                            .toList()
+                            .sortedBy { it.first.lowercase() }
+                    }
+                }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || section != "Live Sports") return@runOnUiThread
+                results.removeAllViews()
+                if (outcome.isFailure) {
+                    val message = outcome.exceptionOrNull()?.message ?: "Unknown provider error"
+                    android.util.Log.e("SANY-LIVE-SPORTS", "$providerName catalogue failed: $message", outcome.exceptionOrNull())
+                    results.addView(text("Catalogue load failed: $message", 13, muted)
+                        .apply { setPadding(dp(8), dp(12), dp(8), dp(8)) })
+                    results.addView(actionButton("RETRY LOAD SPORTS HOME") {
+                        loadLiveSportsHome(providerName, host)
+                    }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
+                } else {
+                    val shelves = outcome.getOrDefault(emptyList())
+                    android.util.Log.i("SANY-LIVE-SPORTS", "$providerName returned ${shelves.size} category shelves")
+                    val visibleShelves = shelves.filter { it.first.isNotBlank() }
+                    if (visibleShelves.isEmpty()) {
+                        results.addView(text("এই extension-এ এখন কোনো Sports category পাওয়া যায়নি। SEARCH দিয়ে চেষ্টা করুন।", 13, muted)
+                            .apply { setPadding(dp(8), dp(12), dp(8), dp(8)) })
+                        results.addView(actionButton("RELOAD SPORTS HOME") {
+                            loadLiveSportsHome(providerName, host)
+                        }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(8) })
+                    } else {
+                        visibleShelves.forEach { (categoryName, rawItems) ->
+                            val categoryItems = rawItems.distinctBy { it.url.trim().lowercase() }
+                                .filter { it.name.isNotBlank() && it.url.isNotBlank() }
+                            val heading = text("$categoryName  •  ${categoryItems.size}", 16, white, true)
+                                .apply { setPadding(dp(8), dp(14), dp(8), dp(7)) }
+                            results.addView(heading, LinearLayout.LayoutParams(-1, -2))
+                            if (categoryItems.isEmpty()) {
+                                results.addView(text("এই ক্যাটাগরিতে এখন কোনো ইভেন্ট নেই", 12, muted)
+                                    .apply { setPadding(dp(8), 0, dp(8), dp(8)) })
+                            } else {
+                                val screenWidthDp = resources.displayMetrics.widthPixels /
+                                    resources.displayMetrics.density
+                                // Compact banners: keep them smaller than the viewport while
+                                // preserving a wide landscape shape and horizontal browsing.
+                                val cardWidth = (screenWidthDp * 0.82f).toInt().coerceAtLeast(140)
+                                val bannerHeight = (cardWidth * 0.48f).toInt().coerceIn(112, 168)
+                                val rail = LinearLayout(this).apply {
+                                    orientation = LinearLayout.HORIZONTAL
+                                    clipChildren = false
+                                    clipToPadding = false
+                                }
+                                val categoryScroller = android.widget.HorizontalScrollView(this).apply {
+                                    isHorizontalScrollBarEnabled = false
+                                    isFillViewport = false
+                                    overScrollMode = View.OVER_SCROLL_NEVER
+                                    clipToPadding = false
+                                    setPadding(0, 0, 0, dp(8))
+                                    addView(rail, ViewGroup.LayoutParams(-2, -2))
+                                }
+                                categoryItems.forEach { item ->
+                                    val isNowPlaying =
+                                        prefs.getString("sany_last_played_section", "") == "Live Sports" &&
+                                        prefs.getString("sany_last_played_provider", "").equals(providerName, true) &&
+                                        (prefs.getString("sany_last_played_item_url", "") == item.url ||
+                                            prefs.getString("sany_last_played_title", "").equals(item.name, true))
+                                    val card = FrameLayout(this).apply {
+                                        background = GradientDrawable().apply {
+                                            setColor(if (isNowPlaying) 0xFF123E70.toInt() else if (isLight) Color.WHITE else 0xFF202D43.toInt())
+                                            cornerRadius = dp(8).toFloat()
+                                            if (isNowPlaying) setStroke(dp(3), 0xFF35B8FF.toInt())
+                                        }
+                                        clipToOutline = true
+                                        isClickable = true
+                                        isFocusable = true
+                                        if (isNowPlaying) elevation = dp(9).toFloat()
+                                        setOnClickListener { playLiveSportsItem(providerName, item.name, item.url) }
+                                    }
+                                    val image = ImageView(this).apply {
+                                        scaleType = ImageView.ScaleType.CENTER_CROP
+                                        setBackgroundColor(if (isLight) Color.WHITE else 0xFF202D43.toInt())
+                                    }
+                                    val placeholder = TextView(this).apply {
+                                        text = "▶  LIVE SPORTS"
+                                        textSize = 11f
+                                        gravity = Gravity.CENTER
+                                        setTextColor(white)
+                                        setBackgroundColor(if (isLight) Color.WHITE else 0xFF202D43.toInt())
+                                    }
+                                    card.addView(image, FrameLayout.LayoutParams(-1, -1))
+                                    card.addView(placeholder, FrameLayout.LayoutParams(-1, -1))
+                                    item.posterUrl?.takeIf { it.isNotBlank() }?.let {
+                                        loadCachedChannelLogo(image, placeholder, it)
+                                    }
+                                    val titleOverlay = TextView(this).apply {
+                                        text = item.name
+                                        textSize = 11f
+                                        maxLines = 2
+                                        ellipsize = android.text.TextUtils.TruncateAt.END
+                                        gravity = Gravity.BOTTOM or Gravity.START
+                                        setTextColor(Color.WHITE)
+                                        setPadding(dp(7), dp(18), dp(7), dp(6))
+                                        background = GradientDrawable(
+                                            GradientDrawable.Orientation.TOP_BOTTOM,
+                                            intArrayOf(0x00000000, 0xD9000000.toInt())
+                                        )
+                                    }
+                                    card.addView(titleOverlay, FrameLayout.LayoutParams(-1, dp(42), Gravity.BOTTOM))
+                                    if (isNowPlaying) {
+                                        card.addView(text("▶ PLAYING", 9, Color.WHITE, true).apply {
+                                            setPadding(dp(7), dp(4), dp(7), dp(4))
+                                            background = rounded(0xFF0875F5.toInt(), 14)
+                                        }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
+                                            setMargins(dp(6), dp(6), 0, 0)
+                                        })
+                                    }
+                                    rail.addView(card, LinearLayout.LayoutParams(dp(cardWidth), dp(bannerHeight)).apply {
+                                        // Small gutters separate compact banner cards.
+                                        marginEnd = dp(8)
+                                        bottomMargin = dp(2)
+                                    })
+                                }
+                                results.addView(categoryScroller, LinearLayout.LayoutParams(-1, -2))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showLiveSportsSearch(providerName: String, host: LinearLayout) {
+        val field = EditText(this).apply {
+            hint = "Football, Cricket, WWE…"
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Search • $providerName")
+            .setView(field)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("SEARCH") { _, _ ->
+                val query = field.text?.toString()?.trim().orEmpty()
+                if (query.isBlank()) return@setPositiveButton
+                thread(name = "SANY-LiveSports-Search") {
+                    val result = runCatching {
+                        kotlinx.coroutines.runBlocking {
+                            kotlinx.coroutines.withTimeout(18_000L) {
+                                SanyCloudStreamPluginRuntime.search(providerName, query)
+                            }
+                        }
+                    }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed || section != "Live Sports") return@runOnUiThread
+                        val resultHost = host.findViewWithTag<LinearLayout>("sports-results-$providerName")
+                        if (resultHost != null) {
+                            resultHost.removeAllViews()
+                            result.onSuccess { items ->
+                                if (items.isEmpty()) {
+                                    resultHost.addView(text("কোনো ফলাফল পাওয়া যায়নি: $query", 13, muted))
+                                } else {
+                                    items.distinctBy { it.url.trim().lowercase() }.forEach { item ->
+                                        resultHost.addView(actionButton("▶  ${item.name}") {
+                                            playLiveSportsItem(providerName, item.name, item.url)
+                                        }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(6) })
+                                    }
+                                }
+                            }.onFailure { resultHost.addView(text("Search failed: ${it.message}", 13, muted)) }
+                        }
+                    }
+                }
+            }.show()
+    }
+
+    private fun playLiveSportsItem(providerName: String, title: String, data: String) {
+        toast("Loading $title…")
+        thread(name = "SANY-LiveSports-Resolve") {
+            val result = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeout(25_000L) {
+                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
+                    }
+                }
+            }
+            runOnUiThread {
+                animeEpisodeSourceResolving = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { sources ->
+                    if (sources.isEmpty()) {
+                        toast("এই Sports item-এর কোনো playable source পাওয়া যায়নি")
+                    } else {
+                        // Remember the catalogue identity (not the resolved stream URL),
+                        // so the same Sports poster can be highlighted after playback starts.
+                        prefs.edit()
+                            .putString("sany_last_played_section", "Live Sports")
+                            .putString("sany_last_played_provider", providerName)
+                            .putString("sany_last_played_title", title)
+                            .putString("sany_last_played_item_url", data)
+                            .apply()
+                        // Keep every returned Sports stream as a fallback. Some hosts
+                        // resolve successfully but return a stream that never renders video.
+                        animeFallbackRequests = sources
+                        animeFallbackIndex = 0
+                        // Keep the exact Live Sports catalogue attached underneath
+                        // the player. Rebuilding it here used to reset category/scroll state.
+                        playSanyPlaybackRequest(sources.first(), preserveFallbackQueue = true)
+                    }
+                }.onFailure {
+                    android.util.Log.e("SANY-LIVE-SPORTS", "Resolve failed for $title", it)
+                    toast("Sports playback failed: ${it.message ?: it.javaClass.simpleName}")
+                }
+            }
+        }
+    }
+    private fun showMovieExtensionSearch(providerName: String) {
+        val field = EditText(this).apply { hint = "Search movie title"; setSingleLine(true) }
+        AlertDialog.Builder(this).setTitle("Search • $providerName").setView(field)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("SEARCH") { _, _ ->
+                val query = field.text.toString().trim()
+                if (query.isBlank()) return@setPositiveButton
+                thread(name = "SANY-Movie-Search") {
+                    val result = runCatching { kotlinx.coroutines.runBlocking { SanyCloudStreamPluginRuntime.search(providerName, query) } }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        result.onSuccess { items ->
+                            if (items.isEmpty()) {
+                                toast("কোনো Movie পাওয়া যায়নি")
+                            } else {
+                                AlertDialog.Builder(this).setTitle("Movie results • ${items.size}")
+                                    .setItems(items.map { it.name }.toTypedArray()) { _, index ->
+                                        openMovieExtensionTitle(providerName, items[index].url, items[index].name)
+                                    }.setNegativeButton("CLOSE", null).show()
+                            }
+                        }.onFailure { toast("Movie search failed: ${it.message}") }
+                    }
+                }
+            }.show()
+    }
+
+    private fun openMovieExtensionTitle(providerName: String, url: String, fallbackTitle: String) {
+        toast("Loading details…")
+        thread(name = "SANY-Movie-Details") {
+            val result = runCatching {
+                kotlinx.coroutines.runBlocking { SanyCloudStreamPluginRuntime.load(providerName, url) }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { response ->
+                    if (response == null) {
+                        toast("Extension থেকে Movie details পাওয়া যায়নি")
+                    } else {
+                        showMovieExtensionDetails(providerName, response, fallbackTitle)
+                    }
+                }.onFailure { toast("Movie details failed: ${it.message}") }
+            }
+        }
+    }
+
+    private fun restoreMovieDetailsParent() {
+        val parent = movieDetailsParentView ?: moviesNativeView
+        contentArea.removeAllViews()
+        if (parent != null) {
+            (parent.parent as? ViewGroup)?.removeView(parent)
+            contentArea.addView(parent, LinearLayout.LayoutParams(-1, -1))
+        } else {
+            renderNativeMovies(false)
+        }
+        // Consume this details-page return point exactly once so the next Back
+        // continues through the Movies category/page history instead of reopening it.
+        movieDetailsParentView = null
+    }
+
+    /** Anime-style details page: select an episode first, then choose its source before playback. */
+    private fun showMovieExtensionDetails(
+        providerName: String,
+        response: com.lagradost.cloudstream3.LoadResponse,
+        fallbackTitle: String
+    ) {
+        val title = response.name.ifBlank { fallbackTitle }
+        val episodes = (response as? com.lagradost.cloudstream3.TvSeriesLoadResponse)
+            ?.episodes.orEmpty()
+        val movieData = (response as? com.lagradost.cloudstream3.MovieLoadResponse)?.dataUrl
+        val posterUrl = response.posterUrl.orEmpty()
+        val plot = response.plot.orEmpty()
+
+        // Retain the exact Movies catalogue/provider page so Back restores its
+        // category page, active search/filter and scroll position.
+        movieDetailsParentView = contentArea.getChildAt(0)
+        contentArea.removeAllViews()
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(24))
+            setBackgroundColor(Color.BLACK)
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(page)
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val back = TextView(this).apply {
+            text = "‹  BACK"
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = rounded(0xFF242832.toInt(), 12)
+            setOnClickListener { restoreMovieDetailsParent() }
+        }
+        header.addView(back)
+        header.addView(text("MOVIE DETAILS", 14, Color.WHITE, true), LinearLayout.LayoutParams(0, -2, 1f).apply {
+            leftMargin = dp(12)
+        })
+        page.addView(header, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+
+        val hero = FrameLayout(this).apply {
+            background = rounded(0xFF20242C.toInt(), 18)
+            clipToOutline = true
+        }
+        val heroImage = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(0xFF20242C.toInt())
+            tag = posterUrl
+        }
+        hero.addView(heroImage, FrameLayout.LayoutParams(-1, -1))
+        if (posterUrl.startsWith("http", true)) loadMovieDetailImage(posterUrl, heroImage)
+        val shade = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0x00000000, 0xCC000000.toInt(), 0xF5000000.toInt())
+            )
+        }
+        hero.addView(shade, FrameLayout.LayoutParams(-1, -1))
+        val heroTitle = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.BOTTOM
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
+        heroTitle.addView(text(if (episodes.isNotEmpty()) "SERIES" else "MOVIE", 11, 0xFFB9D7FF.toInt(), true))
+        heroTitle.addView(text(title, 23, Color.WHITE, true).apply {
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        hero.addView(heroTitle, FrameLayout.LayoutParams(-1, -1))
+        page.addView(hero, LinearLayout.LayoutParams(-1, dp(224)).apply { bottomMargin = dp(14) })
+
+        if (plot.isNotBlank()) {
+            page.addView(text(plot, 13, 0xFFD0D0D0.toInt()).apply {
+                setPadding(dp(4), dp(2), dp(4), dp(12))
+            })
+        }
+
+        if (episodes.isNotEmpty()) {
+            page.addView(text("EPISODES  •  ${episodes.size}", 17, Color.WHITE, true),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); bottomMargin = dp(10) })
+            episodes.forEachIndexed { index, episode ->
+                val episodeName = episode.name?.takeIf { it.isNotBlank() } ?: "Episode ${index + 1}"
+                val episodeLabel = buildString {
+                    episode.season?.let { append("S").append(it).append("  ") }
+                    episode.episode?.let { append("E").append(it).append("  ") }
+                    append(episodeName)
+                }
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(14), dp(13), dp(14), dp(13))
+                    background = rounded(0xFF1D222B.toInt(), 13)
+                    isFocusable = true
+                    setOnClickListener {
+                        resolveMovieExtensionPlayback(providerName, "$title • $episodeLabel", episode.data)
+                    }
+                }
+                val playIcon = TextView(this).apply {
+                    text = "▶"
+                    textSize = 17f
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    background = rounded(0xFF315E9E.toInt(), 30)
+                }
+                row.addView(playIcon, LinearLayout.LayoutParams(dp(42), dp(42)))
+                row.addView(text(episodeLabel, 14, Color.WHITE, true).apply {
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setPadding(dp(12), 0, 0, 0)
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(text("›", 25, 0xFFB9D7FF.toInt(), true))
+                page.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+            }
+        } else if (!movieData.isNullOrBlank()) {
+            page.addView(text("PLAYBACK", 17, Color.WHITE, true),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); bottomMargin = dp(10) })
+            val chooseSource = TextView(this).apply {
+                text = "▶   SELECT SOURCE"
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = rounded(accent, 14)
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                setOnClickListener { resolveMovieExtensionPlayback(providerName, title, movieData) }
+            }
+            page.addView(chooseSource, LinearLayout.LayoutParams(-1, dp(54)))
+        } else {
+            page.addView(text("এই কনটেন্টে কোনো Episode বা playable Movie data পাওয়া যায়নি।", 13, 0xFFBDBDBD.toInt()))
+        }
+        contentArea.addView(scroll, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun loadMovieDetailImage(imageUrl: String, target: ImageView) {
+        target.tag = imageUrl
+        thread(name = "SANY-Movie-Detail-Image") {
+            val bitmap = runCatching {
+                val connection = (URL(imageUrl).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 3500
+                    readTimeout = 4500
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "Mozilla/5.0 SANY-IPTV")
+                }
+                try {
+                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+            if (bitmap != null) runOnUiThread {
+                if (target.tag == imageUrl && !isFinishing && !isDestroyed) target.setImageBitmap(bitmap)
+                else if (!bitmap.isRecycled) bitmap.recycle()
+            }
+        }
+    }
+
+    private fun resolveMovieExtensionPlayback(providerName: String, title: String, data: String) {
+        val resolveStartedAt = System.currentTimeMillis()
+        val requestId = ++movieStreamingRequestId
+        movieStreamingSourceDialog?.dismiss()
+        movieStreamingSourceDialog = null
+        movieStreamingSourceAdapter = null
+        movieStreamingSourceRequests = mutableListOf()
+        movieStreamingPlaybackStarted = false
+        movieStreamingPickerDismissed = false
+        android.util.Log.i("SANY-MOVIE", "Movie source request: provider=$providerName title=$title dataLength=${data.length}")
+        toast("Resolving $title…")
+        thread(name = "SANY-Movie-Resolve") {
+            val links = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeout(25_000L) {
+                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data) { source ->
+                            runOnUiThread {
+                                publishMovieStreamingSources(requestId, title, listOf(source), finished = false)
+                            }
+                        }
+                    }
+                }
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || requestId != movieStreamingRequestId) return@runOnUiThread
+                links.onSuccess { sources ->
+                    android.util.Log.i(
+                        "SANY-MOVIE",
+                        "Movie source request finished: provider=$providerName elapsedMs=${System.currentTimeMillis() - resolveStartedAt} sources=${sources.size}"
+                    )
+                    publishMovieStreamingSources(requestId, title, sources, finished = true)
+                    if (sources.isEmpty()) toast("এই Movie/Episode-এর কোনো playable source পাওয়া যায়নি")
+                }.onFailure { error ->
+                    android.util.Log.e(
+                        "SANY-MOVIE",
+                        "Movie source request failed: provider=$providerName elapsedMs=${System.currentTimeMillis() - resolveStartedAt}",
+                        error
+                    )
+                    if (movieStreamingSourceRequests.isEmpty()) toast("Source resolve failed: ${error.message}")
+                    else movieStreamingSourceDialog?.setTitle("$title • source search stopped")
+                }
+            }
+        }
+    }
+
+    private fun publishMovieStreamingSources(
+        requestId: Int,
+        title: String,
+        incoming: List<SanyPlaybackRequest>,
+        finished: Boolean
+    ) {
+        if (isFinishing || isDestroyed || requestId != movieStreamingRequestId) return
+        incoming.filter { it.url.isNotBlank() }.forEach { source ->
+            val existingIndex = movieStreamingSourceRequests.indexOfFirst { it.url == source.url }
+            if (existingIndex >= 0) movieStreamingSourceRequests[existingIndex] = source
+            else movieStreamingSourceRequests.add(source)
+        }
+        if (movieStreamingPlaybackStarted) {
+            // Keep later-arriving links available to the existing playback fallback queue.
+            animeFallbackRequests = movieStreamingSourceRequests.toList()
+            return
+        }
+        if (movieStreamingPickerDismissed || movieStreamingSourceRequests.isEmpty()) return
+
+        val labels = movieStreamingSourceRequests.mapIndexed { index, request ->
+            val provider = request.provider.ifBlank { "Source ${index + 1}" }
+            val quality = request.quality?.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty()
+            val type = request.streamMimeType?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?.let { " • ${it.uppercase()}" }.orEmpty()
+            "$provider$quality$type"
+        }
+        var adapter = movieStreamingSourceAdapter
+        if (adapter == null) {
+            adapter = android.widget.ArrayAdapter(
+                this,
+                android.R.layout.simple_list_item_1,
+                mutableListOf<String>()
+            )
+            movieStreamingSourceAdapter = adapter
+            val created = AlertDialog.Builder(this)
+                .setTitle(if (finished) title else "$title • আরও source খোঁজা হচ্ছে…")
+                .setAdapter(adapter) { _, selectedIndex ->
+                    val available = movieStreamingSourceRequests.toList()
+                    movieStreamingPlaybackStarted = true
+                    movieStreamingSourceDialog = null
+                    startAnimeSourceFallback(available, selectedIndex)
+                }
+                .setNegativeButton("বন্ধ", null)
+                .create()
+            movieStreamingSourceDialog = created
+            created.setOnDismissListener {
+                if (movieStreamingSourceDialog === created) {
+                    movieStreamingSourceDialog = null
+                    movieStreamingSourceAdapter = null
+                    movieStreamingPickerDismissed = true
+                }
+            }
+            created.show()
+        }
+        adapter.clear()
+        adapter.addAll(labels)
+        adapter.notifyDataSetChanged()
+        movieStreamingSourceDialog?.setTitle(
+            if (finished) title else "$title • আরও source খোঁজা হচ্ছে…"
+        )
+    }
+
     private fun renderNativeMovies(showSeries: Boolean) {
         if (showSeries) {
             renderDevelopmentSection()
+            return
+        }
+        if (isLowRamTvDevice && !movieProviderSyncStarted) {
+            movieProviderSyncStarted = true
+            thread(name = "SANY-Movie-Provider-LazySync") {
+                val result = runCatching {
+                    SanyMovieExtensionManager.removeVegaMovies(applicationContext)
+                    SanyMovieExtensionManager.syncBuiltInMultiMovies(applicationContext)
+                }
+                val loaded = result.getOrNull()
+                if (loaded?.success == true) {
+                    runCatching {
+                        SanyMovieExtensionManager.loadInstalled(applicationContext, setOf("multimovies"))
+                    }.onFailure { android.util.Log.e("SANY-MOVIE", "Lazy provider restore failed", it) }
+                } else {
+                    movieProviderSyncStarted = false
+                    android.util.Log.e("SANY-MOVIE", "Lazy MultiMovies sync failed: ${loaded?.error ?: result.exceptionOrNull()?.message}")
+                }
+                if (loaded?.success == true) runOnUiThread {
+                    if (!isFinishing && !isDestroyed && section == "Movies") {
+                        contentArea.removeAllViews()
+                        moviesNativeView = null
+                        renderNativeMovies(false)
+                    }
+                }
+            }
+        }
+        moviesNativeView?.let { existing ->
+            (existing.parent as? ViewGroup)?.removeView(existing)
+            contentArea.addView(existing, LinearLayout.LayoutParams(-1, -1))
             return
         }
         val screen = NativeMoviesScreen(
@@ -1265,9 +2560,15 @@ class MainActivity : AppCompatActivity() {
             seriesMode = false,
             light = isLight,
             accent = accent,
-            onPlay = { title, url -> play(Channel(title, url, "Movies")) }
+            onPlay = { title, url -> play(Channel(title, url, "Movies")) },
+            onManageExtensions = { showMovieExtensionManager() },
+            onOpenExtensionProvider = { providerName -> showMovieExtensionSearch(providerName) },
+            onOpenExtensionTitle = { providerName, url, title ->
+                openMovieExtensionTitle(providerName, url, title)
+            }
         )
-        contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
+        moviesNativeView = screen.create()
+        contentArea.addView(moviesNativeView, LinearLayout.LayoutParams(-1, -1))
     }
 
     // Series is intentionally disabled. Keep this page empty except for its label.
@@ -1282,20 +2583,776 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Anime Universe UI/template removed. Keep the Series page free of placeholder text.
+    /**
+     * Single SANY player entry point for provider-neutral playback data.
+     * CloudStream ExtractorLink/SubtitleFile values must be mapped to this DTO
+     * by a host bridge; CloudStream classes never enter MainActivity.
+     */
+    private var animeLoadingOverlay: View? = null
+    private var animePlaybackLoadingRequested = false
+    // Every playback type is held silent until its first decoded frame is rendered.
+    private var animeAutoPlayWhenReady = false
+    private var animeFirstFrameRendered = false
+    private var animeFullscreenBufferingOverlay: View? = null
+
+    // Anime loading is drawn only inside the fullscreen video surface.
+    private fun showAnimePlaybackLoading(title: String, show: Boolean) {
+        animePlaybackLoadingRequested = show
+        if (show) animeFirstFrameRendered = false
+        runOnUiThread { updateAnimeFullscreenBuffering() }
+    }
+
+    private fun updateAnimeFullscreenBuffering() {
+        // Keep all Anime loading feedback attached to the actual video surface.
+        // PlayerView has the same bounds in FIT and fullscreen, so the spinner
+        // never covers the page or appears outside the video.
+        // This overlay is only for the three requested playback sections.
+        val isSupportedPlayback = section == "Live Sports" ||
+            section == "Movies" || section == "Series"
+        val activePlayer = player
+        // isLoading can remain true while Media3 is downloading ahead of the
+        // playhead; it is NOT a reason to cover video that is already playing.
+        // Show rebuffering only when playback is actually stalled and the user
+        // still intends to play. Initial loading remains controlled by the
+        // explicit request / first-frame gate.
+        val isGenuineRebuffer = activePlayer?.playbackState == Player.STATE_BUFFERING &&
+            activePlayer.playWhenReady && !activePlayer.isPlaying
+        val shouldShow = isSupportedPlayback && playerView != null &&
+            (animePlaybackLoadingRequested ||
+                (!animeFirstFrameRendered && activePlayer?.playbackState != Player.STATE_IDLE) ||
+                isGenuineRebuffer)
+        animeFullscreenBufferingOverlay?.visibility = if (shouldShow) View.VISIBLE else View.GONE
+    }
+
+    private var movieSourcePickerDialog: AlertDialog? = null
+    private var moviePlaybackStartedAtMs = 0L
+    // Movies only: show each valid source as soon as the provider emits it.
+    private var movieStreamingRequestId = 0
+    private var movieStreamingSourceRequests = mutableListOf<SanyPlaybackRequest>()
+    private var movieStreamingSourceDialog: AlertDialog? = null
+    private var movieStreamingSourceAdapter: android.widget.ArrayAdapter<String>? = null
+    private var movieStreamingPlaybackStarted = false
+    private var movieStreamingPickerDismissed = false
+    private var animeEpisodeSourceResolving = false
+    private var animeSourcePickerDialog: AlertDialog? = null
+    // Anime Series only: publish each source as its extractor emits it.
+    private var animeStreamingRequestId = 0
+    private var animeStreamingSourceRequests = mutableListOf<SanyPlaybackRequest>()
+    private var animeStreamingSourceAdapter: android.widget.ArrayAdapter<String>? = null
+    private var animeStreamingPlaybackStarted = false
+    private var animeStreamingPickerDismissed = false
+    private var subtitleTrackDialog: android.app.Dialog? = null
+    // The catalogue item that opened the current CloudStream Anime details page.
+    private var pendingCloudStreamAnimeItem: Triple<String, String, String>? = null
+
+    private fun publishAnimeStreamingSources(
+        requestId: Int,
+        title: String,
+        incoming: List<SanyPlaybackRequest>,
+        finished: Boolean
+    ) {
+        if (isFinishing || isDestroyed || requestId != animeStreamingRequestId) return
+        incoming.filter { it.url.isNotBlank() }.forEach { source ->
+            val existingIndex = animeStreamingSourceRequests.indexOfFirst { it.url == source.url }
+            if (existingIndex >= 0) animeStreamingSourceRequests[existingIndex] = source
+            else animeStreamingSourceRequests.add(source)
+        }
+        if (animeStreamingPlaybackStarted) {
+            animeFallbackRequests = animeStreamingSourceRequests.toList()
+            return
+        }
+        if (animeStreamingPickerDismissed || animeStreamingSourceRequests.isEmpty()) return
+        val labels = animeStreamingSourceRequests.mapIndexed { index, request ->
+            val provider = request.provider.ifBlank { "Source ${index + 1}" }
+            val quality = request.quality?.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty()
+            val type = request.streamMimeType?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?.let { " • ${it.uppercase()}" }.orEmpty()
+            "$provider$quality$type"
+        }
+        var adapter = animeStreamingSourceAdapter
+        if (adapter == null) {
+            adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf<String>())
+            animeStreamingSourceAdapter = adapter
+            val created = AlertDialog.Builder(this)
+                .setTitle(if (finished) title else "$title • আরও source খোঁজা হচ্ছে…")
+                .setAdapter(adapter) { _, selectedIndex ->
+                    val available = animeStreamingSourceRequests.toList()
+                    animeStreamingPlaybackStarted = true
+                    animeSourcePickerDialog = null
+                    animeStreamingSourceAdapter = null
+                    startAnimeSourceFallback(available, selectedIndex)
+                }
+                .setNegativeButton("বন্ধ", null)
+                .create()
+            animeSourcePickerDialog = created
+            created.setOnDismissListener {
+                if (animeSourcePickerDialog === created) {
+                    animeSourcePickerDialog = null
+                    animeStreamingSourceAdapter = null
+                    animeStreamingPickerDismissed = true
+                }
+            }
+            created.show()
+        }
+        adapter.clear()
+        adapter.addAll(labels)
+        adapter.notifyDataSetChanged()
+        animeSourcePickerDialog?.setTitle(if (finished) title else "$title • আরও source খোঁজা হচ্ছে…")
+    }
+
+    private fun showAnimeSourcePicker(title: String, requests: List<SanyPlaybackRequest>) {
+        if (requests.isEmpty() || isFinishing || isDestroyed || animeSourcePickerDialog?.isShowing == true) return
+        val ordered = requests.distinctBy { it.url }.filter { it.url.isNotBlank() }
+        if (ordered.isEmpty()) {
+            toast("কোনো valid video source পাওয়া যায়নি")
+            return
+        }
+
+        // Let the user choose a source before playback in both Movies and Anime.
+        val labels = ordered.mapIndexed { index, request ->
+            val provider = request.provider.ifBlank { "Source ${index + 1}" }
+            val quality = request.quality?.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty()
+            val type = request.streamMimeType?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?.let { " • ${it.uppercase()}" }.orEmpty()
+            "$provider$quality$type"
+        }.toTypedArray()
+
+        animeSourcePickerDialog = AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(labels) { _, selectedIndex ->
+                startAnimeSourceFallback(ordered, selectedIndex)
+            }
+            .setNegativeButton("বন্ধ", null)
+            .create()
+            .also { dialog ->
+                dialog.setOnDismissListener {
+                    if (animeSourcePickerDialog === dialog) animeSourcePickerDialog = null
+                }
+                dialog.show()
+            }
+    }
+
+    private fun playSanyPlaybackRequest(request: SanyPlaybackRequest, preserveFallbackQueue: Boolean = false) {
+        if (!preserveFallbackQueue) {
+            animeFallbackRequests = emptyList()
+            animeFallbackIndex = -1
+        }
+        val title = request.title.ifBlank { "AniLight" }
+        val provider = request.provider.ifBlank { "Extension" }
+        if (section == "Movies") {
+            moviePlaybackStartedAtMs = System.currentTimeMillis()
+            android.util.Log.i(
+                "SANY-MOVIE",
+                "Movie playback requested: provider=$provider mime=${request.streamMimeType ?: "auto"} quality=${request.quality ?: "unknown"}"
+            )
+        }
+        showAnimePlaybackLoading(title, true)
+        if (section == "Series") {
+            val pending = pendingCloudStreamAnimeItem?.takeIf {
+                title.startsWith(it.third, ignoreCase = true) || it.third.startsWith(title.substringBefore(" • "), ignoreCase = true)
+            }
+            val playedTitle = pending?.third ?: title.substringBefore(" • ").trim()
+            val playedProvider = pending?.first ?: provider
+            val playedItemUrl = pending?.second ?: request.url.trim()
+            prefs.edit()
+                .putString("sany_last_played_section", "Series")
+                .putString("sany_last_played_provider", playedProvider)
+                .putString("sany_last_played_title", playedTitle)
+                .putString("sany_last_played_item_url", playedItemUrl)
+                .apply()
+            pendingCloudStreamAnimeItem = null
+        }
+        val streamUrl = request.url.trim()
+        val parsedUrl = runCatching { Uri.parse(streamUrl) }.getOrNull()
+        // The shared CloudStream playback bridge serves Anime, Movies and Live Sports.
+        // SANY's player also supports FTP, so accept the same schemes here.
+        if (parsedUrl?.scheme?.lowercase() !in setOf("http", "https", "ftp")) {
+            showAnimePlaybackLoading("", false)
+            val sectionLabel = when (section) {
+                "Live Sports" -> "Live Sports"
+                "Movies" -> "Movies"
+                "Series" -> "AniLight"
+                else -> provider
+            }
+            toast("${sectionLabel}-এর stream link সঠিক নয়")
+            android.util.Log.e(
+                "SANY-PLAYER",
+                "Rejected provider URL: section=${section} provider=${provider} scheme=${parsedUrl?.scheme ?: "missing"} length=${streamUrl.length}"
+            )
+            return
+        }
+        try {
+            android.util.Log.i(
+                "SANY-PLAYER",
+                "Starting provider playback: provider=$provider mime=${request.streamMimeType ?: "auto"} " +
+                    "quality=${request.quality ?: "unknown"} subtitles=${request.subtitles.size}"
+            )
+            play(
+                channel = Channel(title, request.url.trim(), provider),
+                startPlayback = true,
+                requestHeaders = request.headers,
+                streamMimeTypeHint = request.streamMimeType,
+                subtitleTracks = request.subtitles,
+                preferredAudioLanguages = request.audioLanguage?.split(',')?.map(String::trim),
+                qualityHint = request.quality,
+                externalAudioTracks = request.audioTracks
+            )
+            if (section == "Live Sports" && animeFallbackIndex >= 0) {
+                liveSportsFirstFrameWatchdog?.let(playbackRetryHandler::removeCallbacks)
+                val expectedUrl = request.url.trim()
+                val watchdog = Runnable {
+                    if (section == "Live Sports" &&
+                        playerView != null &&
+                        currentChannel?.url == expectedUrl &&
+                        player?.playWhenReady == true &&
+                        player?.playbackState != Player.STATE_IDLE &&
+                        animeFallbackIndex >= 0
+                    ) {
+                        android.util.Log.w("SANY-LIVE-SPORTS", "No video frame rendered for $provider; trying next source")
+                        toast("ভিডিও দেখা যাচ্ছে না। অন্য Sports source চেষ্টা হচ্ছে…")
+                        tryNextAnimeFallback()
+                    }
+                }
+                liveSportsFirstFrameWatchdog = watchdog
+                // Give slow live hosts time to start, then move on if no frame arrived.
+                playbackRetryHandler.postDelayed(watchdog, 20_000L)
+            }
+        } catch (error: Exception) {
+            showAnimePlaybackLoading("", false)
+            android.util.Log.e("SANY-PLAYER", "Could not initialize provider player", error)
+            toast("Player চালু করা যায়নি: ${error.javaClass.simpleName}")
+        }
+    }
+
+    private fun attachAniLightNativeView() {
+        val nativeView = aniLightNativeView ?: return
+        (nativeView.parent as? android.view.ViewGroup)?.removeView(nativeView)
+        val animePage = LinearLayout(this).apply {
+            setBackgroundColor(if (isLight) Color.WHITE else bg)
+        }
+        animePage.addView(nativeView, LinearLayout.LayoutParams(-1, -1))
+        contentArea.addView(animePage, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun attachCloudStreamProviderView() {
+        val providerView = cloudStreamProviderView ?: return
+        (providerView.parent as? android.view.ViewGroup)?.removeView(providerView)
+        contentArea.addView(providerView, LinearLayout.LayoutParams(-1, -1))
+    }
+
+    private fun restoreAnimeExternalPage() {
+        if (!animeExternalPageActive) return
+        animeExternalPageActive = false
+        contentArea.removeAllViews()
+        if (animeExternalPageReturnToProvider &&
+            cloudStreamProviderScreen != null && cloudStreamProviderView != null
+        ) {
+            attachCloudStreamProviderView()
+        } else {
+            attachAniLightNativeView()
+        }
+    }
+
     private fun renderAniLightNative() {
+        // Reattach the existing screen instead of constructing a fresh one.
+        // This preserves its page stack, filters and exact scroll position.
+        if (aniLightNativeScreen != null && aniLightNativeView != null) {
+            attachAniLightNativeView()
+            return
+        }
+        // Keep CloudStream DEX provider management internal. The verified providers
+        // are synchronized and loaded automatically at app startup; no manual
+        // provider/search entry is shown in the Anime Series UI.
         lateinit var screen: AniLightNativeScreen
         screen = AniLightNativeScreen(
             context = this,
             light = isLight,
             accent = accent,
-            onPlay = { title, url, _ ->
-                play(Channel(title, url, "AniLight"), true, null, null, screen.playbackHeaders())
+            onPlay = { playbackRequest ->
+                // Show the same source confirmation step used by extension playback.
+                showAnimeSourcePicker(playbackRequest.title.ifBlank { "Anime Sources" }, listOf(playbackRequest))
+            },
+            onPlaybackLoading = { title, show -> showAnimePlaybackLoading(title, show) },
+            onBrowseCloudStreamProviders = { showCloudStreamProviderBrowser() },
+            onCloudStreamResult = { providerName, url, title ->
+                showCloudStreamDetails(providerName, url, title)
+            },
+            onSearchProvider = { providerName -> showCloudStreamSearch(providerName) },
+            onLoadProviderShelves = { onLoaded ->
+                thread(name = "SANY-Provider-Home-Shelves") {
+                    val shelves = runCatching {
+                        kotlinx.coroutines.runBlocking {
+                            // Plugins are synchronized and loaded once during app startup.
+                            // Never repeat repository downloads/hash checks when the user merely
+                            // opens this screen; use the already registered curated providers.
+                            // The provider display name is not guaranteed to match the
+                            // extension's internalName (some plugins register a differently
+                            // cased or branded MainAPI name). These are the only Anime packages
+                            // loaded by the curated Anime sync path, so select by actual
+                            // CloudStream media capabilities rather than brittle name equality.
+                            // Inspect every installed extension. Some mixed-content providers
+                            // expose Anime entries even when their declared supportedTypes are broad.
+                            // The strict per-result type filter below decides what may enter Anime.
+                            var animeProviders = SanyCloudStreamPluginRuntime.providers()
+                            // Recover if the user opens Anime before the startup sync has
+                            // registered the curated extensions, or if Android cleared process state.
+                            if (animeProviders.isEmpty()) {
+                                val retryReport = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
+                                retryReport.packages.forEach { packageFile ->
+                                    val loaded = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                                    if (!loaded.success) {
+                                        android.util.Log.e("SANY-Anime-Home", "Retry load failed: ${packageFile.name}: ${loaded.error}")
+                                    }
+                                }
+                                retryReport.failures.forEach {
+                                    android.util.Log.e("SANY-Anime-Home", "Retry sync: $it")
+                                }
+                                animeProviders = SanyCloudStreamPluginRuntime.providers()
+                            }
+                            android.util.Log.i(
+                                "SANY-Anime-Home",
+                                "Loaded Anime homepage providers: " +
+                                    animeProviders.joinToString { "${it.name}[${it.supportedTypes.joinToString()}]" }
+                            )
+                            // Load every provider independently. A provider without a
+                            // homepage must not prevent the other providers or the fallback
+                            // search catalogue from appearing.
+                            val fallbackQueries = listOf("anime", "popular anime", "one piece", "naruto", "demon slayer", "jujutsu kaisen")
+                            val providerResults = kotlinx.coroutines.coroutineScope {
+                                animeProviders.map { provider ->
+                                    async(kotlinx.coroutines.Dispatchers.IO) {
+                                        fun mapItems(
+                                            items: List<com.lagradost.cloudstream3.SearchResponse>,
+                                            categoryName: String,
+                                            curatedAnimeProvider: Boolean = false
+                                        ): List<Pair<String, SanyProviderItem>> =
+                                            items.mapNotNull { item ->
+                                                val title = item.name.trim()
+                                                val url = item.url.trim()
+                                                val isAnimeMovie = item.type == com.lagradost.cloudstream3.TvType.AnimeMovie
+                                                val isAnimeSeries = item.type == com.lagradost.cloudstream3.TvType.Anime ||
+                                                    item.type == com.lagradost.cloudstream3.TvType.OVA
+                                                // These three packages are explicitly curated as Anime sources.
+                                                // Some CloudStream plugins report generic/incorrect TvType values;
+                                                // do not hide their valid homepage/search entries because of that metadata.
+                                                if (title.isBlank() || url.isBlank() ||
+                                                    (!curatedAnimeProvider && !isAnimeMovie && !isAnimeSeries)
+                                                ) null
+                                                else {
+                                                    val category = categoryName.trim()
+                                                        .ifBlank { if (isAnimeMovie) "Anime Movies" else "Anime" }
+                                                        .replace(Regex("\\s+"), " ")
+                                                    category to SanyProviderItem(
+                                                        title = title,
+                                                        url = url,
+                                                        posterUrl = item.posterUrl.orEmpty(),
+                                                        sourceProvider = provider.name
+                                                    )
+                                                }
+                                            }
+
+                                        val homepageItems: List<Pair<String, SanyProviderItem>> =
+                                            runCatching<List<Pair<String, SanyProviderItem>>> {
+                                                kotlinx.coroutines.withTimeout(18_000L) {
+                                                    val pages = SanyCloudStreamPluginRuntime.homePage(provider.name, 1)
+                                                    pages.flatMap { page ->
+                                                        mapItems(page.list, page.name, curatedAnimeProvider = true)
+                                                    }
+                                                }
+                                            }.onFailure { error ->
+                                                android.util.Log.w("SANY-Anime-Home", "${provider.name} homepage failed: ${error.message}", error)
+                                            }.getOrDefault(emptyList())
+
+                                        if (homepageItems.isNotEmpty()) {
+                                            homepageItems
+                                        } else {
+                                            val fallback = mutableListOf<Pair<String, SanyProviderItem>>()
+                                            for (query in fallbackQueries) {
+                                                val matches: List<Pair<String, SanyProviderItem>> =
+                                                    runCatching<List<Pair<String, SanyProviderItem>>> {
+                                                        val responses: List<com.lagradost.cloudstream3.SearchResponse> =
+                                                            kotlinx.coroutines.withTimeout(6_000L) {
+                                                                SanyCloudStreamPluginRuntime.search(provider.name, query)
+                                                            }
+                                                        mapItems(responses, "Anime", curatedAnimeProvider = true)
+                                                    }.getOrDefault(emptyList())
+                                                fallback += matches
+                                                if (fallback.size >= 12) break
+                                            }
+                                            android.util.Log.i(
+                                                "SANY-Anime-Home",
+                                                "${provider.name}: homepage empty; fallback search returned ${fallback.size} titles"
+                                            )
+                                            fallback.distinctBy { it.second.title.trim().lowercase() }
+                                        }
+                                    }
+                                }.awaitAll()
+                            }
+                            val allResults = providerResults.flatten()
+                            // Merge identically named homepage categories across extensions.
+                            // Each entry keeps its own source provider for playback.
+                            allResults.groupBy { it.first.trim().lowercase() }
+                                .toSortedMap()
+                                .mapNotNull { (_, entries) ->
+                                    val titles = entries.map { it.second }
+                                        .distinctBy { it.title.trim().lowercase() }
+                                        .sortedBy { it.title.lowercase() }
+                                    val category = entries.firstOrNull()?.first?.trim().orEmpty()
+                                    if (titles.isEmpty()) null
+                                    else SanyProviderShelf(
+                                        "SANY Anime",
+                                        category.ifBlank { "Anime" }.uppercase(),
+                                        titles
+                                    )
+                                }
+                        }
+                    }.getOrElse { error ->
+                        android.util.Log.w("SANY-Provider-Home", "Could not load provider home shelves", error)
+                        emptyList()
+                    }
+                    runOnUiThread { onLoaded(shelves) }
+                }
             }
         )
         aniLightNativeScreen = screen
-        contentArea.addView(screen.create(), LinearLayout.LayoutParams(-1, -1))
+        aniLightNativeView = screen.create()
+        attachAniLightNativeView()
     }
 
+    private fun showCloudStreamProviderBrowser() {
+        // Re-sync the allowlisted packages, then show a real provider directory.
+        val progress = AlertDialog.Builder(this@MainActivity)
+            .setTitle("Anime Providers")
+            .setMessage("GitHub থেকে Anime Providers যাচাই ও Load করা হচ্ছে…")
+            .setCancelable(false)
+            .create()
+        progress.show()
+        thread(name = "SANY-Anime-ProviderCheck") {
+            val result = runCatching {
+                val report = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
+                val allowedProviderNames = report.packages.flatMap { packageFile ->
+                    val loadResult = SanyCloudStreamPluginRuntime.load(applicationContext, packageFile)
+                    if (!loadResult.success) {
+                        android.util.Log.e("SANY-CS", "DEX load failed: ${packageFile.name}: ${loadResult.error}")
+                        emptyList()
+                    } else loadResult.providerNames
+                }.toSet()
+                val providers = SanyCloudStreamPluginRuntime.providers()
+                    .filter { it.name in allowedProviderNames }
+                check(providers.isNotEmpty()) {
+                    report.failures.joinToString("; ").ifBlank { "No curated Bangla/Hindi Anime provider was registered" }
+                }
+                providers
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    progress.dismiss()
+                    return@runOnUiThread
+                }
+                progress.dismiss()
+                result.onSuccess { providers ->
+                    cloudStreamProviderScreen = CloudStreamProviderHomeScreen(
+                        context = this@MainActivity,
+                        providers = providers,
+                        backgroundColor = bg,
+                        foregroundColor = white,
+                        accentColor = accent,
+                        onSearch = { providerName, query -> showCloudStreamSearch(providerName, query) },
+                        onOpenItem = { providerName, url, title -> showCloudStreamDetails(providerName, url, title) },
+                        onBackToAnime = {
+                            cloudStreamProviderScreen = null
+                            cloudStreamProviderView = null
+                            contentArea.removeAllViews()
+                            attachAniLightNativeView()
+                        }
+                    )
+                    cloudStreamProviderView = cloudStreamProviderScreen!!.create()
+                    contentArea.removeAllViews()
+                    attachCloudStreamProviderView()
+                }.onFailure { error ->
+                    android.util.Log.e("SANY-CS", "Anime provider sync/load failed from provider browser", error)
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Anime Provider Load Error")
+                        .setMessage(error.message ?: error.javaClass.simpleName)
+                        .setPositiveButton("OK", null).show()
+                }
+            }
+        }
+    }
+
+    private fun showCloudStreamSearch(providerName: String, initialQuery: String? = null) {
+        val input = EditText(this).apply { hint = "Anime title লিখুন"; initialQuery?.let(::setText); setSingleLine(true); setPadding(dp(18), dp(12), dp(18), dp(12)) }
+        val dialog = AlertDialog.Builder(this@MainActivity).setTitle("$providerName Search").setView(input)
+            .setPositiveButton("SEARCH", null).setNegativeButton("CANCEL", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val query = input.text.toString().trim()
+                if (query.isBlank()) { input.error = "Search title লিখুন"; return@setOnClickListener }
+                dialog.dismiss(); toast("Searching $providerName…")
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    val result = runCatching { SanyCloudStreamPluginRuntime.search(providerName, query) }
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        result.onSuccess { items ->
+                            if (items.isEmpty()) toast("কোনো ফলাফল পাওয়া যায়নি")
+                            else AlertDialog.Builder(this@MainActivity).setTitle("Search Results (${items.size})")
+                                .setItems(items.map { it.name }.toTypedArray()) { _, i -> showCloudStreamDetails(providerName, items[i].url, items[i].name) }
+                                .setNegativeButton("বন্ধ", null).show()
+                        }.onFailure { toast("Search error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Search failed", it) }
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showCloudStreamDetails(providerName: String, url: String, fallbackTitle: String) {
+        val returnToProviderBrowser = cloudStreamProviderScreen != null
+        pendingCloudStreamAnimeItem = Triple(providerName, url, fallbackTitle)
+        toast("Loading $fallbackTitle…")
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val result = runCatching { SanyCloudStreamPluginRuntime.load(providerName, url) }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { response ->
+                    if (response == null) { toast("Anime details পাওয়া যায়নি"); return@onSuccess }
+                    // CloudStream AnimeLoadResponse stores episodes by dub status;
+                    // MovieLoadResponse instead exposes one serialized dataUrl. Handle
+                    // both shapes so AnimeMovie/Movie providers are not silently dropped.
+                    val episodes = when (response) {
+                        is com.lagradost.cloudstream3.AnimeLoadResponse ->
+                            response.episodes.values.flatten()
+                        // Some Anime providers use CloudStream's standard TV-series response.
+                        is com.lagradost.cloudstream3.TvSeriesLoadResponse -> response.episodes
+                        is com.lagradost.cloudstream3.MovieLoadResponse -> {
+                            val movieProvider = SanyCloudStreamPluginRuntime.providers()
+                                .firstOrNull { it.name == providerName }
+                            listOfNotNull(
+                                response.dataUrl.takeIf { it.isNotBlank() }?.let { data ->
+                                    movieProvider?.newEpisode(data) {
+                                        name = "Movie"
+                                    }
+                                }
+                            )
+                        }
+                        else -> emptyList()
+                    }
+                    if (episodes.isEmpty()) {
+                        toast("এই title-এ playable episode/source data নেই")
+                        return@onSuccess
+                    }
+                    val labels = episodes.mapIndexed { index, ep ->
+                        buildString {
+                            ep.episode?.let { append("Episode $it") }
+                            ep.name?.takeIf { it.isNotBlank() }?.let {
+                                if (isNotEmpty()) append(" • ")
+                                append(it)
+                            }
+                            if (isEmpty()) append("Episode ${index + 1}")
+                        }
+                    }.toTypedArray()
+                    // Keep the exact parent page so Android Back can return to it
+                    // after details or video playback without resetting Anime navigation.
+                    animeExternalPageReturnToProvider = returnToProviderBrowser
+                    animeExternalPageActive = true
+                    // Open a dedicated Anime details page instead of a compact episode popup.
+                    contentArea.removeAllViews()
+                    val detailPage = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setBackgroundColor(bg)
+                    }
+                    val pageHeader = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                    }
+                    val backButton = TextView(this@MainActivity).apply {
+                        text = "‹  BACK"
+                        textSize = 14f
+                        setTextColor(white)
+                        setPadding(dp(8), dp(10), dp(18), dp(10))
+                        setOnClickListener { restoreAnimeExternalPage() }
+                    }
+                    pageHeader.addView(backButton)
+                    pageHeader.addView(TextView(this@MainActivity).apply {
+                        text = "ANIME DETAILS"
+                        textSize = 15f
+                        setTextColor(white)
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    })
+                    detailPage.addView(pageHeader, LinearLayout.LayoutParams(-1, -2))
+                    val detailScroll = ScrollView(this@MainActivity)
+                    val detailBody = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(14), dp(4), dp(14), dp(22))
+                    }
+                    val banner = FrameLayout(this@MainActivity).apply {
+                        background = android.graphics.drawable.GradientDrawable(
+                            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                            intArrayOf(0xFF123D70.toInt(), 0xFF101827.toInt(), 0xFF080B12.toInt())
+                        ).apply { cornerRadius = dp(14).toFloat() }
+                        clipToOutline = true
+                    }
+                    val bannerImage = ImageView(this@MainActivity).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        alpha = 0.72f
+                    }
+                    banner.addView(bannerImage, FrameLayout.LayoutParams(-1, -1))
+                    val bannerTitle = TextView(this@MainActivity).apply {
+                        text = response.name
+                        textSize = 23f
+                        setTextColor(Color.WHITE)
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setShadowLayer(8f, 1f, 2f, Color.BLACK)
+                        setPadding(dp(16), dp(12), dp(16), dp(12))
+                        gravity = Gravity.BOTTOM or Gravity.START
+                    }
+                    banner.addView(bannerTitle, FrameLayout.LayoutParams(-1, -1))
+                    detailBody.addView(banner, LinearLayout.LayoutParams(-1, dp(176)).apply { bottomMargin = dp(14) })
+                    val posterUrl = response.posterUrl.orEmpty()
+                    // Reuse the bounded, disk-cached image loader so repeat banner
+                    // visits display immediately without another full-size download.
+                    if (posterUrl.startsWith("http", true)) {
+                        loadCachedChannelLogo(bannerImage, null, posterUrl)
+                    }
+                    detailBody.addView(TextView(this@MainActivity).apply {
+                        text = "EPISODES  •  ${episodes.size}"
+                        textSize = 16f
+                        setTextColor(white)
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                    }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+                    episodes.indices.sortedWith(compareBy<Int> { episodes[it].season ?: 0 }.thenBy { episodes[it].episode ?: (it + 1) }).forEach { i ->
+                        val episode = episodes[i]
+                        val episodeNumber = episode.episode ?: (i + 1)
+                        val episodeTitle = episode.name?.takeIf { it.isNotBlank() } ?: "Episode $episodeNumber"
+                        val row = LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            setPadding(dp(13), dp(13), dp(13), dp(13))
+                            background = android.graphics.drawable.GradientDrawable().apply {
+                                setColor(0xFF171D28.toInt())
+                                cornerRadius = dp(11).toFloat()
+                                setStroke(dp(1), 0xFF303B4D.toInt())
+                            }
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener {
+                                resolveCloudStreamEpisode(providerName, response.name, episode.data, episode.episode, episode.name.orEmpty(), i)
+                            }
+                        }
+                        row.addView(TextView(this@MainActivity).apply {
+                            text = "▶"
+                            textSize = 19f
+                            setTextColor(accent)
+                        }, LinearLayout.LayoutParams(dp(34), -2))
+                        val episodeInfo = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+                        episodeInfo.addView(TextView(this@MainActivity).apply {
+                            text = "EPISODE $episodeNumber"
+                            textSize = 10f
+                            setTextColor(accent)
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                        })
+                        episodeInfo.addView(TextView(this@MainActivity).apply {
+                            text = episodeTitle
+                            textSize = 14f
+                            setTextColor(white)
+                            maxLines = 2
+                        })
+                        row.addView(episodeInfo, LinearLayout.LayoutParams(0, -2, 1f))
+                        detailBody.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+                    }
+                    detailScroll.addView(detailBody)
+                    detailPage.addView(detailScroll, LinearLayout.LayoutParams(-1, 0, 1f))
+                    contentArea.addView(detailPage, LinearLayout.LayoutParams(-1, -1))
+                }.onFailure { toast("Details error: ${it.message ?: it.javaClass.simpleName}"); android.util.Log.e("SANY-CS", "Load failed", it) }
+            }
+        }
+    }
+
+    /**
+     * Starts with the user's selected source, then tries the remaining resolved
+     * links in order only if Media3 reports a playback error.
+     */
+    private fun startAnimeSourceFallback(
+        requests: List<SanyPlaybackRequest>,
+        selectedIndex: Int
+    ) {
+        val ordered = requests.distinctBy { it.url }.filter { it.url.isNotBlank() }
+        if (selectedIndex !in ordered.indices) return
+        animeFallbackRequests = ordered
+        animeFallbackIndex = selectedIndex
+        playSanyPlaybackRequest(ordered[selectedIndex], preserveFallbackQueue = true)
+        // Rebuild the Anime catalogue for direct catalogue playback, but keep a
+        // provider detail page intact underneath the player when playback began there.
+        if (section == "Series" && !animeExternalPageActive) renderSection()
+    }
+
+    private fun tryNextAnimeFallback(): Boolean {
+        val nextIndex = animeFallbackIndex + 1
+        if (nextIndex !in animeFallbackRequests.indices) {
+            animeFallbackRequests = emptyList()
+            animeFallbackIndex = -1
+            return false
+        }
+        animeFallbackIndex = nextIndex
+        val next = animeFallbackRequests[nextIndex]
+        android.util.Log.w("SANY-PLAYER", "Trying fallback source ${nextIndex + 1}/${animeFallbackRequests.size}: ${next.provider}")
+        toast("আগের Source কাজ করেনি। Source ${nextIndex + 1}/${animeFallbackRequests.size} চেষ্টা হচ্ছে…")
+        playSanyPlaybackRequest(next, preserveFallbackQueue = true)
+        return true
+    }
+
+    private fun resolveCloudStreamEpisode(
+        providerName: String,
+        title: String,
+        episodeData: String,
+        episodeNumber: Int?,
+        episodeName: String,
+        episodeIndex: Int
+    ) {
+        // Ignore rapid repeated taps while resolving or while the source picker is open.
+        if (animeEpisodeSourceResolving || animeSourcePickerDialog?.isShowing == true) return
+        animeEpisodeSourceResolving = true
+        val requestId = ++animeStreamingRequestId
+        animeStreamingSourceRequests = mutableListOf()
+        animeStreamingSourceAdapter = null
+        animeStreamingPlaybackStarted = false
+        animeStreamingPickerDismissed = false
+        animeSourcePickerDialog?.dismiss()
+        animeSourcePickerDialog = null
+        toast("এই Episode-এর Source খোঁজা হচ্ছে…")
+        // Resolve the selected provider first. Waiting for every alternate provider
+        // made playback feel slow even when the selected provider already had a link.
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            val result = runCatching {
+                kotlinx.coroutines.withTimeout(25_000L) {
+                    SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, episodeData) { source ->
+                        runOnUiThread {
+                            publishAnimeStreamingSources(requestId, "$title — Sources", listOf(source), finished = false)
+                        }
+                    }
+                }
+            }
+            runOnUiThread {
+                // Always release the tap lock when resolution completes, including
+                // timeout/error/empty-result cases, so the next episode remains playable.
+                animeEpisodeSourceResolving = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                result.onSuccess { sources ->
+                    val available = sources.distinctBy { it.url }.filter { it.url.isNotBlank() }
+                    publishAnimeStreamingSources(requestId, "$title — Sources", available, finished = true)
+                    if (available.isEmpty()) {
+                        toast("এই Episode-এর playable source পাওয়া যায়নি। অন্য Episode চেষ্টা করুন")
+                    } else {
+                        android.util.Log.i("SANY-CS", "Primary source resolved for $title: ${available.size}")
+                    }
+                }.onFailure { error ->
+                    android.util.Log.w("SANY-CS", "Fast source resolve failed for $title", error)
+                    toast("Source পাওয়া যায়নি: ${error.message ?: error.javaClass.simpleName}")
+                }
+            }
+        }
+    }
     private fun renderAniLightWebsite() {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1468,8 +3525,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(12), 0, 0)
         })
         contentArea.addView(page, LinearLayout.LayoutParams(-1, -1))
-        // Static artwork is cheaper than a continuously invalidated pulse on TV GPUs.
-        if (isTvDevice) return
 
         val pulse = ValueAnimator.ofFloat(0.82f, 1.04f).apply {
             duration = 1050
@@ -1544,6 +3599,24 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(4), 0, dp(4), 0)
             }
+            val checkerShortcut = text("✓  CHECKER", 11, accent, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(13), 0, dp(13), 0)
+                background = glass(10)
+                isFocusable = true
+                contentDescription = "Open Checker page"
+                applyTvFocusStyle(this)
+                setOnClickListener {
+                    section = "Checker"
+                    selectedGroup = "All"
+                    searchQuery = ""
+                    prefs.edit().putString("ui_section", "Checker").apply()
+                    renderHome()
+                }
+            }
+            toolbar.addView(checkerShortcut, LinearLayout.LayoutParams(-2, dp(36)).apply {
+                rightMargin = dp(8)
+            })
             toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(36), 1f))
             toolbar.addView(createViewModeDropdown(), LinearLayout.LayoutParams(-2, dp(34)))
             categoryHeaderContainer.addView(toolbar, LinearLayout.LayoutParams(-1, dp(38)))
@@ -1574,7 +3647,7 @@ class MainActivity : AppCompatActivity() {
                         .putString("ui_group", selectedGroup)
                         .putString("ui_search", "")
                         .apply()
-                    displayedLimit = if (isTvDevice) tvPageSize else 60
+                    displayedLimit = initialDisplayedLimit
                     renderListOnly()
                 }
             }
@@ -1599,7 +3672,7 @@ class MainActivity : AppCompatActivity() {
                     searchQuery = value.trim()
                     liveTvSearchQuery = searchQuery
                     prefs.edit().putString("live_tv_search", liveTvSearchQuery).apply()
-                    displayedLimit = if (isTvDevice) tvPageSize else 60
+                    displayedLimit = initialDisplayedLimit
                     renderChannelRows(listContainer)
                 })
             }
@@ -1612,7 +3685,13 @@ class MainActivity : AppCompatActivity() {
         // repeatedly scanned the complete playlist once per category, which made
         // returning to Live TV noticeably slower on large playlists.
         val directoryChannels = if (section == "Live TV") {
-            channels.filter { !isMovie(it) && !isSeries(it) }
+            // Once checking has started or saved results exist, build the Live TV
+            // category menu from verified working channels only. Before the first
+            // check, retain playlist categories so the user can start checking.
+            val liveChannels = if (checkerRunning || streamChecks.isNotEmpty()) {
+                liveTvVisibleCandidates()
+            } else channels
+            liveChannels.filter { !isMovie(it) && !isSeries(it) }
         } else channels
         val groupCounts = LinkedHashMap<String, Int>()
         var allCount = 0
@@ -1623,7 +3702,7 @@ class MainActivity : AppCompatActivity() {
                 else -> !isMovie(channel) && !isSeries(channel)
             }
             if (eligibleForAll) allCount++
-            val group = channel.group
+            val group = if (isSportsChannel(channel)) "Sports" else normalizeLiveTvCategory(channel.group)
             if (group.isNotBlank() && !groupCounts.containsKey(group)) {
                 groupCounts[group] = 0
             }
@@ -1648,7 +3727,7 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(16), dp(10), dp(15), dp(10))
-                background = if (isLight) rounded(Color.WHITE, 10, Color.BLACK, 2) else glass(10)
+                background = glass(10)
                 elevation = dp(2).toFloat()
                 isFocusable = true
                 applyTvFocusStyle(this)
@@ -1665,7 +3744,7 @@ class MainActivity : AppCompatActivity() {
                             .putString("ui_search", "")
                             .apply()
                     }
-                    displayedLimit = if (isTvDevice) tvPageSize else 60
+                    displayedLimit = initialDisplayedLimit
                     renderListOnly()
                 }
             }
@@ -1712,6 +3791,24 @@ class MainActivity : AppCompatActivity() {
     private fun renderListOnly() {
         if (!::contentArea.isInitialized || section == "Settings" || channels.isEmpty()) return
         if (!::listContainer.isInitialized) return
+
+        // Category cards update the list in place (without calling renderHome).
+        // Record those transitions here as well, otherwise Back has no category
+        // history and incorrectly jumps straight to the Live TV home.
+        val currentNavigation = currentNavigationSnapshot()
+        val previousNavigation = lastRenderedNavigation
+        if (!restoringNavigation && previousNavigation != null &&
+            previousNavigation.section == currentNavigation.section &&
+            (previousNavigation.selectedGroup != currentNavigation.selectedGroup ||
+             previousNavigation.liveTvSelectedGroup != currentNavigation.liveTvSelectedGroup)
+        ) {
+            if (navigationHistory.isEmpty() || navigationHistory.peekLast() != previousNavigation) {
+                navigationHistory.addLast(previousNavigation)
+            }
+        }
+        lastRenderedNavigation = currentNavigation
+        restoringNavigation = false
+
         renderCategories()
         renderChannelRows(listContainer)
     }
@@ -1793,7 +3890,7 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(9), dp(10), dp(9))
-                background = if (isLight) rounded(Color.WHITE, 12, Color.BLACK, 2) else glass(12)
+                background = glass(12)
                 applyTvFocusStyle(this)
             }
             val number = text((index + 1).toString().padStart(2, '0'), 12, accent, true).apply {
@@ -1823,7 +3920,7 @@ class MainActivity : AppCompatActivity() {
             }
             val logo = ImageView(this).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                background = if (isLight) rounded(Color.WHITE, 10, Color.rgb(25, 31, 42), 1) else glass(10)
+                background = glass(10)
                 setPadding(dp(4), dp(4), dp(4), dp(4))
                 contentDescription = "${channel.name} logo"
             }
@@ -1845,12 +3942,11 @@ class MainActivity : AppCompatActivity() {
                 alpha = 1f
                 setPadding(0, dp(4), 0, 0)
             }
-            // Phone-only watermark row; TV keeps fewer child views per channel for smoother scrolling.
+            // Soft, continuous blinking green indicator beside every SANY IPTV watermark.
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV blinking live indicator"
                 alpha = 1f
-                // Avoid one infinite animation per channel on Android TV.
-                if (!isTvDevice) {
+                if (!isLowMemoryDevice) {
                     startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
                         duration = 900L
                         repeatMode = android.view.animation.Animation.REVERSE
@@ -1864,7 +3960,7 @@ class MainActivity : AppCompatActivity() {
                 letterSpacing = 0.12f
                 setPadding(dp(4), 0, 0, 0)
             })
-            if (!isTvDevice) details.addView(watermarkLine)
+            details.addView(watermarkLine)
             row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
             if (isPlayingChannel) {
                 val nowPlayingBadge = TextView(this).apply {
@@ -1896,29 +3992,29 @@ class MainActivity : AppCompatActivity() {
             logoFrame.scaleX = 1f
             logoFrame.scaleY = 1f
             // Live TV and Movies can play; Checker remains diagnostic only.
-            if (section == "Live TV" || section == "Movies") {
+            if (section == "Live TV" || section == "Live Sports" || section == "Movies") {
                 row.setOnClickListener { play(channel) }
             }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += if (isTvDevice) tvPageSize else 120
+                displayedLimit += displayedLimitIncrement
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8); bottomMargin = dp(12) })
         }
     }
 
-    // Android TV gets a two-column, remote-friendly card grid. Phone rows remain unchanged.
+    // Render channel cards in a compact three-column grid on supported grid mode.
     private fun renderTvChannelCards(container: LinearLayout, filtered: List<Channel>) {
         val visible = filtered.take(displayedLimit)
-        visible.chunked(2).forEachIndexed { rowIndex, pair ->
+        visible.chunked(3).forEachIndexed { rowIndex, rowItems ->
             val cardRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            pair.forEachIndexed { columnIndex, channel ->
-                val itemIndex = rowIndex * 2 + columnIndex
+            rowItems.forEachIndexed { columnIndex, channel ->
+                val itemIndex = rowIndex * 3 + columnIndex
                 val isPlayingChannel = currentChannel?.url == channel.url
                 val card = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
@@ -1932,7 +4028,7 @@ class MainActivity : AppCompatActivity() {
                     ).apply {
                         cornerRadius = dp(16).toFloat()
                         setStroke(dp(3), 0xFF35B8FF.toInt())
-                    } else if (isLight) rounded(Color.WHITE, 16, Color.BLACK, 2) else glass(16)
+                    } else glass(16)
                     if (isPlayingChannel) {
                         elevation = dp(10).toFloat()
                         foreground = GradientDrawable().apply {
@@ -1942,7 +4038,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     applyTvFocusStyle(this)
                     contentDescription = if (isPlayingChannel) "Currently playing: ${channel.name}" else "Play ${channel.name}"
-                    if (section == "Live TV" || section == "Movies") setOnClickListener { play(channel) }
+                    if (section == "Live TV" || section == "Live Sports" || section == "Movies") setOnClickListener { play(channel) }
                 }
                 val topLine = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -1987,11 +4083,11 @@ class MainActivity : AppCompatActivity() {
                     setPadding(0, dp(5), 0, 0)
                 })
                 cardRow.addView(card, LinearLayout.LayoutParams(0, dp(if (isTvDevice) 158 else 166), 1f).apply {
-                    if (columnIndex == 0) rightMargin = dp(8) else leftMargin = dp(8)
+                    when (columnIndex) { 0 -> rightMargin = dp(6); 1 -> { leftMargin = dp(3); rightMargin = dp(3) }; else -> leftMargin = dp(6) }
                 })
             }
-            if (pair.size == 1) {
-                cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(if (isTvDevice) 158 else 166), 1f).apply { leftMargin = dp(8) })
+            if (rowItems.size < 3) {
+                repeat(3 - rowItems.size) { cardRow.addView(View(this), LinearLayout.LayoutParams(0, dp(if (isTvDevice) 158 else 166), 1f)) }
             }
             container.addView(cardRow, LinearLayout.LayoutParams(-1, -2).apply {
                 bottomMargin = dp(if (isTvDevice) 7 else 12)
@@ -1999,7 +4095,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
-                displayedLimit += if (isTvDevice) tvPageSize else 120
+                displayedLimit += displayedLimitIncrement
                 renderChannelRows(container)
             }, LinearLayout.LayoutParams(-1, dp(50)).apply {
                 topMargin = dp(8)
@@ -2018,11 +4114,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun filteredChannels(): List<Channel> {
         // Live TV shows only streams positively verified by the Checker.
-        val liveCandidates = if (section == "Live TV") liveTvVisibleCandidates() else channels
+        val liveCandidates = if (section == "Live TV" || section == "Live Sports") liveTvVisibleCandidates() else channels
         return liveCandidates.filter { c ->
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
                 "Series" -> isSeries(c)
+                "Live Sports" -> false
                 else -> !isMovie(c) && !isSeries(c)
             }
             val groupMatch = when {
@@ -2030,7 +4127,8 @@ class MainActivity : AppCompatActivity() {
                 selectedGroup == "All" -> true
                 section == "Series" && selectedGroup == "Anime" -> isAnime(c)
                 section == "Movies" && selectedGroup in movieCategories -> matchesMovieCategory(c, selectedGroup)
-                else -> c.group.equals(selectedGroup, true)
+                section == "Live TV" && selectedGroup.equals("Sports", true) -> isSportsChannel(c)
+                else -> normalizeLiveTvCategory(c.group).equals(selectedGroup, true)
             }
             val q = searchQuery.trim().lowercase()
             typeMatch && groupMatch &&
@@ -2072,6 +4170,34 @@ class MainActivity : AppCompatActivity() {
     // Existing playlist entries that were previously classified as Movies are
     // now routed through the Live TV section and its existing category/checker flow.
     private fun isMovie(c: Channel): Boolean = false
+    // Live Sports is a focused view over sports-related entries in the existing playlist.
+    // Streams still pass through the same checker verification and Media3 playback path.
+    private fun isSportsChannel(c: Channel): Boolean {
+        val metadata = (c.group + " " + c.name + " " + c.url).lowercase()
+        val keywords = listOf(
+            "sport", "espn", "star sports", "ten sports", "sony sports", "fox sports",
+            "sky sports", "bein sports", "tnt sports", "willow", "cricket", "football",
+            "soccer", "fifa", "ipl", "nba", "nfl", "nhl", "wwe", "ufc", "formula 1",
+            "formula one", "motogp", "tennis", "golf", "olympic", "premier league",
+            "champions league", "la liga", "bundesliga", "serie a", "uefa", "icc",
+            "bcci", "rugby", "badminton", "volleyball", "basketball", "baseball",
+            "hockey", "boxing", "wimbledon", "euro cup", "world cup"
+        )
+        return keywords.any(metadata::contains)
+    }
+
+    private fun normalizeLiveTvCategory(group: String): String {
+        val value = group.trim()
+        return when {
+            value.equals("Hindi", true) -> "Hindi"
+            value.equals("Indian Bangla", true) -> "Indian Bangla"
+            value.equals("Bangla", true) ||
+            value.equals("Bangladesh", true) ||
+            value.equals("Akash Go", true) -> "Bangla"
+            else -> value
+        }
+    }
+
     private fun isAnime(c: Channel) = (c.group + " " + c.name + " " + c.url).lowercase().let {
         listOf("anime", "animation", "animé").any(it::contains)
     }
@@ -2081,20 +4207,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderBottomNav() {
         bottomNav.removeAllViews()
-        listOf("Live TV" to "▣", "Checker" to "✓", "Movies" to "▤", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
+        listOf("Live TV" to "📺", "Live Sports" to "🏆", "Checker" to "✓", "Movies" to "🎬", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
                 isFocusable = true
                 isFocusableInTouchMode = false
                 applyTvFocusStyle(this)
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                background = if (isLight) {
-                    if (active) rounded(Color.rgb(229, 241, 255), 14, Color.BLACK, 2)
-                    else rounded(Color.WHITE, 14, Color.BLACK, 1)
-                } else if (active) glass(14) else rounded(Color.TRANSPARENT, 14)
-                setPadding(dp(3), 0, dp(3), 0)
-                translationY = -dp(3).toFloat()
+                orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+                gravity = if (isTvDevice) Gravity.CENTER_VERTICAL else Gravity.CENTER
+                // Make the selected destination unmistakable with a filled glass pill,
+                // bright outline and a small top indicator; inactive tabs stay transparent.
+                background = if (active) {
+                    android.graphics.drawable.GradientDrawable(
+                        android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                        intArrayOf(
+                            Color.argb(82, 45, 145, 255),
+                            Color.argb(38, 35, 105, 220)
+                        )
+                    ).apply {
+                        cornerRadius = dp(14).toFloat()
+                        setStroke(dp(1), Color.argb(190, 75, 165, 255))
+                    }
+                } else {
+                    android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+                }
+                setPadding(dp(if (isTvDevice) 7 else 3), dp(if (isTvDevice) 5 else 4),
+                    dp(if (isTvDevice) 5 else 3), dp(if (isTvDevice) 5 else 3))
+                translationY = 0f
                 setOnClickListener {
                     if (section == name) return@setOnClickListener
                     // Switch immediately; keep the transition animation lightweight.
@@ -2114,7 +4253,7 @@ class MainActivity : AppCompatActivity() {
                         selectedGroup = "All"
                         searchQuery = ""
                     }
-                    displayedLimit = if (isTvDevice) tvPageSize else 60
+                    displayedLimit = initialDisplayedLimit
                     // Reuse the existing shell and header; rebuild only the page content
                     // and the five small navigation items. This avoids a full-screen layout
                     // pass on every menu tap.
@@ -2124,7 +4263,7 @@ class MainActivity : AppCompatActivity() {
                     renderSection()
                     renderBottomNav()
                     if (isTvDevice) bottomNav.getChildAt(
-                        listOf("Live TV", "Checker", "Movies", "Series", "Settings").indexOf(section)
+                        listOf("Live TV", "Live Sports", "Checker", "Movies", "Series", "Settings").indexOf(section)
                     )?.requestFocus()
                 }
             }
@@ -2148,15 +4287,47 @@ class MainActivity : AppCompatActivity() {
                 loadingRow.addView(navLabel)
                 item.addView(loadingRow, LinearLayout.LayoutParams(-1, -2))
             } else {
-                item.addView(text(symbol, 20, if (active) accent else muted, true).apply { gravity = Gravity.CENTER })
-                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name, 12, if (active) accent else muted, active).apply {
-                    gravity = Gravity.CENTER
-                    setPadding(0, 0, 0, 0)
+                if (active) {
+                    item.addView(android.view.View(this).apply {
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.OVAL
+                            setColor(Color.rgb(80, 175, 255))
+                        }
+                    }, LinearLayout.LayoutParams(dp(5), dp(5)).apply {
+                        bottomMargin = dp(2)
+                    })
+                } else {
+                    item.addView(android.view.View(this), LinearLayout.LayoutParams(dp(5), dp(5)))
                 }
-                if (name == "Live TV") liveTvNavLabel = navLabel
-                item.addView(navLabel)
+                item.addView(text(symbol, if (isTvDevice) 17 else if (name == "Live TV" || name == "Movies") 16 else 20,
+                    if (active) Color.rgb(95, 180, 255) else muted, true).apply {
+                    gravity = Gravity.CENTER
+                }, LinearLayout.LayoutParams(if (isTvDevice) dp(25) else -2, -2))
+                if (isTvDevice) {
+                    val tvNavLabel = text(
+                        if (name == "Series") "Anime" else name, 10,
+                        if (active) Color.rgb(115, 190, 255) else muted, active
+                    ).apply {
+                        gravity = Gravity.CENTER_VERTICAL
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    }
+                    if (name == "Live TV") liveTvNavLabel = tvNavLabel
+                    item.addView(tvNavLabel, LinearLayout.LayoutParams(0, -2, 1f))
+                }
+                if (!isTvDevice) {
+                    val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name,
+                        12, if (active) Color.rgb(115, 190, 255) else muted, active).apply {
+                        gravity = Gravity.CENTER
+                        setPadding(0, 0, 0, 0)
+                    }
+                    if (name == "Live TV") liveTvNavLabel = navLabel
+                    item.addView(navLabel)
+                }
             }
-            bottomNav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
+            bottomNav.addView(item, if (isTvDevice)
+                LinearLayout.LayoutParams(-1, 0, 1f)
+            else LinearLayout.LayoutParams(0, -1, 1f))
         }
     }
 
@@ -2263,25 +4434,27 @@ class MainActivity : AppCompatActivity() {
                                                         "Size: $size\n" +
                                                         "Authors: ${plugin.authors}\n\n" +
                                                         "${plugin.description}\n\n" +
-                                                        "Download করলে SHA-256, ZIP, manifest.json ও classes.dex যাচাই হবে। এই ধাপে plugin execute হবে না।"
+                                                        "Download-এর পর SHA-256, ZIP ও manifest যাচাই করে CloudStream DEX runtime-এ load করার চেষ্টা হবে।"
                                                     )
                                                     .setPositiveButton("DOWNLOAD & VERIFY") { _, _ ->
                                                         toast("Downloading and verifying…")
                                                         thread(name = "SANY-Plugin-Download") {
                                                             val result = runCatching {
-                                                                SanyExtensionRepositories.downloadAndValidate(this, plugin)
+                                                                val installed = SanyExtensionRepositories.downloadAndValidate(this, plugin)
+                                                                installed to SanyCloudStreamPluginRuntime.load(this, installed.file)
                                                             }
                                                             runOnUiThread {
                                                                 if (isFinishing || isDestroyed) return@runOnUiThread
-                                                                result.onSuccess { installed ->
+                                                                result.onSuccess { (installed, loaded) ->
                                                                     AlertDialog.Builder(this)
-                                                                        .setTitle("Package verified")
+                                                                        .setTitle(if (loaded.success) "CloudStream plugin loaded" else "Package verified; load failed")
                                                                         .setMessage(
                                                                             "Name: ${installed.manifest.name}\n" +
                                                                             "Plugin class: ${installed.manifest.pluginClassName}\n" +
                                                                             "Version: ${installed.manifest.version}\n" +
                                                                             "SHA-256: ${installed.sha256}\n\n" +
-                                                                            "Package app-private storage-এ রাখা হয়েছে। Runtime API bridge সম্পূর্ণ না হওয়া পর্যন্ত এটি চালু করা হবে না।"
+                                                                            if (loaded.success) "Registered providers:\n" + loaded.providerNames.joinToString("\n")
+                                                                            else "DEX load error: ${loaded.error ?: "Unknown error"}"
                                                                         )
                                                                         .setPositiveButton("OK", null)
                                                                         .show()
@@ -2314,13 +4487,30 @@ class MainActivity : AppCompatActivity() {
                             AlertDialog.Builder(this)
                                 .setTitle("Downloaded packages")
                                 .setItems(names) { _, index ->
+                                    val selected = files[index]
                                     AlertDialog.Builder(this)
-                                        .setMessage("এই package সরাবেন?\n${names[index]}")
-                                        .setPositiveButton("REMOVE") { _, _ ->
-                                            if (SanyExtensionRepositories.removeInstalledPackage(this, names[index])) {
-                                                toast("Package removed")
+                                        .setTitle(selected.name)
+                                        .setItems(arrayOf("LOAD / RELOAD", "REMOVE")) { _, action ->
+                                            if (action == 0) {
+                                                toast("CloudStream DEX loading…")
+                                                thread(name = "SANY-Plugin-Load") {
+                                                    val result = SanyCloudStreamPluginRuntime.load(this, selected)
+                                                    runOnUiThread {
+                                                        if (isFinishing || isDestroyed) return@runOnUiThread
+                                                        AlertDialog.Builder(this)
+                                                            .setTitle(if (result.success) "Plugin loaded" else "Plugin load failed")
+                                                            .setMessage(if (result.success) result.providerNames.joinToString("\n") else result.error ?: "Unknown DEX load error")
+                                                            .setPositiveButton("OK", null)
+                                                            .show()
+                                                    }
+                                                }
                                             } else {
-                                                toast("Package remove করা যায়নি")
+                                                SanyCloudStreamPluginRuntime.unload(selected)
+                                                if (SanyExtensionRepositories.removeInstalledPackage(this, selected.name)) {
+                                                    toast("Package removed")
+                                                } else {
+                                                    toast("Package remove করা যায়নি")
+                                                }
                                             }
                                         }
                                         .setNegativeButton("CANCEL", null)
@@ -2334,7 +4524,7 @@ class MainActivity : AppCompatActivity() {
                         val report = SanyExtensionRepositories.inspectHostCompatibility(this)
                         val message = if (report.compatible) {
                             "সব ${report.checkedClasses.size}টি core CloudStream API class পাওয়া গেছে.\n\n" +
-                            "এটি শুধু class-presence check; plugin execution বা ABI compatibility এখনো নিশ্চিত করে না।"
+                            "Core CloudStream ABI এবং AniLight Plugin host class পাওয়া গেছে। এটি runtime load-এর প্রস্তুতি যাচাই; প্রতিটি plugin-এর সফল DEX load আলাদাভাবে পরীক্ষা করতে হবে।"
                         } else {
                             "SANY-তে ${report.missingClasses.size}টি প্রয়োজনীয় CloudStream API class নেই:\n\n" +
                             report.missingClasses.joinToString("\n") { "• $it" } +
@@ -2355,6 +4545,94 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("CLOSE", null)
             .show()
+    }
+
+    private fun wifiBandPermission(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            android.Manifest.permission.NEARBY_WIFI_DEVICES
+        } else {
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        }
+
+    private fun hasWifiBandPermission(): Boolean =
+        checkSelfPermission(wifiBandPermission()) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    // Read only the active Wi-Fi connection's frequency and negotiated link rate.
+    // No location coordinates or nearby-network scan results are accessed.
+    private fun currentWifiInfo(): WifiInfo? {
+        if (!hasWifiBandPermission()) return null
+        return try {
+            val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = connectivity.activeNetwork ?: return null
+            val capabilities = connectivity.getNetworkCapabilities(network) ?: return null
+            if (!capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                capabilities.transportInfo as? WifiInfo
+            } else {
+                @Suppress("DEPRECATION")
+                (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager).connectionInfo
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    // 0 = unknown/not Wi-Fi, 2 = 2.4 GHz, 5 = 5/6 GHz high-throughput band.
+    private fun currentWifiBandCode(): Int {
+        val frequency = currentWifiInfo()?.frequency ?: return 0
+        return when (frequency) {
+            in 2400..2500 -> 2
+            in 4900..7125 -> 5
+            else -> 0
+        }
+    }
+
+    private fun wifiConnectionSummary(): String {
+        if (!hasWifiBandPermission()) return "Tap to allow Wi-Fi band detection"
+        val info = currentWifiInfo() ?: return "Wi-Fi not connected or band unavailable"
+        val frequency = info.frequency
+        val band = when (frequency) {
+            in 2400..2500 -> "2.4 GHz"
+            in 4900..5924 -> "5 GHz"
+            in 5925..7125 -> "6 GHz"
+            else -> "Band unavailable"
+        }
+        val speed = info.linkSpeed
+        return if (speed > 0) "Connected • $band • Link speed $speed Mbps"
+        else "Connected • $band"
+    }
+
+    private fun openWifiBandDetails() {
+        if (!hasWifiBandPermission()) {
+            requestPermissions(arrayOf(wifiBandPermission()), 905)
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Wi-Fi connection")
+            .setMessage(wifiConnectionSummary())
+            .setPositiveButton("REFRESH") { dialog, _ ->
+                dialog.dismiss()
+                renderHome()
+            }
+            .setNegativeButton("CLOSE", null)
+            .show()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 905 && section == "Settings") {
+            renderHome()
+            if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                toast("Wi-Fi band detection enabled")
+            } else {
+                toast("Wi-Fi band detection permission not granted")
+            }
+        }
     }
 
     private fun renderSettings() {
@@ -2389,13 +4667,119 @@ class MainActivity : AppCompatActivity() {
                 .setSingleChoiceItems(modes, values.indexOf(current).coerceAtLeast(0)) { dialog, which ->
                     prefs.edit().putString("app_theme", values[which]).apply()
                     dialog.dismiss()
+                    // Recreate only the three theme-aware catalogues so cached Views
+                    // cannot keep the previous theme's background colors.
+                    moviesNativeView = null
+                    movieDetailsParentView = null
+                    liveSportsCatalogueView = null
+                    aniLightNativeScreen = null
+                    aniLightNativeView = null
+                    cloudStreamProviderScreen = null
+                    cloudStreamProviderView = null
+                    animeExternalPageActive = false
+                    animeExternalPageReturnToProvider = false
                     applySystemBars()
                     renderHome()
                 }.setNegativeButton("CANCEL", null).show()
         }
-        box.addView(text("PLAYBACK SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
+        val ispBypassesDropdown = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = glass(14)
+        }
+        val ispBypassesHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+        }
+        val ispBypassesLabels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        ispBypassesLabels.addView(text("ISP BYPASSES", 15, white, true))
+        ispBypassesLabels.addView(text("Clone Site • DNS • DNS Provider • GitHub Proxy", 11, muted).apply {
+            setPadding(0, dp(4), 0, 0)
+        })
+        ispBypassesHeader.addView(ispBypassesLabels, LinearLayout.LayoutParams(0, -2, 1f))
+        val ispBypassesArrow = text("⌄", 22, accent, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(4), 0)
+        }
+        ispBypassesHeader.addView(ispBypassesArrow)
+        ispBypassesDropdown.addView(ispBypassesHeader, LinearLayout.LayoutParams(-1, -2))
+        val ispBypassesContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(12), 0, 0)
+        }
+        settingsCard(ispBypassesContent, "Clone Site", "Save an alternate HTTPS URL for an extension/repository host") {
+            showCloneSiteDialog()
+        }
+        settingsToggleCard(ispBypassesContent, "DNS over HTTPS", "Encrypted DNS enabled by default for extension, provider and supported playback requests", "bypass_doh_enabled", true) { enabled ->
+            getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putBoolean("doh_enabled", enabled).apply()
+        }
+        settingsCard(ispBypassesContent, "DNS Provider", "Choose Cloudflare, Google or Quad9") {
+            val labels = arrayOf("Cloudflare", "Google", "Quad9")
+            val current = getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).getString("doh_provider", "Cloudflare")
+            AlertDialog.Builder(this).setTitle("DNS over HTTPS provider")
+                .setSingleChoiceItems(labels, labels.indexOf(current).coerceAtLeast(0)) { dialog, which ->
+                    getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putString("doh_provider", labels[which]).apply()
+                    dialog.dismiss()
+                    toast("DNS provider saved")
+                }.setNegativeButton("CANCEL", null).show()
+        }
+        settingsToggleCard(ispBypassesContent, "GitHub Proxy", "Use jsDelivr CDN for raw GitHub extension files by default", "bypass_github_proxy", true) { enabled ->
+            getSharedPreferences("sany_network_bypasses", MODE_PRIVATE).edit().putBoolean("github_proxy", enabled).apply()
+        }
+        ispBypassesDropdown.addView(ispBypassesContent, LinearLayout.LayoutParams(-1, -2))
+        ispBypassesHeader.setOnClickListener {
+            val expanded = ispBypassesContent.visibility != View.VISIBLE
+            ispBypassesContent.visibility = if (expanded) View.VISIBLE else View.GONE
+            ispBypassesArrow.text = if (expanded) "⌃" else "⌄"
+        }
+        box.addView(ispBypassesDropdown, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(12)
+        })
+        settingsCard(box, "Wi-Fi Dual-Band", wifiConnectionSummary()) {
+            openWifiBandDetails()
+        }
+        val playbackDropdown = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = glass(14)
+        }
+        val playbackHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+        }
+        val playbackLabels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        playbackLabels.addView(text("PLAYBACK SETTINGS", 15, white, true))
+        playbackLabels.addView(text("Video • Audio • Buffer • Playback controls", 11, muted).apply {
+            setPadding(0, dp(4), 0, 0)
+        })
+        playbackHeader.addView(playbackLabels, LinearLayout.LayoutParams(0, -2, 1f))
+        val playbackArrow = text("⌄", 22, accent, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(4), 0)
+        }
+        playbackHeader.addView(playbackArrow)
+        playbackDropdown.addView(playbackHeader, LinearLayout.LayoutParams(-1, -2))
+        val playbackContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(12), 0, 0)
+        }
         settingsToggleCard(
-            box,
+            playbackContent,
+            "Wi-Fi Smart Streaming",
+            "Automatically tune video buffering for the connected 2.4 GHz or 5/6 GHz Wi-Fi band",
+            "wifi_smart_streaming",
+            true
+        ) { enabled ->
+            toast(if (enabled) "Wi-Fi Smart Streaming enabled — applies next playback" else "Wi-Fi Smart Streaming disabled")
+        }
+        settingsToggleCard(
+            playbackContent,
             "High-Speed Streaming",
             "Prioritize maximum available video quality and a larger playback buffer",
             "high_speed_streaming",
@@ -2405,7 +4789,7 @@ class MainActivity : AppCompatActivity() {
             applyVideoQuality()
             toast(if (enabled) "High-speed streaming enabled — buffer applies next playback" else "Standard streaming restored")
         }
-        settingsCard(box, "Playback speed", "Choose normal or faster/slower video playback") {
+        settingsCard(playbackContent, "Playback speed", "Choose normal or faster/slower video playback") {
             val labels = arrayOf("0.75×", "1.0× (Normal)", "1.25×", "1.5×", "2.0×")
             val values = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
             val current = prefs.getFloat("playback_speed", 1.0f)
@@ -2418,8 +4802,8 @@ class MainActivity : AppCompatActivity() {
                     toast("Playback speed saved")
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Auto Play", "Automatically start a stream when you select a channel", "auto_play", true)
-        settingsCard(box, "Video Quality", "Choose Auto, 480p, 720p or 1080p") {
+        settingsToggleCard(playbackContent, "Auto Play", "Automatically start a stream when you select a channel", "auto_play", true)
+        settingsCard(playbackContent, "Video Quality", "Choose Auto, 480p, 720p or 1080p") {
             val labels = arrayOf("Auto", "480p", "720p", "1080p")
             val values = arrayOf("auto", "480", "720", "1080")
             val selected = values.indexOf(prefs.getString("video_quality", "auto")).coerceAtLeast(0)
@@ -2431,8 +4815,8 @@ class MainActivity : AppCompatActivity() {
                     toast("Video quality saved")
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Hardware Decoder", "Prefer hardware video decoding when supported; OFF prefers software decoding", "hardware_decoder", true)
-        settingsCard(box, "Buffer Control", "Choose buffering for slower or faster connections") {
+        settingsToggleCard(playbackContent, "Hardware Decoder", "Prefer hardware video decoding when supported; OFF prefers software decoding", "hardware_decoder", true)
+        settingsCard(playbackContent, "Buffer Control", "Choose buffering for slower or faster connections") {
             val labels = arrayOf("Low — faster start", "Balanced — recommended", "High — fewer interruptions")
             val values = arrayOf("low", "balanced", "high")
             val selected = values.indexOf(prefs.getString("network_buffer_size", defaultNetworkBufferMode)).coerceAtLeast(0)
@@ -2443,9 +4827,17 @@ class MainActivity : AppCompatActivity() {
                     toast("Buffer setting saved — applies to next playback")
                 }.setNegativeButton("CANCEL", null).show()
         }
-        settingsToggleCard(box, "Auto Retry on Failure", "Retry a failed stream up to 2 times automatically", "auto_retry_playback", true)
+        settingsToggleCard(playbackContent, "Auto Retry on Failure", "Retry a failed stream up to 2 times automatically", "auto_retry_playback", true)
+        playbackDropdown.addView(playbackContent, LinearLayout.LayoutParams(-1, -2))
+        playbackHeader.setOnClickListener {
+            val expanded = playbackContent.visibility != View.VISIBLE
+            playbackContent.visibility = if (expanded) View.VISIBLE else View.GONE
+            playbackArrow.text = if (expanded) "⌃" else "⌄"
+        }
+        box.addView(playbackDropdown, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(12)
+        })
         box.addView(text("PLAYER & PLAYLIST", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Extensions & Repositories", "Browse CloudStream-compatible repository catalogues and manage repository URLs") { showExtensionManager() }
         settingsCard(box, "Playlist manager", "Save multiple M3U links and switch between them") { showPlaylistDialog() }
         settingsCard(box, "Playlist Checker", "Test channel links and report Working, Offline, Restricted or Error") { checkPlaylistStreams() }
         settingsToggleCard(box, "Floating window", "Show video in a floating window when you leave the app", "floating_window_enabled", true) { enabled ->
@@ -2476,14 +4868,50 @@ class MainActivity : AppCompatActivity() {
                 toast("Device ID copied — এখানে পাঠান")
             }
         }
-        box.addView(text("ADDITIONAL SETTINGS", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
-        settingsCard(box, "Update EPG data", "Manually refresh all 3 XMLTV sources now") {
+        val additionalSettingsDropdown = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = glass(14)
+        }
+        val additionalSettingsHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+        }
+        val additionalSettingsLabels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        additionalSettingsLabels.addView(text("ADDITIONAL SETTINGS", 15, white, true))
+        additionalSettingsLabels.addView(text("EPG • Automatic EPG • EPG sources", 11, muted).apply {
+            setPadding(0, dp(4), 0, 0)
+        })
+        additionalSettingsHeader.addView(additionalSettingsLabels, LinearLayout.LayoutParams(0, -2, 1f))
+        val additionalSettingsArrow = text("⌄", 22, accent, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(4), 0)
+        }
+        additionalSettingsHeader.addView(additionalSettingsArrow)
+        additionalSettingsDropdown.addView(additionalSettingsHeader, LinearLayout.LayoutParams(-1, -2))
+        val additionalSettingsContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(12), 0, 0)
+        }
+        settingsCard(additionalSettingsContent, "Update EPG data", "Manually refresh all 3 XMLTV sources now") {
             refreshEpgSources(true)
         }
-        settingsToggleCard(box, "Auto add EPG data", "Detect playlist EPG URL automatically; daily EPG refresh remains scheduled", "auto_add_epg", true)
-        settingsCard(box, "EPG sources (3)", "View the 3 built-in feeds and daily update schedule") {
+        settingsToggleCard(additionalSettingsContent, "Auto add EPG data", "Detect playlist EPG URL automatically; daily EPG refresh remains scheduled", "auto_add_epg", true)
+        settingsCard(additionalSettingsContent, "EPG sources (3)", "View the 3 built-in feeds and daily update schedule") {
             showBuiltInEpgSources()
         }
+        additionalSettingsDropdown.addView(additionalSettingsContent, LinearLayout.LayoutParams(-1, -2))
+        additionalSettingsHeader.setOnClickListener {
+            val expanded = additionalSettingsContent.visibility != View.VISIBLE
+            additionalSettingsContent.visibility = if (expanded) View.VISIBLE else View.GONE
+            additionalSettingsArrow.text = if (expanded) "⌃" else "⌄"
+        }
+        box.addView(additionalSettingsDropdown, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(12)
+        })
         box.addView(text("ABOUT", 11, accent, true).apply { setPadding(0, dp(22), 0, dp(12)) })
         box.addView(text("SANY IPTV  •  Version 1.1\nM3U / M3U8 playlist player powered by Media3.", 13, muted).apply {
             setPadding(dp(15), dp(16), dp(15), dp(16)); background = rounded(panel, 12)
@@ -2868,6 +5296,40 @@ class MainActivity : AppCompatActivity() {
             try { receiver?.let { unregisterReceiver(it) } } catch (_: Exception) { }
             toast("Download failed: " + (e.message ?: "unknown error"))
         }
+    }
+
+    private fun showCloneSiteDialog() {
+        val bypassPrefs = getSharedPreferences("sany_network_bypasses", MODE_PRIVATE)
+        val mappings = SanyNetworkBypasses.cloneMappings(this)
+        val hostInput = EditText(this).apply {
+            hint = "Original host (e.g. raw.githubusercontent.com)"
+            setSingleLine(true); setTextColor(white); setHintTextColor(muted)
+        }
+        val mirrorInput = EditText(this).apply {
+            hint = "Mirror base URL (https://...)"
+            setSingleLine(true); setTextColor(white); setHintTextColor(muted)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+            addView(hostInput, LinearLayout.LayoutParams(-1, dp(50)))
+            addView(mirrorInput, LinearLayout.LayoutParams(-1, dp(50)))
+            if (mappings.isNotEmpty()) addView(text("Saved:\\n" + mappings.entries.joinToString("\\n") { "${it.key} → ${it.value}" }, 12, muted).apply {
+                setPadding(0, dp(10), 0, dp(10))
+            })
+        }
+        AlertDialog.Builder(this).setTitle("Clone Site")
+            .setMessage("Original host-এর বিকল্প HTTPS mirror URL দিন। এটি SANY extension repository/catalogue ও package request-এ প্রয়োগ হবে।")
+            .setView(content)
+            .setPositiveButton("SAVE") { _, _ ->
+                if (SanyNetworkBypasses.saveClone(this, hostInput.text.toString(), mirrorInput.text.toString())) toast("Clone site saved")
+                else toast("সঠিক host এবং HTTPS mirror URL দিন")
+            }
+            .setNeutralButton("REMOVE ALL") { _, _ ->
+                bypassPrefs.edit().putString("clone_sites", "{}").apply()
+                toast("Clone site mappings removed")
+            }
+            .setNegativeButton("CANCEL", null).show()
     }
 
     private fun settingsToggleCard(
@@ -3265,21 +5727,15 @@ class MainActivity : AppCompatActivity() {
             if (!isFinishing) {
                 updateLiveTvProgress()
                 if (::contentArea.isInitialized && section == "Checker") updateCheckerUi()
-                if (::contentArea.isInitialized && section == "Live TV") {
+                if (::contentArea.isInitialized && (section == "Live TV" || section == "Live Sports")) {
                     val checkedCount = checkerProgressCount.get()
                     val publishLimit = when {
                         !checkerRunning -> Int.MAX_VALUE
-                        isLowRamTvDevice && channels.isNotEmpty() && checkedCount * 2 >= channels.size -> 24
-                        isLowRamTvDevice -> 12
                         channels.isNotEmpty() && checkedCount * 2 >= channels.size -> 60
                         else -> 30
                     }
                     val readyCount = channels.count { streamChecks[it.url]?.first == "Working" }.coerceAtMost(publishLimit)
-                    // On TV, batch successful stream updates. Rebuilding the complete
-                    // channel view for every probe result creates visible frame drops.
-                    val refreshStep = if (isLowRamTvDevice) 12 else if (isTvDevice) 6 else 1
-                    if (readyCount >= liveTvPublishedCount + refreshStep ||
-                        (!checkerRunning && liveTvPublishedCount != readyCount)) {
+                    if (readyCount > liveTvPublishedCount || (!checkerRunning && liveTvPublishedCount != readyCount)) {
                         liveTvPublishedCount = readyCount
                         renderListOnly()
                     }
@@ -3326,7 +5782,53 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) { streamChecks.clear() }
     }
 
+    private fun showCheckerSecretKeyDialog() {
+        if (checkerCopyUnlocked) {
+            renderCheckerSection()
+            return
+        }
+        val keyInput = EditText(this).apply {
+            hint = "Enter secret key"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
+            setSingleLine(true)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Unlock Copy Options")
+            .setMessage("Copy and export options are hidden. Enter the authorized secret key to show them.")
+            .setView(keyInput)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("UNLOCK", null)
+            .create().apply {
+                setOnShowListener {
+                    getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val enteredHash = try {
+                            java.security.MessageDigest.getInstance("SHA-256")
+                                .digest(keyInput.text.toString().trim().toByteArray(Charsets.UTF_8))
+                                .joinToString("") { byte -> "%02x".format(byte) }
+                        } catch (_: Exception) { "" }
+                        // Compare a digest rather than storing the key as readable source text.
+                        if (enteredHash == "0978f052a4bb8742bcd2bb5a8f70330b4e8481d6167eddddbba65bc16b22e02e") {
+                            checkerCopyUnlocked = true
+                            dismiss()
+                            renderCheckerSection()
+                            toast("Copy options unlocked")
+                        } else {
+                            keyInput.error = "Incorrect secret key"
+                        }
+                    }
+                }
+                show()
+            }
+    }
+
     private fun copyCheckerResults(statusFilter: String? = null, fullReport: Boolean = false) {
+        if (!checkerCopyUnlocked) {
+            showCheckerSecretKeyDialog()
+            return
+        }
         val selected = if (statusFilter == null || statusFilter == "All") {
             channels.filter { fullReport || streamChecks.containsKey(it.url) }
         } else {
@@ -3395,18 +5897,15 @@ class MainActivity : AppCompatActivity() {
         checkerDisplayedLimit = 250
         if (showToast) toast("চ্যানেল পরীক্ষা শুরু হয়েছে")
         if (::contentArea.isInitialized && section == "Checker") renderCheckerSection()
-        if (::contentArea.isInitialized && section == "Live TV") renderListOnly()
+        if (::contentArea.isInitialized && (section == "Live TV" || section == "Live Sports")) renderListOnly()
 
         // A fixed number of workers pull the next channel from an atomic index.
         // This avoids creating thousands of queued Runnables for huge playlists.
         val nextIndex = java.util.concurrent.atomic.AtomicInteger(0)
-        // TV boxes commonly have tighter CPU/RAM budgets than phones.
-        // Keep background probes bounded so checking cannot starve video/UI rendering.
-        val maxWorkers = if (isLowRamTvDevice) 2 else if (isTvDevice) 6 else when {
-            Build.VERSION.SDK_INT >= 34 -> 48
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> 32
-            else -> 8
-        }
+        // Use higher parallelism on Android 10+ while keeping older devices
+        // conservative to avoid memory pressure and excessive socket contention.
+        // Android 10+ uses 48 workers; Android 6-9 uses 8 workers.
+        val maxWorkers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) 48 else 8
         val workerCount = minOf(maxWorkers, snapshot.size)
         val workers = (0 until workerCount).map { worker ->
             thread(name = "SANY-Stream-Check-$worker") {
@@ -3492,11 +5991,19 @@ class MainActivity : AppCompatActivity() {
         box.addView(checkerRunButton, LinearLayout.LayoutParams(-1, dp(46)).apply {
             bottomMargin = dp(6)
         })
-        box.addView(actionButton("▤  COPY REPORT") {
-            copyCheckerResults(fullReport = true)
-        }, LinearLayout.LayoutParams(-1, dp(40)).apply {
-            bottomMargin = dp(8)
-        })
+        if (checkerCopyUnlocked) {
+            box.addView(actionButton("▤  COPY REPORT") {
+                copyCheckerResults(fullReport = true)
+            }, LinearLayout.LayoutParams(-1, dp(40)).apply {
+                bottomMargin = dp(8)
+            })
+        } else {
+            box.addView(actionButton("🔒  UNLOCK COPY OPTIONS") {
+                showCheckerSecretKeyDialog()
+            }, LinearLayout.LayoutParams(-1, dp(40)).apply {
+                bottomMargin = dp(8)
+            })
+        }
 
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val filterScroll = HorizontalScrollView(this).apply {
@@ -3525,7 +6032,7 @@ class MainActivity : AppCompatActivity() {
                     renderCheckerSection()
                 }
             }, LinearLayout.LayoutParams(-2, dp(36)))
-            if (filter != "Checking") {
+            if (filter != "Checking" && checkerCopyUnlocked) {
                 filterGroup.addView(text("⧉", 16, accent, true).apply {
                     gravity = Gravity.CENTER
                     setPadding(dp(8), 0, dp(10), 0)
@@ -3633,7 +6140,7 @@ class MainActivity : AppCompatActivity() {
                     workers.forEach { it.join() }
                     saveStreamCheckResults()
                     runOnUiThread {
-                        if (!isFinishing && section == "Live TV") renderHome()
+                        if (!isFinishing && (section == "Live TV" || section == "Live Sports")) renderHome()
                         else updateLiveTvProgress()
                     }
                 }
@@ -3648,10 +6155,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun probeStream(streamUrl: String): Pair<String, String> {
-        // FTP needs credentials and a protocol-specific transfer; don't mark it offline
-        // merely because the background HTTP checker cannot authenticate it.
+        // FTP cannot be positively verified by this HTTP probe. Keep it out
+        // of Live TV's working-only list rather than reporting an untested URL as working.
         if (streamUrl.startsWith("ftp://", true)) {
-            return "Working" to "FTP — login required when playing"
+            return "Error" to "FTP cannot be verified by this checker"
         }
         if (!streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
             return "Error" to "Unsupported URL protocol"
@@ -3716,14 +6223,25 @@ class MainActivity : AppCompatActivity() {
         startPlayback: Boolean = true,
         ftpCredentials: Pair<String, String>? = null,
         subtitleUrl: String? = null,
-        requestHeaders: Map<String, String> = emptyMap()
+        requestHeaders: Map<String, String> = emptyMap(),
+        streamMimeTypeHint: String? = null,
+        subtitleTracks: List<SanySubtitleTrack> = emptyList(),
+        preferredAudioLanguages: List<String>? = null,
+        qualityHint: String? = null,
+        externalAudioTracks: List<SanyAudioTrack> = emptyList()
     ) {
-        if (section != "Live TV" && section != "Movies" && section != "Series") return
+        if (section != "Live TV" && section != "Live Sports" && section != "Movies" && section != "Series") return
         if (channel.url.isBlank()) {
             toast("এই চ্যানেলের stream link নেই")
             return
         }
         val streamUrl = channel.url.trim()
+        activeProviderAudioLanguages = preferredAudioLanguages
+            ?.map(String::trim)
+            ?.filter { it.matches(Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]+)*")) }
+            ?.distinct()
+            ?.takeIf { it.isNotEmpty() }
+        activeProviderQualityHint = qualityHint?.trim()?.takeIf { it.isNotBlank() }
         val isFtpStream = streamUrl.startsWith("ftp://", true)
         if (!isFtpStream && !streamUrl.startsWith("http://", true) && !streamUrl.startsWith("https://", true)) {
             toast("Unsupported stream type. HTTP, HTTPS and FTP links are supported.")
@@ -3796,8 +6314,24 @@ class MainActivity : AppCompatActivity() {
         if (oldChannel != null && oldChannel.url != channel.url) previousChannel = oldChannel
         closePlayer(keepOrientation = true)
         currentChannel = channel
+        if (section == "Movies") {
+            prefs.edit()
+                .putString("movies_now_playing_title", channel.name.trim())
+                .putString("sany_last_played_section", "Movies")
+                .putString("sany_last_played_provider", channel.group)
+                .putString("sany_last_played_title", channel.name.trim())
+                .putString("sany_last_played_item_url", channel.url.trim())
+                .apply()
+        } else if (section == "Live TV") {
+            prefs.edit()
+                .putString("sany_last_played_section", "Live TV")
+                .putString("sany_last_played_provider", channel.group)
+                .putString("sany_last_played_title", channel.name.trim())
+                .putString("sany_last_played_item_url", channel.url.trim())
+                .apply()
+        }
         // Move the single active-channel highlight immediately when playback selection changes.
-        if (::listContainer.isInitialized && (section == "Live TV" || section == "Movies")) {
+        if (::listContainer.isInitialized && (section == "Live TV" || section == "Live Sports")) {
             val scroll = listContainer.parent as? ScrollView
             val previousScrollY = scroll?.scrollY ?: 0
             renderChannelRows(listContainer)
@@ -3811,7 +6345,17 @@ class MainActivity : AppCompatActivity() {
             putAll(requestHeaders)
         }
         val highSpeedStreaming = prefs.getBoolean("high_speed_streaming", false)
-        val httpFactory = DefaultHttpDataSource.Factory()
+        val wifiSmartStreaming = prefs.getBoolean("wifi_smart_streaming", true)
+        val wifiBandCode = if (wifiSmartStreaming) currentWifiBandCode() else 0
+        val wifiOn24Ghz = wifiBandCode == 2
+        val wifiOnHighBand = wifiBandCode == 5
+        val httpFactory = OkHttpDataSource.Factory(
+            SanyNetworkBypasses.client(
+                this,
+                connectTimeoutMs = if (highSpeedStreaming) 10_000 else 5_000,
+                readTimeoutMs = if (highSpeedStreaming) 30_000 else 15_000
+            )
+        )
             // Keep standard IPTV headers, and add provider-specific headers only
             // for AniLight playback (including HLS segments and subtitle requests).
             .setUserAgent(
@@ -3819,48 +6363,31 @@ class MainActivity : AppCompatActivity() {
                     ?: "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36"
             )
             .setDefaultRequestProperties(mediaHeaders)
-            .setConnectTimeoutMs(if (highSpeedStreaming) 10000 else 5000)
-            .setReadTimeoutMs(if (highSpeedStreaming) 30000 else 15000)
-            .setAllowCrossProtocolRedirects(true)
 
+        val subtitleRequestHeaders = buildMap<String, Map<String, String>> {
+            if (!subtitleUrl.isNullOrBlank() && requestHeaders.isNotEmpty()) {
+                put(subtitleUrl, requestHeaders)
+            }
+            subtitleTracks.forEach { subtitle ->
+                if (subtitle.headers.isNotEmpty()) put(subtitle.url, subtitle.headers)
+            }
+        }
         val streamDataSourceFactory: DataSource.Factory = if (isFtpStream) {
             FtpDataSource.Factory(
                 resolvedFtpCredentials?.first ?: "anonymous",
                 resolvedFtpCredentials?.second ?: ""
             )
-        } else httpFactory
+        } else ResolvingDataSource.Factory(httpFactory) { dataSpec ->
+            // Subtitle files can be hosted on a different CDN from the video and may
+            // require their own Referer/Cookie headers. Apply those only to the exact
+            // subtitle URI, leaving the provider's shared headers on all other requests.
+            val specificHeaders = subtitleRequestHeaders[dataSpec.uri.toString()]
+            if (specificHeaders.isNullOrEmpty()) dataSpec
+            else dataSpec.buildUpon().setHttpRequestHeaders(specificHeaders).build()
+        }
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this)
             .setDataSourceFactory(streamDataSourceFactory)
-
-        // Reduce ExoPlayer's target memory footprint on 1 GB Android TV devices.
-        val loadControlBuilder = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                if (isLowRamTvDevice) 1500 else if (highSpeedStreaming) 3000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                    "low" -> 1500
-                    "high" -> 3500
-                    else -> 2500
-                },
-                if (isLowRamTvDevice) 12000 else if (highSpeedStreaming) 24000 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                    "low" -> 12000
-                    "high" -> 30000
-                    else -> 20000
-                },
-                if (isLowRamTvDevice) 750 else if (highSpeedStreaming) 1200 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                    "low" -> 750
-                    "high" -> 1500
-                    else -> 1000
-                },
-                // Media3 requires bufferForPlaybackAfterRebufferMs <= minBufferMs.
-                // Keep every device/network preset within that invariant to prevent player startup crashes.
-                if (isLowRamTvDevice) 1000 else if (highSpeedStreaming) 2500 else when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
-                    "low" -> 1000
-                    "high" -> 3000
-                    else -> 2000
-                }
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-        if (isLowRamTvDevice) loadControlBuilder.setTargetBufferBytes(8 * 1024 * 1024)
 
         // Use Media3's platform-default decoder ordering for every section.
         // A custom codec-priority selector can force a broken software/hardware decoder
@@ -3874,18 +6401,93 @@ class MainActivity : AppCompatActivity() {
         ).setMediaSourceFactory(mediaSourceFactory)
             .setTrackSelector(DefaultTrackSelector(this).also { selector ->
                 trackSelector = selector
-                if (section == "Series") {
+                if (section == "Series" || section == "Movies") {
                     selector.setParameters(
                         selector.buildUponParameters()
-                            .setPreferredAudioLanguage("hi")
-                            // Keep text tracks enabled so available subtitles can be selected in the player.
+                            .setPreferredAudioLanguages("bn", "ben", "hi", "hin", "en", "eng")
+                            // Audio preference: Bengali, then Hindi, then English. Subtitles remain off by default.
                             .setMaxVideoSize(1920, 1080)
-                            .setMaxVideoBitrate(Int.MAX_VALUE)
+                            .setMaxVideoBitrate(if (section == "Movies") 12_000_000 else Int.MAX_VALUE)
                     )
                 }
                 applyVideoQuality(selector)
             })
-            .setLoadControl(loadControlBuilder.build())
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        if (section == "Movies") {
+                            when {
+                                wifiOn24Ghz -> 6000
+                                wifiOnHighBand -> 3500
+                                highSpeedStreaming -> 5000
+                                else -> 4000
+                            }
+                        } else if (section == "Live TV") {
+                            1000
+                        } else when {
+                            wifiOn24Ghz -> 4500
+                            wifiOnHighBand -> 2500
+                            highSpeedStreaming -> 3000
+                            else -> when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                                "low" -> 1500
+                                "high" -> 3500
+                                else -> 2500
+                            }
+                        },
+                        if (section == "Movies") {
+                            when {
+                                wifiOn24Ghz -> 45000
+                                wifiOnHighBand -> 30000
+                                highSpeedStreaming -> 45000
+                                else -> 30000
+                            }
+                        } else if (section == "Live TV") {
+                            when {
+                                wifiOn24Ghz -> 30000
+                                wifiOnHighBand -> 18000
+                                highSpeedStreaming -> 24000
+                                else -> 20000
+                            }
+                        } else when {
+                            wifiOn24Ghz -> 36000
+                            wifiOnHighBand -> 24000
+                            highSpeedStreaming -> 24000
+                            else -> when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                                "low" -> 12000
+                                "high" -> 30000
+                                else -> 20000
+                            }
+                        },
+                        if (section == "Movies") {
+                            if (wifiOn24Ghz) 1800 else if (wifiOnHighBand) 1000 else 1500
+                        } else if (section == "Live TV") 500 else when {
+                            wifiOn24Ghz -> 1200
+                            wifiOnHighBand -> 800
+                            highSpeedStreaming -> 1200
+                            else -> when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                                "low" -> 750
+                                "high" -> 1500
+                                else -> 1000
+                            }
+                        },
+                        // Media3 requires minBufferMs >= bufferForPlaybackAfterRebufferMs.
+                        // Keep the rebuffer threshold below the selected minimum for every mode.
+                        if (section == "Movies") {
+                            if (wifiOn24Ghz) 3000 else if (wifiOnHighBand) 2000 else 3000
+                        } else if (section == "Live TV") 750 else when {
+                            wifiOn24Ghz -> 2500
+                            wifiOnHighBand -> 1500
+                            highSpeedStreaming -> 2500
+                            else -> when (prefs.getString("network_buffer_size", defaultNetworkBufferMode)) {
+                                "low" -> 1000
+                                "high" -> 3000
+                                else -> 2000
+                            }
+                        }
+                    )
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .build()
+            )
             .build().also { created ->
                 created.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
@@ -3899,7 +6501,20 @@ class MainActivity : AppCompatActivity() {
                             }
                             cause = cause.cause
                         }
+                        if (section == "Movies") {
+                            android.util.Log.e(
+                                "SANY-MOVIE",
+                                "Movie playback error: code=${error.errorCodeName} httpStatus=${httpStatus ?: "unknown"}",
+                                error
+                            )
+                        }
                         runOnUiThread {
+                            if (section == "Series") showAnimePlaybackLoading("", false)
+                            if ((section == "Series" || section == "Movies" || section == "Live Sports") &&
+                                tryNextAnimeFallback()
+                            ) {
+                                return@runOnUiThread
+                            }
                             if (httpStatus != null) {
                                 toast("সার্ভার HTTP $httpStatus দিয়েছে — অন্য stream link চেষ্টা করুন")
                             } else if (currentChannel?.url?.startsWith("ftp://", true) == true) {
@@ -3914,18 +6529,47 @@ class MainActivity : AppCompatActivity() {
                                 toast("Auto retry ${playbackRetryCount}/2…")
                                 playbackRetryHandler.postDelayed({
                                     if (player === this@MainActivity.player && playerView != null) {
+                                        // A retry is a fresh load: keep audio/video held until
+                                        // the next first frame, just like the initial request.
+                                        animeAutoPlayWhenReady = prefs.getBoolean("auto_play", true)
+                                        animeFirstFrameRendered = false
+                                        animePlaybackLoadingRequested = true
+                                        player?.playWhenReady = false
+                                        updateAnimeFullscreenBuffering()
                                         player?.prepare()
-                                        player?.playWhenReady = prefs.getBoolean("auto_play", true)
                                     }
                                 }, 1800L)
                             }
                         }
                     }
                     override fun onPlaybackStateChanged(state: Int) {
+                        runOnUiThread { updateAnimeFullscreenBuffering() }
+                        if (section == "Movies") {
+                            val stateName = when (state) {
+                                Player.STATE_IDLE -> "IDLE"
+                                Player.STATE_BUFFERING -> "BUFFERING"
+                                Player.STATE_READY -> "READY"
+                                Player.STATE_ENDED -> "ENDED"
+                                else -> state.toString()
+                            }
+                            android.util.Log.i(
+                                "SANY-MOVIE",
+                                "Player state: state=$stateName elapsedMs=${if (moviePlaybackStartedAtMs > 0L) System.currentTimeMillis() - moviePlaybackStartedAtMs else -1L}"
+                            )
+                        }
                         if (state == Player.STATE_READY) {
+                            // Do not release playback here: READY can arrive before the
+                            // first frame reaches the surface. The first-frame callback below
+                            // is the single release point for every category and screen mode.
+                            updateAnimeFullscreenBuffering()
                             playbackRetryCount = 0
                             animeAutoNextInProgress = false
                             refreshPictureInPictureParams()
+                        } else if (state == Player.STATE_ENDED && section == "Live Sports" &&
+                            animeFallbackIndex >= 0
+                        ) {
+                            // A live provider returning an already-ended item is usually a dead source.
+                            runOnUiThread { tryNextAnimeFallback() }
                         } else if (state == Player.STATE_ENDED && section == "Series" && !animeAutoNextInProgress) {
                             // Advance Anime Series automatically to the next numeric episode.
                             animeAutoNextInProgress = true
@@ -3938,10 +6582,51 @@ class MainActivity : AppCompatActivity() {
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                         refreshPictureInPictureParams()
                     }
+                    override fun onIsLoadingChanged(isLoading: Boolean) {
+                        runOnUiThread { updateAnimeFullscreenBuffering() }
+                    }
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        // Enable PiP auto-entry only while an actual video is playing.
-                        // Pausing/stopping immediately unregisters the PiP entry path.
+                        // Auto-entry depends on actual playback; keep PiP action
+                        // labels synchronized with the player as well.
                         refreshPictureInPictureParams()
+                    }
+                    override fun onPlayWhenReadyChanged(
+                        playWhenReady: Boolean,
+                        reason: Int
+                    ) {
+                        // Refresh the Pause/Resume RemoteAction on every user-intent
+                        // change, including while the stream is buffering.
+                        refreshPictureInPictureParams()
+                    }
+                })
+                created.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+                    override fun onRenderedFirstFrame(
+                        eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                        output: Any,
+                        renderTimeMs: Long
+                    ) {
+                        if (section == "Live Sports") {
+                            liveSportsFirstFrameWatchdog?.let(playbackRetryHandler::removeCallbacks)
+                            liveSportsFirstFrameWatchdog = null
+                            animeFallbackRequests = emptyList()
+                            animeFallbackIndex = -1
+                        }
+                        if (section == "Movies") {
+                            android.util.Log.i(
+                                "SANY-MOVIE",
+                                "First video frame rendered: elapsedMs=${if (moviePlaybackStartedAtMs > 0L) System.currentTimeMillis() - moviePlaybackStartedAtMs else -1L}"
+                            )
+                            moviePlaybackStartedAtMs = 0L
+                        }
+                        runOnUiThread {
+                            animeFirstFrameRendered = true
+                            animePlaybackLoadingRequested = false
+                            updateAnimeFullscreenBuffering()
+                            if (animeAutoPlayWhenReady) {
+                                animeAutoPlayWhenReady = false
+                                player?.playWhenReady = true
+                            }
+                        }
                     }
                 })
                 player = created
@@ -3949,6 +6634,8 @@ class MainActivity : AppCompatActivity() {
 
         val screen = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         val isAnimeEpisode = section == "Series"
+        // Movies and Anime use the same VOD player controls and overlay behavior.
+        val isVodPlayer = isAnimeEpisode || section == "Movies"
         playerScreen = screen
         isPlayerFullscreen = keepFullscreenMode
         playerHeader = null
@@ -3962,17 +6649,37 @@ class MainActivity : AppCompatActivity() {
             // Retain the last rendered frame during short surface/Activity transitions
             // so the app icon or an empty shutter does not flash before video resumes.
             setKeepContentOnPlayerReset(true)
-            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+            // A single in-video loading overlay is used for all categories.
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
         }
         playerView = view
         updateHomeHeaderVisibility()
         screen.addView(view, FrameLayout.LayoutParams(-1, dp(235), Gravity.TOP))
+        run {
+            animeFirstFrameRendered = false
+            val loading = FrameLayout(this).apply {
+                setBackgroundColor(Color.BLACK)
+                visibility = View.GONE
+                isClickable = false
+            }
+            val spinner = android.widget.ProgressBar(this).apply {
+                isIndeterminate = true
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(accent)
+            }
+            loading.addView(spinner, FrameLayout.LayoutParams(dp(52), dp(52), Gravity.CENTER))
+            // Add the indicator as a PlayerView child, not a screen-level
+            // overlay. This keeps it directly over the video in both FIT and
+            // fullscreen layouts.
+            view.addView(loading, FrameLayout.LayoutParams(-1, -1))
+            animeFullscreenBufferingOverlay = loading
+            updateAnimeFullscreenBuffering()
+        }
         animeEpisodePanel = if (isAnimeEpisode) aniLightNativeScreen?.createPlayerEpisodePanel() else null
         animeEpisodePanel?.let { episodePanel ->
             episodePanel.visibility = View.GONE
             screen.addView(episodePanel, FrameLayout.LayoutParams(-1, -1, Gravity.END))
         }
-        if (isAnimeEpisode) {
+        if (isVodPlayer) {
             val animeTitle = TextView(this).apply {
                 text = channel.name
                 textSize = 14f
@@ -4022,13 +6729,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(3), dp(8), dp(3))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(0xA6101A2A.toInt(), 0xB20A1220.toInt())
-            ).apply {
-                cornerRadius = dp(12).toFloat()
-                setStroke(dp(1), 0x884D8DDA.toInt())
-            }
+            background = glass(12)
             visibility = View.GONE
             alpha = 0f
             elevation = dp(5).toFloat()
@@ -4070,37 +6771,35 @@ class MainActivity : AppCompatActivity() {
         }
         val nextButton = playerAction("▶|", "Next channel") { playAdjacentChannel(1) }
         // Anime episodes do not use channel identity or channel-skip controls.
-        channelIdentity.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
-        previousButton.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
-        nextButton.visibility = if (isAnimeEpisode) View.GONE else View.VISIBLE
-        if (!isAnimeEpisode) transportRow.addView(channelIdentity, LinearLayout.LayoutParams(dp(126), -1))
+        channelIdentity.visibility = if (isVodPlayer) View.GONE else View.VISIBLE
+        previousButton.visibility = if (isVodPlayer) View.GONE else View.VISIBLE
+        nextButton.visibility = if (isVodPlayer) View.GONE else View.VISIBLE
+        if (!isVodPlayer) transportRow.addView(channelIdentity, LinearLayout.LayoutParams(dp(126), -1))
         listOf(previousButton, playPauseButton, nextButton).forEachIndexed { index, button ->
             button.textSize = if (index == 1) 21f else 19f
             button.typeface = if (index == 1) Typeface.create("sans-serif-light", Typeface.NORMAL) else Typeface.DEFAULT
             if (button.visibility == View.VISIBLE) {
                 transportRow.addView(button, LinearLayout.LayoutParams(0, dp(27), 1f).apply {
-                    if (index == 1 && !isAnimeEpisode) { leftMargin = dp(4); rightMargin = dp(4) }
+                    if (index == 1 && !isVodPlayer) { leftMargin = dp(4); rightMargin = dp(4) }
                 })
             }
         }
         controlsPanel.addView(transportRow, LinearLayout.LayoutParams(-1, dp(27)))
-        if (isAnimeEpisode) {
+        if (isVodPlayer) {
             transportRow.visibility = View.GONE
             transportRow.removeView(playPauseButton)
             playPauseButton.textSize = 34f
-            playPauseButton.background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0x66000000)
-                setStroke(dp(1), 0x99FFFFFF.toInt())
-            }
+            playPauseButton.background = SanyLiquidGlass.background(this@MainActivity, 50, false, accent)
             animeCenterPlayButton = playPauseButton
         }
 
         // Anime Series-only actions. Live TV and Movies keep their existing player UI.
+        val isMoviePlayback = section == "Movies"
+        val showVodActions = isVodPlayer || isMoviePlayback
         val animeActions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            visibility = if (isAnimeEpisode) View.VISIBLE else View.GONE
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = if (showVodActions) View.VISIBLE else View.GONE
         }
         var animeControlsLocked = false
         fun animeAction(text: String, description: String, action: () -> Unit) =
@@ -4109,25 +6808,47 @@ class MainActivity : AppCompatActivity() {
                 minHeight = dp(30)
                 setPadding(dp(4), 0, dp(4), 0)
             }
-                val sourceAction = animeAction("☷  Source", "Show current Anime stream source") {
+                val sourceAction = animeAction("☷  Source", "Show current video stream source") {
             val host = try { java.net.URI(channel.url).host ?: "Unknown host" } catch (_: Exception) { "Unknown host" }
-            AlertDialog.Builder(this).setTitle("Anime stream source")
+            AlertDialog.Builder(this).setTitle("Video stream source")
                 .setMessage("Current source: $host")
                 .setPositiveButton("OK", null).show()
         }
-        val tracksAction = animeAction("▥  Tracks", "Change Anime audio language") {
-            showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
+        // Track control sits between Source and Full Screen for Anime playback.
+        val trackAction = animeAction("≡  Track", "Select audio, subtitle or video tracks") {
+            val choices = arrayOf("Audio tracks", "Subtitles", "Video quality")
+            AlertDialog.Builder(this)
+                .setTitle("Tracks")
+                .setItems(choices) { _, which ->
+                    when (which) {
+                        0 -> showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio tracks", false)
+                        1 -> showAnimeTrackSelection(C.TRACK_TYPE_TEXT, "Subtitles", true)
+                        2 -> showAnimeTrackSelection(C.TRACK_TYPE_VIDEO, "Video quality", false)
+                    }
+                }
+                .setNegativeButton("CLOSE", null)
+                .show()
         }
         var onAnimeFullscreenToggle: (() -> Unit)? = null
-        val fullscreenAction = animeAction("⛶  Fit Screen", "Switch between Fit Screen and Full Screen") {
+        val fullscreenAction = animeAction("⛶  Full Screen", "Switch between Full Screen and Fit Screen") {
             onAnimeFullscreenToggle?.invoke() ?: setPlayerFullscreen(!isPlayerFullscreen)
+        }.also {
+            animeFullscreenActionButton = it
+            it.text = if (isPlayerFullscreen) "⤢  Fit Screen" else "⛶  Full Screen"
         }
-        // Replace Next Episode with the Full Screen shortcut in the Anime action strip.
+        // Replace Next Episode with Track and Full Screen shortcuts in the Anime action strip.
         // Play/Pause remains available only as the large centre overlay.
-        listOf(sourceAction, tracksAction, fullscreenAction).forEach { action ->
-            animeActions.addView(action, LinearLayout.LayoutParams(0, dp(32), 1f))
+        listOf(sourceAction, trackAction, fullscreenAction).forEach { action ->
+            animeActions.addView(action, LinearLayout.LayoutParams(0, dp(34), 1f).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            })
         }
-        controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(32)))
+        // Keep Source, Track and Full/Fit Screen on one baseline and move the
+        // complete three-button row slightly lower beneath the video.
+        controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(38)).apply {
+            topMargin = dp(10)
+            bottomMargin = dp(2)
+        })
 
         val progressBar = SeekBar(this).apply {
             max = 1000
@@ -4180,9 +6901,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun openPlayerSettings() {
-            val isAnimePlayback = section == "Series"
+            val isAnimePlayback = section == "Series" || section == "Movies"
             val options = if (isAnimePlayback)
-                arrayOf("Playback speed", "Audio language", "Subtitle", "Video quality")
+                arrayOf("Playback speed", "Subtitle", "Video quality")
                 else arrayOf("Playback speed", "Video quality")
             AlertDialog.Builder(this).setTitle("Player settings").setItems(options) { _, which ->
                 if (which == 0) {
@@ -4195,10 +6916,8 @@ class MainActivity : AppCompatActivity() {
                         dialog.dismiss()
                     }.setNegativeButton("CLOSE", null).show()
                 } else if (isAnimePlayback && which == 1) {
-                    showAnimeTrackSelection(C.TRACK_TYPE_AUDIO, "Audio language", false)
-                } else if (isAnimePlayback && which == 2) {
                     showAnimeTrackSelection(C.TRACK_TYPE_TEXT, "Subtitles", true)
-                } else if (isAnimePlayback && which == 3) {
+                } else if (isAnimePlayback && which == 2) {
                     showAnimeTrackSelection(C.TRACK_TYPE_VIDEO, "Video quality", false)
                 } else if (!isAnimePlayback && which == 1) {
                     val qualities = arrayOf("auto", "480", "720", "1080")
@@ -4251,7 +6970,7 @@ class MainActivity : AppCompatActivity() {
             leftMargin = dp(5)
         })
         // Remove the extra minimize icon beside Settings from the Anime control dock.
-        if (!isAnimeEpisode) {
+        if (!isVodPlayer) {
             infoRow.addView(minimizeButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
                 leftMargin = dp(5)
             })
@@ -4259,18 +6978,18 @@ class MainActivity : AppCompatActivity() {
         // Fit Screen stays in its original bottom control row for Anime as well.
         // Anime gets its Full Screen control in the action strip above;
         // keep the original bottom-row button for non-Anime players only.
-        if (!isAnimeEpisode) {
+        if (!isVodPlayer) {
             infoRow.addView(fullscreenButton, LinearLayout.LayoutParams(dp(38), dp(34)).apply {
                 leftMargin = dp(5)
             })
         }
-        if (isAnimeEpisode) {
-            // Only Pause/Resume is moved to the centre of the video.
+        if (isVodPlayer) {
+            // VOD Pause/Resume is moved to the centre of the video.
             screen.addView(playPauseButton, FrameLayout.LayoutParams(dp(68), dp(68), Gravity.CENTER))
         }
         controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(38)))
-        if (isAnimeEpisode) {
-            // Reference layout order: timeline, action strip, then time / utility controls.
+        if (isVodPlayer) {
+            // Keep the same Anime layout order for Movies: timeline, action strip, utility controls.
             controlsPanel.removeView(animeActions)
             controlsPanel.removeView(progressBar)
             controlsPanel.removeView(infoRow)
@@ -4279,17 +6998,25 @@ class MainActivity : AppCompatActivity() {
             controlsPanel.addView(animeActions, LinearLayout.LayoutParams(-1, dp(28)))
             controlsPanel.addView(infoRow, LinearLayout.LayoutParams(-1, dp(34)))
         }
-        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, if (isAnimeEpisode) dp(82) else dp(88), Gravity.TOP).apply {
+        screen.addView(controlsPanel, FrameLayout.LayoutParams(-1, if (isVodPlayer) dp(82) else dp(88), Gravity.TOP).apply {
             topMargin = dp(155)
             leftMargin = dp(8); rightMargin = dp(8)
         })
 
         val controlsHandler = Handler(Looper.getMainLooper())
         val animeControlsAutoHideDelay = 3000L
+        // Anime Series uses one synchronized overlay group: centre Play/Pause,
+        // top title, and the complete lower control dock always show/hide together.
         val hideControls = Runnable {
-            if (controlsPanel.visibility == View.VISIBLE) {
-                controlsPanel.animate().alpha(0f).setDuration(180).withEndAction {
-                    controlsPanel.visibility = View.GONE
+            // Keep the complete control group visible while paused so Resume is accessible.
+            if (isVodPlayer && !p.isPlaying) return@Runnable
+            val groupedOverlays = if (isVodPlayer)
+                listOfNotNull(controlsPanel, playPauseButton, animePlayerTitleOverlay)
+            else listOf(controlsPanel)
+            groupedOverlays.forEach { overlay ->
+                overlay.animate().cancel()
+                overlay.animate().alpha(0f).setDuration(180).withEndAction {
+                    overlay.visibility = View.GONE
                 }.start()
             }
         }
@@ -4299,13 +7026,31 @@ class MainActivity : AppCompatActivity() {
                 toast("Player controls unlocked")
             }
             controlsHandler.removeCallbacks(hideControls)
-            if (controlsPanel.visibility != View.VISIBLE) {
-                controlsPanel.visibility = View.VISIBLE
-                controlsPanel.animate().alpha(1f).setDuration(140).start()
-            } else controlsPanel.alpha = 1f
-            if (autoHide) controlsHandler.postDelayed(
-                hideControls, if (isAnimeEpisode) animeControlsAutoHideDelay else 2500L
-            )
+            val groupedOverlays = if (isVodPlayer)
+                listOfNotNull(controlsPanel, playPauseButton, animePlayerTitleOverlay)
+            else listOf(controlsPanel)
+            groupedOverlays.forEach { overlay ->
+                overlay.animate().cancel()
+                overlay.visibility = View.VISIBLE
+                overlay.alpha = 1f
+            }
+            if (isVodPlayer) {
+                playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
+            }
+            if (autoHide && (isVodPlayer.not() || p.isPlaying)) {
+                controlsHandler.postDelayed(
+                    hideControls, if (isVodPlayer) animeControlsAutoHideDelay else 2500L
+                )
+            }
+        }
+        if (isVodPlayer) {
+            // A pause keeps every overlay visible; resuming restarts the shared 3-second timer.
+            p.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    revealControls(autoHide = isPlaying)
+                }
+            })
+            revealControls(autoHide = p.isPlaying)
         }
         progressBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -4334,7 +7079,7 @@ class MainActivity : AppCompatActivity() {
                 positionLabel.text = formatPlayerTime(position)
                 durationLabel.text = formatPlayerTime(if (duration > 0) duration else 0L)
                 playPauseButton.text = if (p.isPlaying) "Ⅱ" else "▶"
-                if (isAnimeEpisode) {
+                if (isVodPlayer) {
                     // Hide the large center Play control while running; the compact
                     // Pause/Play action appears only when the control dock is revealed.
                     playPauseButton.visibility = if (p.isPlaying) View.GONE else View.VISIBLE
@@ -4345,45 +7090,18 @@ class MainActivity : AppCompatActivity() {
         }
         controlsHandler.post(progressUpdater)
 
-        // While Anime is playing, a video tap briefly reveals the centre Pause
-        // control; it then fades from the layout without leaving a duplicate dock button.
-        val hideAnimeCenterPause = Runnable {
-            if (isAnimeEpisode && p.isPlaying) {
-                playPauseButton.animate().cancel()
-                playPauseButton.animate().alpha(0f).setDuration(180).withEndAction {
-                    if (p.isPlaying) playPauseButton.visibility = View.GONE
-                }.start()
-            }
-        }
-        // Full Screen / Fit Screen taps reveal both Anime overlays together.
-        // Their independent hide callbacks use the same 3-second deadline.
+        // Full Screen / Fit Screen changes preserve the same synchronized overlay timer.
         onAnimeFullscreenToggle = {
             setPlayerFullscreen(!isPlayerFullscreen)
             revealControls()
-            if (isAnimeEpisode && p.isPlaying) {
-                controlsHandler.removeCallbacks(hideAnimeCenterPause)
-                playPauseButton.animate().cancel()
-                playPauseButton.alpha = 1f
-                playPauseButton.text = "Ⅱ"
-                playPauseButton.visibility = View.VISIBLE
-                controlsHandler.postDelayed(hideAnimeCenterPause, animeControlsAutoHideDelay)
-            }
         }
         val tapDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             private val swipeThreshold = dp(64)
             private val swipeVelocityThreshold = dp(120)
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                if (isAnimeEpisode && p.isPlaying) {
-                    controlsHandler.removeCallbacks(hideAnimeCenterPause)
-                    playPauseButton.animate().cancel()
-                    playPauseButton.alpha = 1f
-                    playPauseButton.text = "Ⅱ"
-                    playPauseButton.visibility = View.VISIBLE
-                    controlsHandler.postDelayed(hideAnimeCenterPause, animeControlsAutoHideDelay)
-                }
-                // A single tap always reveals the bottom control dock, including
-                // when it is already visible. Apply the same interaction in FIT and fullscreen.
+                // One tap reveals the centre button, title, and bottom dock as a single group.
+                // The group shares one 3-second hide deadline in FIT and fullscreen.
                 revealControls()
                 return true
             }
@@ -4475,52 +7193,119 @@ class MainActivity : AppCompatActivity() {
         setPlayerFullscreen(keepFullscreenMode)
         val lowerUrl = streamUrl.substringBefore("?").substringBefore("#").lowercase()
         val itemBuilder = MediaItem.Builder().setUri(streamUrl)
-        when {
-            lowerUrl.endsWith(".m3u8") || lowerUrl.endsWith(".m3u") ||
-                lowerUrl.contains("/hls/") || lowerUrl.contains("format=m3u8") ->
+        when (streamMimeTypeHint?.lowercase()) {
+            MimeTypes.APPLICATION_M3U8.lowercase(), "m3u8", "hls" ->
                 itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
-            lowerUrl.endsWith(".mpd") || lowerUrl.contains("/dash/") ->
+            MimeTypes.APPLICATION_MPD.lowercase(), "mpd", "dash" ->
                 itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+            else -> when {
+                lowerUrl.endsWith(".m3u8") || lowerUrl.endsWith(".m3u") ||
+                    lowerUrl.contains("/hls/") || lowerUrl.contains("format=m3u8") ->
+                    itemBuilder.setMimeType(MimeTypes.APPLICATION_M3U8)
+                lowerUrl.endsWith(".mpd") || lowerUrl.contains("/dash/") ->
+                    itemBuilder.setMimeType(MimeTypes.APPLICATION_MPD)
+            }
         }
-        if (!subtitleUrl.isNullOrBlank() && subtitleUrl.startsWith("https://")) {
-            itemBuilder.setSubtitleConfigurations(
-                listOf(
-                    MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitleUrl))
-                        .setMimeType(MimeTypes.TEXT_VTT)
-                        .setLanguage("und")
-                        .setSelectionFlags(0)
-                        .build()
-                )
-            )
+
+        // Merge the legacy single WebVTT URL with provider-supplied subtitle tracks.
+        // The same provider request headers are applied by the shared Media3 HTTP
+        // DataSource factory, including subtitle requests.
+        val subtitleCandidates = buildList {
+            if (!subtitleUrl.isNullOrBlank()) {
+                add(SanySubtitleTrack(url = subtitleUrl, mimeType = MimeTypes.TEXT_VTT))
+            }
+            addAll(subtitleTracks)
+        }
+        val mediaSubtitles = subtitleCandidates
+            .filter { candidate ->
+                candidate.url.startsWith("https://", true) ||
+                    candidate.url.startsWith("http://", true)
+            }
+            .distinctBy { it.url }
+            .map { candidate ->
+                val subtitlePath = candidate.url.substringBefore("?").substringBefore("#").lowercase()
+                val inferredMime = when {
+                    subtitlePath.endsWith(".vtt") -> MimeTypes.TEXT_VTT
+                    subtitlePath.endsWith(".ttml") || subtitlePath.endsWith(".xml") ->
+                        MimeTypes.APPLICATION_TTML
+                    else -> MimeTypes.APPLICATION_SUBRIP
+                }
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(candidate.url))
+                    .setMimeType(candidate.mimeType?.takeIf { it.isNotBlank() } ?: inferredMime)
+                    .setLanguage(candidate.language.ifBlank { "und" })
+                    .apply { candidate.label?.takeIf { it.isNotBlank() }?.let(::setLabel) }
+                    .setSelectionFlags(0)
+                    .build()
+            }
+        if (mediaSubtitles.isNotEmpty()) {
+            itemBuilder.setSubtitleConfigurations(mediaSubtitles)
         }
         // Anime captions are disabled by default; other sections keep their normal track behavior.
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, section == "Series")
-            .apply { if (section == "Series") setPreferredAudioLanguage("hi") }
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, section == "Series" || section == "Movies")
+            .apply { if (section == "Series" || section == "Movies") setPreferredAudioLanguages("bn", "ben", "hi", "hin", "en", "eng") }
             .build()
         val mediaItem = itemBuilder.build()
         val animeResumePosition = if (section == "Series") prefs.getLong(animeResumePreferenceKey(channel), 0L).coerceAtLeast(0L) else 0L
-        if (animeResumePosition > 0L) p.setMediaItem(mediaItem, animeResumePosition) else p.setMediaItem(mediaItem)
+        val validExternalAudio = externalAudioTracks.filter { track ->
+            track.url.startsWith("https://", true) || track.url.startsWith("http://", true)
+        }.distinctBy { it.url }
+        if (validExternalAudio.isEmpty()) {
+            if (animeResumePosition > 0L) p.setMediaItem(mediaItem, animeResumePosition) else p.setMediaItem(mediaItem)
+        } else {
+            // CloudStream exposes some alternate dubs as separate audio files rather than
+            // embedded HLS/DASH renditions. Merge each audio-only source with the video so
+            // Media3 exposes them as selectable audio track groups.
+            val videoSource = mediaSourceFactory.createMediaSource(mediaItem)
+            val audioSources = validExternalAudio.map { track ->
+                val audioHeaders = linkedMapOf<String, String>().apply {
+                    putAll(mediaHeaders)
+                    putAll(track.headers)
+                }
+                val audioFactory = DefaultHttpDataSource.Factory()
+                    .setUserAgent(audioHeaders["User-Agent"] ?: "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                    .setDefaultRequestProperties(audioHeaders)
+                    .setConnectTimeoutMs(if (highSpeedStreaming) 10000 else 5000)
+                    .setReadTimeoutMs(if (highSpeedStreaming) 30000 else 15000)
+                    .setAllowCrossProtocolRedirects(true)
+                val audioMediaSourceFactory = DefaultMediaSourceFactory(this)
+                    .setDataSourceFactory(audioFactory)
+                audioMediaSourceFactory.createMediaSource(MediaItem.fromUri(track.url))
+            }
+            val mergedSource = MergingMediaSource(videoSource, *audioSources.toTypedArray())
+            if (animeResumePosition > 0L) p.setMediaSource(mergedSource, animeResumePosition)
+            else p.setMediaSource(mergedSource)
+        }
         p.setPlaybackSpeed(prefs.getFloat("playback_speed", 1.0f).coerceIn(0.5f, 2.0f))
+        // Hold both audio and video until Media3 renders the first frame.
+        animeAutoPlayWhenReady = startPlayback
+        animeFirstFrameRendered = false
+        animePlaybackLoadingRequested = true
+        p.playWhenReady = false
+        updateAnimeFullscreenBuffering()
         p.prepare()
-        p.playWhenReady = startPlayback
         if (isAnimeEpisode && startPlayback) animeCenterPlayButton?.visibility = View.GONE
         prefs.edit().putString("last_channel", streamUrl).apply()
     }
 
 
     private fun showAnimeTrackSelection(trackType: Int, title: String, allowDisable: Boolean) {
-        if (section != "Series") return
+        if (section != "Series" && section != "Movies") return
         val activePlayer = player ?: return
+        if (trackType == C.TRACK_TYPE_TEXT && subtitleTrackDialog?.isShowing == true) return
         if (trackType == C.TRACK_TYPE_TEXT) {
             activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters
                 .buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).build()
         }
-        TrackSelectionDialogBuilder(this, title, activePlayer, trackType)
+        val dialog = TrackSelectionDialogBuilder(this, title, activePlayer, trackType)
             .setAllowAdaptiveSelections(false)
             .setShowDisableOption(allowDisable)
             .build()
-            .show()
+        if (trackType == C.TRACK_TYPE_TEXT) {
+            subtitleTrackDialog = dialog
+            dialog.setOnDismissListener { if (subtitleTrackDialog === dialog) subtitleTrackDialog = null }
+        }
+        dialog.show()
     }
 
     private fun showAnimeSubtitleOptions() {
@@ -4575,21 +7360,19 @@ class MainActivity : AppCompatActivity() {
         val target = selector ?: return
         val quality = prefs.getString("video_quality", "auto") ?: "auto"
         val builder = target.buildUponParameters()
-        // Auto mode caps Anime at 720p to reduce sustained decoder/GPU load.
-        // Explicit 480p and 1080p selections remain available to the viewer.
-        if (section == "Series") {
-            // Hindi remains the preferred audio language, but subtitle tracks stay selectable.
-            builder.setPreferredAudioLanguage("hi")
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+        // VOD Auto mode delegates quality selection to Media3's adaptive track
+        // selector. HLS/DASH renditions can move up/down with measured bandwidth.
+        // A single-file MP4 remains at the quality supplied by its source.
+        if (section == "Series" || section == "Movies") {
+            val audioLanguages = activeProviderAudioLanguages ?: listOf("bn", "ben", "hi", "hin", "en", "eng")
+            builder.setPreferredAudioLanguages(*audioLanguages.toTypedArray())
+            if (section == "Series") builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            val quality = prefs.getString("video_quality", "auto") ?: "auto"
             when (quality) {
-                "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_800_000)
-                "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(4_000_000)
-                "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(8_000_000)
-                else -> {
-                    // A 1 GB TV uses a 720p ceiling in Auto mode to reduce decoder/GPU pressure.
-                    if (isLowRamTvDevice) builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(3_500_000)
-                    else builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
-                }
+                "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
+                "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
+                "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
+                else -> builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
             }
             target.setParameters(builder)
             return
@@ -4598,10 +7381,7 @@ class MainActivity : AppCompatActivity() {
             "480" -> builder.setMaxVideoSize(854, 480).setMaxVideoBitrate(1_200_000)
             "720" -> builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(2_500_000)
             "1080" -> builder.setMaxVideoSize(1920, 1080).setMaxVideoBitrate(5_000_000)
-            else -> if (isLowRamTvDevice) {
-                // Keep adaptive playback within 720p on 1 GB Android TV hardware.
-                builder.setMaxVideoSize(1280, 720).setMaxVideoBitrate(3_500_000)
-            } else if (prefs.getBoolean("high_speed_streaming", true)) {
+            else -> if (prefs.getBoolean("high_speed_streaming", true)) {
                 // In high-speed mode, allow the source's highest available adaptive track.
                 builder.clearVideoSizeConstraints().setMaxVideoBitrate(Int.MAX_VALUE)
             } else if (prefs.getBoolean("low_data_mode", defaultLowInternetMode)) {
@@ -4667,7 +7447,7 @@ class MainActivity : AppCompatActivity() {
                 ).apply {
                     cornerRadius = dp(13).toFloat()
                     setStroke(dp(2), 0xFF35B8FF.toInt())
-                } else if (isLight) rounded(Color.WHITE, 12, Color.BLACK, 1) else glass(12)
+                } else glass(12)
                 if (isPlaying) elevation = dp(7).toFloat()
                 applyTvFocusStyle(this)
                 setOnClickListener { play(channel) }
@@ -4695,6 +7475,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setPlayerFullscreen(enabled: Boolean) {
         isPlayerFullscreen = enabled
+        updateAnimeFullscreenBuffering()
         if (enabled) {
             // A channel selected from the inline category search can leave the
             // soft keyboard visible over the landscape player. Dismiss the IME
@@ -4719,6 +7500,7 @@ class MainActivity : AppCompatActivity() {
         }
         playerHeader?.visibility = if (enabled) View.GONE else View.VISIBLE
         playerFullscreenButton?.text = if (enabled) "⤢" else "⛶"
+        animeFullscreenActionButton?.text = if (enabled) "⤢  Fit Screen" else "⛶  Full Screen"
         playerControlsPanel?.let { panel ->
             (panel.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.gravity = if (enabled) Gravity.BOTTOM else Gravity.TOP
@@ -4782,22 +7564,23 @@ class MainActivity : AppCompatActivity() {
             else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         playerScreen?.setBackgroundColor(if (enabled) Color.BLACK else Color.TRANSPARENT)
         if (!enabled) { applySystemBars(); return }
-        window.decorView.systemUiVisibility = if (enabled) {
-            (View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
-        } else View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        // Fullscreen video hides both Android system bars. Fit Screen restores
+        // the normal app layout and the real status bar through applySystemBars().
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
     }
 
     private fun closePlayer(keepOrientation: Boolean = false) {
-        // TV Back closes playback without jumping away from the menu currently visible
-        // behind the fullscreen player. Touch devices retain their previous return flow.
         val tvVisibleSection = if (isTvDevice && !keepOrientation) section else null
         val tvVisibleGroup = if (isTvDevice && !keepOrientation) selectedGroup else null
         val tvVisibleSearch = if (isTvDevice && !keepOrientation) searchQuery else null
         val tvVisibleScrollY = if (isTvDevice && !keepOrientation && ::listContainer.isInitialized)
             (listContainer.parent as? ScrollView)?.scrollY else null
-
         // Save Anime Series progress before the player is stopped or released.
         saveAnimeResumePosition(player, currentChannel)
         // When changing channels, do not briefly unlock orientation: Android may
@@ -4826,6 +7609,7 @@ class MainActivity : AppCompatActivity() {
         }
         playbackRetryHandler.removeCallbacksAndMessages(null)
         player?.stop()
+        pipPlaybackActionHandler = null
         playerView?.player = null
         // Release codec, audio and renderer resources as soon as playback is closed.
         player?.release()
@@ -4852,9 +7636,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (::listContainer.isInitialized) {
                 (listContainer.parent as? ScrollView)?.post {
-                    (listContainer.parent as? ScrollView)?.scrollTo(
-                        0, tvVisibleScrollY ?: playbackReturnScrollY
-                    )
+                    (listContainer.parent as? ScrollView)?.scrollTo(0, tvVisibleScrollY ?: playbackReturnScrollY)
                 }
             }
         }
@@ -4910,16 +7692,34 @@ class MainActivity : AppCompatActivity() {
         val canEnterFloatingWindow = prefs.getBoolean("floating_window_enabled", true) &&
             playerView != null && player?.isPlaying == true && hasVideo
 
-        var width = videoSize?.width ?: 0
-        var height = videoSize?.height ?: 0
-        if (videoSize?.unappliedRotationDegrees == 90 || videoSize?.unappliedRotationDegrees == 270) {
-            val swap = width; width = height; height = swap
-        }
-        val ratio = if (width > 0 && height > 0) (width.toFloat() / height).coerceIn(0.5f, 2.39f) else (16f / 9f)
+        // Use one standard 16:9 PiP window for every playback section/provider.
+        // Do not let a source's encoded aspect ratio change the floating-window size.
         // PiP entry is enabled only for active video playback, never audio-only,
         // paused, stopped, or empty-player states.
         val builder = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational((ratio * 1000).toInt(), 1000))
+            .setAspectRatio(Rational(16, 9))
+        if (playerView != null && player != null) {
+            // Use playWhenReady for the action state so PiP does not
+            // incorrectly switch to Resume during a short rebuffer.
+            val isPlaying = player?.playWhenReady == true
+            fun pipAction(action: String, requestCode: Int, iconRes: Int, label: String): RemoteAction {
+                val actionIntent = Intent(this, PipPlaybackActionReceiver::class.java).setAction(action)
+                val pendingAction = PendingIntent.getBroadcast(
+                    this, requestCode, actionIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                return RemoteAction(Icon.createWithResource(this, iconRes), label, label, pendingAction)
+            }
+            builder.setActions(listOf(
+                pipAction(ACTION_PIP_SEEK_BACK, 7102, android.R.drawable.ic_media_rew, "Back 10 seconds"),
+                pipAction(
+                    ACTION_PIP_TOGGLE_PLAYBACK, 7101,
+                    if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                    if (isPlaying) "Pause" else "Play"
+                ),
+                pipAction(ACTION_PIP_SEEK_FORWARD, 7103, android.R.drawable.ic_media_ff, "Forward 10 seconds")
+            ))
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Always update this flag, including false, so a previous video
             // cannot leave stale auto-enter enabled after pause/stop.
@@ -5051,6 +7851,11 @@ class MainActivity : AppCompatActivity() {
     private var lastBackPressedAt = 0L
 
     companion object {
+        @Volatile private var pipPlaybackActionHandler: ((String) -> Unit)? = null
+
+        internal fun dispatchPipPlaybackAction(action: String) {
+            pipPlaybackActionHandler?.invoke(action)
+        }
     }
 
     private fun currentNavigationSnapshot() = NavigationSnapshot(
@@ -5072,10 +7877,15 @@ class MainActivity : AppCompatActivity() {
         searchQuery = previous.searchQuery
         liveTvSelectedGroup = previous.liveTvSelectedGroup
         liveTvSearchQuery = previous.liveTvSearchQuery
-        playbackReturnSection = previous.section
-        playbackReturnGroup = previous.selectedGroup
-        playbackReturnSearch = previous.searchQuery
-        playbackReturnScrollY = previous.scrollY
+        // While a video is active, keep its original return point unchanged.
+        // Back may temporarily visit Settings or another tab, but closing the player
+        // must still restore the exact section/category where playback began.
+        if (playerView == null) {
+            playbackReturnSection = previous.section
+            playbackReturnGroup = previous.selectedGroup
+            playbackReturnSearch = previous.searchQuery
+            playbackReturnScrollY = previous.scrollY
+        }
         prefs.edit()
             .putString("ui_section", section)
             .putString("ui_group", selectedGroup)
@@ -5125,87 +7935,113 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // On Android TV, one Back press closes playback from every section
-        // (Live TV, Movies, Anime, Checker or Settings) and restores the menu.
-        // Starting a stream already enters fullscreen; Back must not minimize it.
-        if (isTvDevice && playerView != null) {
-            closePlayer()
-            lastBackPressedAt = 0L
-            return
-        }
-
-        // Keep the existing touch-device Back behavior unchanged.
+        // First Back from fullscreen (or a downward swipe) changes only the
+        // presentation to FIT. The same player and playback position remain active.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
             lastBackPressedAt = 0L
             return
         }
 
+        // Movie details are the deepest Movies page. Restore the exact provider/
+        // category page first; the player stays attached and keeps its position.
+        if (section == "Movies" && movieDetailsParentView != null) {
+            restoreMovieDetailsParent()
+            lastBackPressedAt = 0L
+            return
+        }
+
+        // Embedded browser/provider navigation is deeper than the app-level stack.
         if (section == "Movies" && moviesWebView?.canGoBack() == true) {
             moviesWebView?.goBack()
             lastBackPressedAt = 0L
             return
         }
-
-        // AniLight owns its own catalogue/detail navigation. Keep Back inside
-        // Anime Series until its home screen is reached; only then switch to Live TV.
         if (section == "Series") {
+            if (animeExternalPageActive) {
+                restoreAnimeExternalPage()
+                lastBackPressedAt = 0L
+                return
+            }
+            if (cloudStreamProviderScreen?.handleBack() == true) {
+                lastBackPressedAt = 0L
+                return
+            }
+            if (cloudStreamProviderScreen != null) {
+                cloudStreamProviderScreen = null
+                cloudStreamProviderView = null
+                contentArea.removeAllViews()
+                attachAniLightNativeView()
+                lastBackPressedAt = 0L
+                return
+            }
             if (aniLightNativeScreen?.handleBack() == true) {
                 lastBackPressedAt = 0L
                 return
             }
-            returnToLiveTvHome(keepPlayback = playerView != null && player != null)
+        }
+
+        // Settings without a running video always returns to the Live TV home.
+        // With playback active, the navigation snapshot below returns to the
+        // exact option/page from which the video was started.
+        if (section == "Settings" && playerView == null) {
+            returnToLiveTvHome(keepPlayback = false)
             return
         }
 
-        // Live TV Back flow is deliberately isolated from Movies and Anime Series.
-        // First Back from fullscreen is handled above and only changes the player to FIT.
-        // While inline, unwind one navigation-history page at a time without touching playback.
-        if (section == "Live TV" && playerView != null) {
-            if (navigationHistory.isNotEmpty()) {
-                lastBackPressedAt = 0L
-                restorePreviousNavigation()
-            } else if (selectedGroup != "Select category" || searchQuery.isNotEmpty()) {
-                // Once history is exhausted, show the Live TV category directory and keep video alive.
-                returnToLiveTvHome(keepPlayback = true)
-            } else {
-                // At the category directory, this Back closes only the player.
-                // The next two Back presses can then exit the app.
-                closePlayer()
-                lastBackPressedAt = 0L
-            }
-            return
-        }
-
-        if (playerView != null) {
-            // With playback active, every non-Live-TV section also unwinds its
-            // own page history first. Never stop the video just because the user
-            // presses Back from Settings or another menu.
-            if (navigationHistory.isNotEmpty()) {
-                lastBackPressedAt = 0L
-                restorePreviousNavigation()
-            } else {
-                // The final destination before app exit is always the Live TV
-                // category directory; keep the current stream running there.
-                returnToLiveTvHome(keepPlayback = true)
-            }
-            return
-        }
-
-        // Settings, Checker, Series and other pages unwind one screen at a time.
-        // Once their history is exhausted, return to the Live TV home before exit.
+        // Preserve every section/category transition in order. In particular,
+        // do not discard the previous section when Settings or another tab opens.
+        // If playback is active and we are already back at its origin, only unwind
+        // pages within that same option; never jump to an older unrelated tab.
         if (navigationHistory.isNotEmpty()) {
+            val previous = navigationHistory.peekLast()
+            val atPlaybackOrigin = playerView != null && section == playbackReturnSection
+            if (!atPlaybackOrigin || previous.section == section) {
+                lastBackPressedAt = 0L
+                restorePreviousNavigation()
+                return
+            }
+        }
+
+        // At the original option's home, the next Back closes only the video.
+        // Keep the current home page visible and do not navigate to Live TV.
+        if (playerView != null && section == playbackReturnSection) {
+            closePlayer()
             lastBackPressedAt = 0L
-            restorePreviousNavigation()
             return
         }
 
-        if (section != "Live TV" || selectedGroup != "Select category" || searchQuery.isNotEmpty()) {
-            returnToLiveTvHome()
+        // If a video is active on a temporary tab but its history is unavailable,
+        // restore the original playback location without stopping the video.
+        if (playerView != null) {
+            section = playbackReturnSection
+            selectedGroup = playbackReturnGroup
+            searchQuery = playbackReturnSearch
+            if (section == "Live TV") {
+                liveTvSelectedGroup = selectedGroup
+                liveTvSearchQuery = searchQuery
+            }
+            restoringNavigation = true
+            renderHome()
+            if (::listContainer.isInitialized) {
+                (listContainer.parent as? ScrollView)?.post {
+                    (listContainer.parent as? ScrollView)?.scrollTo(0, playbackReturnScrollY)
+                }
+            }
+            lastBackPressedAt = 0L
             return
         }
 
-        // Only the Live TV home can be exited, using two consecutive Back presses.
+        // Without playback, Back from another main option returns to Live TV home.
+        if (section != "Live TV" ||
+            selectedGroup != "Select category" ||
+            searchQuery.isNotEmpty()
+        ) {
+            returnToLiveTvHome(keepPlayback = false)
+            return
+        }
+
+        // At Live TV home, two consecutive Back presses exit the app.
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastBackPressedAt in 1..2000L) {
             lastBackPressedAt = 0L
@@ -5280,6 +8116,7 @@ class MainActivity : AppCompatActivity() {
         moviesWebView = null
         player?.release(); player = null
         logoExecutor.shutdownNow()
+        if (CommonActivity.activity === this) CommonActivity.setActivityInstance(null)
         super.onDestroy()
     }
 
@@ -5319,7 +8156,7 @@ class MainActivity : AppCompatActivity() {
         background = glass(30)
     }
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value; textSize = size.toFloat(); setTextColor(color)
+        text = value; textSize = (size * if (isTvDevice) 1.15f else 1f); setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
     private fun premiumBackdrop() = GradientDrawable(
@@ -5328,36 +8165,18 @@ class MainActivity : AppCompatActivity() {
         else intArrayOf(Color.BLACK, Color.BLACK, Color.BLACK)
     )
 
-    // Shared translucent glass surface used by menu cards, controls, pills and icon buttons.
-    // Native Android View backgrounds cannot blur arbitrary sibling content on every API level,
-    // so use layered alpha gradients, a bright top edge and a soft tinted outline for a consistent glass look.
-    // Shared translucent glass surface used by menu cards, controls, pills and icon buttons.
-    // Native Android View backgrounds cannot blur arbitrary sibling content on every API level,
-    // so use layered alpha gradients, a bright top edge and a soft tinted outline for a consistent glass look.
-    private fun glass(radius: Int) = GradientDrawable(
-        GradientDrawable.Orientation.TL_BR,
-        if (isLight) intArrayOf(
-            Color.argb(205, 255, 255, 255),
-            Color.argb(168, 232, 242, 255),
-            Color.argb(188, 255, 255, 255)
-        ) else intArrayOf(
-            Color.argb(178, 35, 58, 88),
-            Color.argb(148, 12, 25, 46),
-            Color.argb(172, 32, 43, 75)
-        )
-    ).apply {
-        cornerRadius = dp(radius).toFloat()
-        setStroke(
-            dp(1),
-            if (isLight) Color.argb(210, 255, 255, 255)
-            else Color.argb(185, 145, 195, 255)
-        )
-    }
+    // Shared Liquid Glass material used across Home, Live TV, Sports, Settings and player controls.
+    private fun glass(radius: Int) =
+        SanyLiquidGlass.background(this, radius, isLight, accent)
+
+    private fun glassWithoutTopStroke(radius: Int) =
+        SanyLiquidGlass.background(this, radius, isLight, accent, topRim = false)
+
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
     private fun dp(v: Int): Int {
-        // Use native Android density scaling; avoid an extra 15% TV oversize factor.
-        return (v * resources.displayMetrics.density).toInt()
+        val tvScale = if (isTvDevice) 1.15f else 1f
+        return (v * resources.displayMetrics.density * tvScale).toInt()
     }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "extensions": [
+    {
+      "id": "playztvprovider",
+      "name": "PlayZTVProvider",
+      "version": "49",
+      "description": "Watch Live TV channels & sports via PlayZTV",
+      "packageUrl": "https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/builds/PlayZTVProvider.cs3",
+      "sha256": "8541a6dbf0c8fdd6dbf698548e85a856cdd11be27d99db0ee3a1ccda5f4226b5"
+    }
+  ]
+}
