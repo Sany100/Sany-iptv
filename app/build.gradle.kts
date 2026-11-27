@@ -60,6 +60,9 @@ android {
     }
 
     sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
+    // Keep the app entrypoint and UI implementation physically separate per APK.
+    sourceSets.getByName("mobile").java.srcDir("src/mobile/java")
+    sourceSets.getByName("tv").java.srcDir("src/tv/java")
     sourceSets.getByName("main").assets.srcDir(playZtvAssetsDir.get().asFile)
 
     defaultConfig {
