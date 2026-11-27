@@ -1,11 +1,11 @@
-name: Main Branch APK Validation Build
+name: SANY IPTV Phone Auto Release
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release-compatible:
@@ -37,7 +37,7 @@ jobs:
           echo "SANY_KEYSTORE_PATH=$RUNNER_TEMP/sany-release.jks" >> "$GITHUB_ENV"
       - name: Pin CloudStream Android SDK to installed platform
         run: sed -i 's/^compileSdk = "37"$/compileSdk = "36"/' cloudstream-upstream/gradle/libs.versions.toml
-      - name: Build production-signed APK without publishing a release
+      - name: Build production-signed Phone APK
         env:
           SANY_KEYSTORE_PASSWORD: ${{ secrets.SANY_RELEASE_STORE_PASSWORD }}
           SANY_KEY_ALIAS: ${{ secrets.SANY_RELEASE_KEY_ALIAS }}
@@ -52,3 +52,16 @@ jobs:
           name: sany-iptv-1.2.452-production-signed
           path: app/build/outputs/apk/mobile/release/app-mobile-release.apk
           retention-days: 14
+
+      - name: Publish Phone APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sany-iptv-phone-v1.2.452-${{ github.run_number }}
+          name: SANY IPTV Phone 1.2.452 (Build ${{ github.run_number }})
+          body: |
+            SANY IPTV Android Phone app.
+            Built automatically from the main branch after a successful production-signed build.
+            Package: com.sany.iptv
+          files: app/build/outputs/apk/mobile/release/app-mobile-release.apk
+          draft: false
+          prerelease: false
