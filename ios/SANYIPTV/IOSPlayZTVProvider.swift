@@ -1,8 +1,23 @@
 import Foundation
 import CommonCrypto
 
-struct IOSPlayZTVCategory: Decodable {
+struct IOSPlayZTVCategory {
+    let name: String
+    let api: String
+    let type: String
+    let logo: String?
+}
+
+private struct IOSPlayZTVCategoryWrapper: Decodable {
     let cat: String
+}
+
+private struct IOSPlayZTVCategoryData: Decodable {
+    let visible: Bool?
+    let name: String
+    let logo: String?
+    let type: String?
+    let api: String
 }
 
 final class IOSPlayZTVProvider {
@@ -38,14 +53,28 @@ final class IOSPlayZTVProvider {
                             completion(.failure(ProviderError.invalidPayload)); return
                         }
                         do {
-                            var categoryPaths = try JSONDecoder().decode([IOSPlayZTVCategory].self, from: data)
-                                .map { $0.cat.trimmingCharacters(in: .whitespacesAndNewlines) }
-                                .filter { !$0.isEmpty }
+                            let wrappers = try JSONDecoder().decode([IOSPlayZTVCategoryWrapper].self, from: data)
+                            var categories = wrappers.compactMap { wrapper -> IOSPlayZTVCategory? in
+                                guard let categoryData = wrapper.cat.data(using: .utf8),
+                                      let category = try? JSONDecoder().decode(IOSPlayZTVCategoryData.self, from: categoryData),
+                                      category.visible != false else { return nil }
+                                let name = category.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let api = category.api.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !name.isEmpty, !api.isEmpty else { return nil }
+                                return IOSPlayZTVCategory(
+                                    name: name,
+                                    api: api,
+                                    type: category.type?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "custom",
+                                    logo: category.logo
+                                )
+                            }
                             // Android PlayZTVProviderManager.fetchLiveEvents() reads this fixed endpoint.
-                            categoryPaths.append("events.txt")
+                            if !categories.contains(where: { $0.api == "events.txt" }) {
+                                categories.append(IOSPlayZTVCategory(name: "Live Events", api: "events.txt", type: "events", logo: nil))
+                            }
                             var seen = Set<String>()
-                            let uniquePaths = categoryPaths.filter { seen.insert($0).inserted }
-                            completion(.success(uniquePaths))
+                            categories = categories.filter { seen.insert($0.api).inserted }
+                            completion(.success(categories))
                         } catch { completion(.failure(error)) }
                     }
                 }
