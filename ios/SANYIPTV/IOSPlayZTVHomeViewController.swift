@@ -151,27 +151,61 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
 
     private static func extractItems(_ payload: String) -> [IOSPlayZTVItem] {
         guard let data = payload.data(using: .utf8) else { return [] }
-        if let text = String(data: data, encoding: .utf8), text.hasPrefix("#EXTM3U") {
-            return parseM3U(text)
+        if payload.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("#EXTM3U") {
+            return parseM3U(payload)
         }
-        guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
-        var dictionaries = [[String: Any]]()
+        guard let root = try? JSONSerialization.jsonObject(with: data) else { return [] }
+        var items = [IOSPlayZTVItem]()
+        var seen = Set<String>()
+
+        func addChannel(_ dictionary: [String: Any]) {
+            if let visible = dictionary["visible"] as? Bool, !visible { return }
+            let title = (dictionary["name"] as? String)
+                ?? (dictionary["title"] as? String)
+                ?? (dictionary["eventName"] as? String)
+            guard let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+            var rawLinks = [String]()
+            if let links = dictionary["links"] as? String {
+                rawLinks = links.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            } else if let links = dictionary["links"] as? [String] {
+                rawLinks = links
+            } else {
+                for key in ["link", "url"] {
+                    if let value = dictionary[key] as? String { rawLinks.append(value) }
+                }
+            }
+            let urls = rawLinks.compactMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                .filter { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }
+            guard !urls.isEmpty else { return }
+            let identity = title + "|" + urls.map(\.absoluteString).joined(separator: ",")
+            guard seen.insert(identity).inserted else { return }
+            items.append(IOSPlayZTVItem(title: title, links: urls))
+        }
+
         func walk(_ value: Any) {
-            if let array = value as? [Any] { array.forEach(walk); return }
-            if let dict = value as? [String: Any] {
-                dictionaries.append(dict)
-                dict.values.forEach(walk)
+            if let array = value as? [Any] {
+                array.forEach(walk)
+                return
+            }
+            guard let dictionary = value as? [String: Any] else { return }
+            addChannel(dictionary)
+
+            // PlayZTV category files wrap each channel as {"channel":"{...}"}.
+            for key in ["channel", "event"] {
+                if let nested = dictionary[key] as? String,
+                   let nestedData = nested.data(using: .utf8),
+                   let decoded = try? JSONSerialization.jsonObject(with: nestedData) {
+                    walk(decoded)
+                }
+            }
+            for (key, nested) in dictionary where key != "channel" && key != "event" {
+                if nested is [Any] || nested is [String: Any] { walk(nested) }
             }
         }
-        walk(object)
-        return dictionaries.compactMap { dict in
-            guard let title = (dict["name"] as? String) ?? (dict["title"] as? String) else { return nil }
-            let raw = (dict["links"] as? String) ?? (dict["link"] as? String) ?? (dict["url"] as? String) ?? ""
-            let urls = raw.split(separator: ",").compactMap { URL(string: String($0).trimmingCharacters(in: .whitespacesAndNewlines)) }
-                .filter { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }
-            guard !urls.isEmpty else { return nil }
-            return IOSPlayZTVItem(title: title, links: urls)
-        }
+
+        walk(root)
+        return items
     }
 
     private static func parseM3U(_ text: String) -> [IOSPlayZTVItem] {
