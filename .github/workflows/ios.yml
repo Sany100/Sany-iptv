@@ -27,6 +27,7 @@ jobs:
             -project ios/SANYIPTV.xcodeproj \
             -scheme SANYIPTV \
             -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             -derivedDataPath ios/build \
             CODE_SIGNING_ALLOWED=NO \
