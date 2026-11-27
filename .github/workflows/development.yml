@@ -46,7 +46,7 @@ jobs:
           test -n "$SANY_KEYSTORE_PASSWORD" || (echo "Missing production store password" && exit 1)
           test -n "$SANY_KEY_ALIAS" || (echo "Missing production key alias" && exit 1)
           test -n "$SANY_KEY_PASSWORD" || (echo "Missing production key password" && exit 1)
-          gradle assembleRelease -PAPP_VERSION_NAME="1.2.452" -PAPP_VERSION_CODE="452000"
+          gradle :app:assembleRelease -PAPP_VERSION_NAME="1.2.452" -PAPP_VERSION_CODE="452000"
       - uses: actions/upload-artifact@v4
         with:
           name: sany-iptv-1.2.452-production-signed
