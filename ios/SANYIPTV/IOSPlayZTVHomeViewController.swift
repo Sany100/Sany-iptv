@@ -1,9 +1,14 @@
 import UIKit
 import AVKit
 
+private struct IOSPlayZTVStreamSource {
+    let url: URL
+    let headers: [String: String]
+}
+
 private struct IOSPlayZTVItem {
     let title: String
-    let links: [URL]
+    let links: [IOSPlayZTVStreamSource]
 }
 
 final class IOSPlayZTVHomeViewController: UITableViewController {
@@ -130,7 +135,7 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
         tableView.deselectRow(at: indexPath, animated: true)
         guard items.indices.contains(indexPath.row) else { return }
         let item = items[indexPath.row]
-        guard let url = item.links.first else { return }
+        guard let source = item.links.first else { return }
         if item.links.count > 1 {
             let alert = UIAlertController(title: item.title, message: "Choose a stream source", preferredStyle: .actionSheet)
             for (index, link) in item.links.enumerated() {
@@ -139,14 +144,46 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
             if let popover = alert.popoverPresentationController { popover.sourceView = tableView; popover.sourceRect = tableView.rectForRow(at: indexPath) }
             present(alert, animated: true)
-        } else { play(url, title: item.title) }
+        } else { play(source, title: item.title) }
     }
 
-    private func play(_ url: URL, title: String) {
+    private func play(_ source: IOSPlayZTVStreamSource, title: String) {
         let player = AVPlayerViewController()
-        player.player = AVPlayer(url: url)
+        var options: [String: Any] = [:]
+        if !source.headers.isEmpty {
+            options["AVURLAssetHTTPHeaderFieldsKey"] = source.headers
+        }
+        let asset = AVURLAsset(url: source.url, options: options)
+        player.player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
         player.title = title
         present(player, animated: true) { player.player?.play() }
+    }
+
+    private static func makeStreamSource(_ raw: String) -> IOSPlayZTVStreamSource? {
+        let parts = raw.components(separatedBy: "|")
+        let address = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let url = URL(string: address),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
+
+        var headers = [String: String]()
+        if parts.count > 1 {
+            for pair in parts[1].split(separator: "&", omittingEmptySubsequences: false) {
+                let values = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                guard values.count == 2 else { continue }
+                let key = String(values[0]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawValue = String(values[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !key.isEmpty else { continue }
+                let value = rawValue.removingPercentEncoding ?? rawValue
+                switch key.lowercased() {
+                case "user-agent": headers["User-Agent"] = value
+                case "referer": headers["Referer"] = value
+                case "origin": headers["Origin"] = value
+                case "cookie": headers["Cookie"] = value
+                default: headers[key] = value
+                }
+            }
+        }
+        return IOSPlayZTVStreamSource(url: url, headers: headers)
     }
 
     private static func extractItems(_ payload: String) -> [IOSPlayZTVItem] {
@@ -175,12 +212,11 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
                     if let value = dictionary[key] as? String { rawLinks.append(value) }
                 }
             }
-            let urls = rawLinks.compactMap { URL(string: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                .filter { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }
-            guard !urls.isEmpty else { return }
-            let identity = title + "|" + urls.map(\.absoluteString).joined(separator: ",")
+            let sources = rawLinks.compactMap(Self.makeStreamSource)
+            guard !sources.isEmpty else { return }
+            let identity = title + "|" + sources.map { $0.url.absoluteString }.joined(separator: ",")
             guard seen.insert(identity).inserted else { return }
-            items.append(IOSPlayZTVItem(title: title, links: urls))
+            items.append(IOSPlayZTVItem(title: title, links: sources))
         }
 
         func walk(_ value: Any) {
@@ -214,8 +250,9 @@ private final class IOSPlayZTVCategoryViewController: UITableViewController {
         for line in text.components(separatedBy: .newlines).map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }) {
             if line.hasPrefix("#EXTINF:") {
                 title = line.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces)
-            } else if !line.isEmpty, !line.hasPrefix("#"), let name = title, let url = URL(string: line), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-                result.append(IOSPlayZTVItem(title: name, links: [url]))
+            } else if !line.isEmpty, !line.hasPrefix("#"), let name = title,
+                      let source = makeStreamSource(line) {
+                result.append(IOSPlayZTVItem(title: name, links: [source]))
                 title = nil
             }
         }
