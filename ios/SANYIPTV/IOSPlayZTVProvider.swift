@@ -38,7 +38,7 @@ final class IOSPlayZTVProvider {
         session = URLSession(configuration: config)
     }
 
-    func loadCategories(completion: @escaping (Result<[String], Error>) -> Void) {
+    func loadCategories(completion: @escaping (Result<[IOSPlayZTVCategory], Error>) -> Void) {
         resolveBaseURL { [weak self] result in
             guard let self else { return }
             switch result {
