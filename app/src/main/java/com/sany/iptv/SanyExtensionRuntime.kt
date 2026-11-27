@@ -1,6 +1,7 @@
 package com.sany.iptv
 
 import android.content.Context
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -28,6 +29,39 @@ data class SanyVideoSource(
     val language: String = "Unknown",
     val headers: Map<String, String> = emptyMap(),
     val subtitles: List<String> = emptyList()
+)
+
+/** Subtitle metadata passed across the provider-to-Media3 boundary. */
+data class SanySubtitleTrack(
+    val url: String,
+    val language: String = "und",
+    val mimeType: String? = null,
+    val label: String? = null,
+    val headers: Map<String, String> = emptyMap()
+)
+
+/** Separate audio rendition supplied by a CloudStream extractor. */
+data class SanyAudioTrack(
+    val url: String,
+    val label: String = "External audio",
+    val language: String = "und",
+    val headers: Map<String, String> = emptyMap()
+)
+
+/**
+ * Provider-neutral playback request. CloudStream model classes must be converted
+ * to this DTO before reaching the SANY app/player layer.
+ */
+data class SanyPlaybackRequest(
+    val title: String,
+    val url: String,
+    val provider: String = "Extension",
+    val streamMimeType: String? = null,
+    val quality: String? = null,
+    val audioLanguage: String? = null,
+    val headers: Map<String, String> = emptyMap(),
+    val subtitles: List<SanySubtitleTrack> = emptyList(),
+    val audioTracks: List<SanyAudioTrack> = emptyList()
 )
 
 interface SanyExtensionProvider {
@@ -80,6 +114,11 @@ data class CloudStreamInstalledPackage(
     val sha256: String
 )
 
+data class CloudStreamAutoSyncReport(
+    val packages: List<File>,
+    val failures: List<String>
+)
+
 data class CloudStreamHostCompatibility(
     val compatible: Boolean,
     val missingClasses: List<String>,
@@ -118,7 +157,7 @@ object SanyExtensionRepositories {
     fun fetchCatalog(context: Context): List<Pair<String, List<CloudStreamPluginInfo>>> {
         val result = mutableListOf<Pair<String, List<CloudStreamPluginInfo>>>()
         for (repoUrl in all(context)) {
-            val manifest = runCatching { JSONObject(readHttps(repoUrl, MAX_JSON_BYTES)) }.getOrNull() ?: continue
+            val manifest = runCatching { JSONObject(readHttps(context, repoUrl, MAX_JSON_BYTES)) }.getOrNull() ?: continue
             val manifestVersion = manifest.optInt("manifestVersion", 1)
             if (manifestVersion > SUPPORTED_REPOSITORY_MANIFEST) continue
             val repoName = manifest.optString("name").ifBlank { URL(repoUrl).host }
@@ -126,7 +165,7 @@ object SanyExtensionRepositories {
             val plugins = mutableListOf<CloudStreamPluginInfo>()
             for (i in 0 until pluginLists.length()) {
                 val listUrl = resolveHttps(repoUrl, pluginLists.optString(i)) ?: continue
-                val array = runCatching { JSONArray(readHttps(listUrl, MAX_JSON_BYTES)) }.getOrNull() ?: continue
+                val array = runCatching { JSONArray(readHttps(context, listUrl, MAX_JSON_BYTES)) }.getOrNull() ?: continue
                 for (j in 0 until array.length()) {
                     val item = array.optJSONObject(j) ?: continue
                     val download = resolveHttps(listUrl, item.optString("url")) ?: continue
@@ -157,10 +196,108 @@ object SanyExtensionRepositories {
     }
 
     /**
-     * Downloads and verifies a CloudStream .cs3 ZIP package. The package is kept
-     * in app-private storage. This method deliberately does NOT execute its DEX:
-     * CloudStream's MainAPI/BasePlugin ABI and app services are not yet embedded
-     * in SANY, so attempting to load it would cause linkage errors or crashes.
+     * Fetches the official SANY AniLight index and installs/updates its .cs3 package.
+     * The index and package are pinned to this repository's builds branch; no file picker
+     * or user-supplied repository is required for the built-in AniLight provider.
+     */
+    /**
+     * Synchronizes the built-in Anime provider set from SANY's pinned builds index.
+     * Only explicitly allowlisted providers and SANY-owned package URLs are accepted.
+     * Each package must carry a SHA-256 hash and is independently validated.
+     */
+    @Synchronized
+    fun syncOfficialAnimePlugins(context: Context): CloudStreamAutoSyncReport {
+        // Anime Series now uses only the curated Bangla/Hindi provider set below.
+        // Remove legacy Anime packages shipped by the old SANY builds index, but
+        // leave Movie/TV packages and unrelated user-installed extensions untouched.
+        val legacyIndexUrl = "https://raw.githubusercontent.com/Sany100/Sany-iptv/builds/plugins.json"
+        val curatedNames = setOf("Animedubhindi", "Animesalt", "Cinefreak")
+        val packages = mutableListOf<File>()
+        val failures = mutableListOf<String>()
+        val legacyAnimeNames = runCatching {
+            val index = JSONArray(readHttps(context, legacyIndexUrl, MAX_JSON_BYTES))
+            (0 until index.length()).mapNotNull { index.optJSONObject(it) }
+                .filter { item ->
+                    val types = item.optJSONArray("tvTypes")
+                    types != null && (0 until types.length()).any { i ->
+                        types.optString(i).equals("Anime", true) ||
+                            types.optString(i).equals("AnimeMovie", true) ||
+                            types.optString(i).equals("OVA", true)
+                    }
+                }
+                .map { it.optString("internalName") }
+                .filter { it.matches(Regex("[A-Za-z0-9_.-]{1,100}")) }
+                .toSet()
+        }.getOrElse { error ->
+            failures += "Legacy Anime cleanup index: ${error.message ?: error.javaClass.simpleName}"
+            emptySet()
+        }
+        (legacyAnimeNames - curatedNames).forEach { oldName ->
+            if (!removeInstalledPackage(context, "$oldName.cs3")) {
+                failures += "$oldName: could not remove legacy Anime package"
+            }
+        }
+
+        val phisherRepo = "https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json"
+        add(context, phisherRepo)
+        try {
+            val curatedPlugins = fetchCatalog(context)
+                .flatMap { (repoName, plugins) -> plugins.map { repoName to it } }
+                .filter { (_, plugin) ->
+                    plugin.internalName in curatedNames &&
+                        plugin.status != 0 &&
+                        plugin.apiVersion <= SUPPORTED_PLUGIN_API &&
+                        plugin.tvTypes.any {
+                            it.equals("Anime", true) ||
+                                it.equals("AnimeMovie", true) ||
+                                it.equals("OVA", true)
+                        } &&
+                        !plugin.fileHash.isNullOrBlank()
+                }
+                .distinctBy { it.second.internalName }
+            for ((repoName, plugin) in curatedPlugins) {
+                try {
+                    val expectedLanguage = when (plugin.internalName) {
+                        "Cinefreak" -> "bn"
+                        else -> "hi"
+                    }
+                    require(plugin.language.equals(expectedLanguage, ignoreCase = true)) {
+                        "${plugin.internalName}: repository language metadata is not $expectedLanguage"
+                    }
+                    val expectedDigest = plugin.fileHash!!.removePrefix("sha256-").lowercase()
+                    val existing = installedPackages(context).firstOrNull { it.name == "${plugin.internalName}.cs3" }
+                    val installed = if (existing != null &&
+                        sha256(existing).equals(expectedDigest, ignoreCase = true) &&
+                        validatePackage(existing).version == plugin.version
+                    ) existing else downloadAndValidate(context, plugin).file
+                    packages += installed
+                    Log.i("SANY-AnimeRepo", "Verified ${plugin.internalName} from $repoName")
+                } catch (error: Throwable) {
+                    failures += "${plugin.internalName}: ${error.message ?: error.javaClass.simpleName}"
+                }
+            }
+            val foundNames = curatedPlugins.map { it.second.internalName }.toSet()
+            (curatedNames - foundNames).forEach { missing ->
+                failures += "$missing: not present in the current curated repository catalogue"
+            }
+        } catch (error: Throwable) {
+            failures += "Phisher Anime repository: ${error.message ?: error.javaClass.simpleName}"
+        }
+        return CloudStreamAutoSyncReport(packages.distinctBy { it.name }, failures)
+    }
+
+    @Synchronized
+    fun syncOfficialAniLight(context: Context): File {
+        val report = syncOfficialAnimePlugins(context)
+        return report.packages.firstOrNull { it.name == "AniLight.cs3" }
+            ?: error(report.failures.firstOrNull { it.startsWith("AniLight:") }
+                ?: "AniLight was not synchronized")
+    }
+
+    /**
+     * Downloads and verifies a CloudStream .cs3 ZIP package in app-private storage.
+     * DEX execution is a separate, explicit step handled by SanyCloudStreamPluginRuntime
+     * after validation; this method itself never executes plugin code.
      */
     fun downloadAndValidate(context: Context, plugin: CloudStreamPluginInfo): CloudStreamInstalledPackage {
         require(plugin.status != 0) { "This provider is marked offline by its repository" }
@@ -178,7 +315,7 @@ object SanyExtensionRepositories {
         val destination = File(root, "${plugin.internalName}.cs3")
         val temporary = File(root, "${plugin.internalName}.download")
         try {
-            downloadHttps(plugin.downloadUrl, temporary)
+            downloadHttps(context, plugin.downloadUrl, temporary)
             require(temporary.length() in 1..MAX_PLUGIN_BYTES) { "Invalid plugin file size" }
             if (plugin.fileSize != null) require(temporary.length() == plugin.fileSize) {
                 "Plugin file size does not match repository metadata"
@@ -242,11 +379,10 @@ object SanyExtensionRepositories {
     }
 
     fun runtimeNotice(): String =
-        "Repository discovery, package download, SHA-256 verification and .cs3 manifest/DEX validation are supported. " +
-        "SANY currently supports repository discovery and verified .cs3 downloads only. The host API diagnostic " +
-        "checks for core CloudStream ABI classes, but does not execute plugin DEX. Full compatibility still needs " +
-        "the matching MainAPI/BasePlugin ABI, extractor services, HTTP/runtime dependencies and lifecycle. " +
-        "CloudStream plugins are trusted executable code and must not be loaded from unknown repositories."
+        "SANY embeds the pinned CloudStream library ABI and an AniLight-compatible Android Plugin host. " +
+        "Verified .cs3 packages can be executed through the DEX runtime and register MainAPI providers. " +
+        "This is not the complete CloudStream app PluginManager: VideoClickAction integrations and arbitrary " +
+        "app-specific plugin services are not supported. Only install trusted plugin packages."
 
     private fun validatePackage(file: File): CloudStreamPluginManifest {
         ZipFile(file).use { zip ->
@@ -298,40 +434,11 @@ object SanyExtensionRepositories {
         return normalizeHttpsUrl(runCatching { URL(java.net.URI(base).resolve(raw).toString()).toString() }.getOrDefault(raw))
     }
 
-    private fun openHttps(startUrl: String, maxRedirects: Int = 4): HttpURLConnection {
-        var current = normalizeHttpsUrl(startUrl) ?: error("Only HTTPS URLs are allowed")
-        repeat(maxRedirects + 1) { index ->
-            val connection = (URL(current).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8000
-                readTimeout = 15000
-                instanceFollowRedirects = false
-                setRequestProperty("User-Agent", "SANY-IPTV-Extensions/1.0")
-                setRequestProperty("Accept", "application/json, application/zip, application/octet-stream")
-            }
-            val code = connection.responseCode
-            if (code in 300..399) {
-                val location = connection.getHeaderField("Location")
-                connection.disconnect()
-                if (index == maxRedirects || location.isNullOrBlank()) error("Invalid repository redirect")
-                current = normalizeHttpsUrl(URL(java.net.URI(current).resolve(location).toString()).toString())
-                    ?: error("Redirect must remain on HTTPS")
-            } else {
-                if (code !in 200..299) {
-                    connection.disconnect()
-                    error("Repository HTTP $code")
-                }
-                return connection
-            }
-        }
-        error("Too many HTTPS redirects")
-    }
-
-    private fun readHttps(url: String, maxBytes: Int): String {
-        val connection = openHttps(url)
-        try {
-            val declared = connection.contentLengthLong
-            if (declared > maxBytes) error("Repository response is too large")
-            return connection.inputStream.use { stream ->
+    private fun readHttps(context: Context, url: String, maxBytes: Int): String {
+        SanyNetworkBypasses.execute(context, url).use { response ->
+            val body = response.body ?: error("Empty repository response")
+            if (body.contentLength() > maxBytes) error("Repository response is too large")
+            body.byteStream().use { stream ->
                 val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8192)
                 var total = 0
@@ -342,19 +449,16 @@ object SanyExtensionRepositories {
                     if (total > maxBytes) error("Repository response is too large")
                     output.write(buffer, 0, count)
                 }
-                output.toString("UTF-8")
+                return output.toString("UTF-8")
             }
-        } finally {
-            connection.disconnect()
         }
     }
 
-    private fun downloadHttps(url: String, destination: File) {
-        val connection = openHttps(url)
-        try {
-            val declared = connection.contentLengthLong
-            if (declared > MAX_PLUGIN_BYTES) error("Plugin package is too large")
-            connection.inputStream.use { input ->
+    private fun downloadHttps(context: Context, url: String, destination: File) {
+        SanyNetworkBypasses.execute(context, url).use { response ->
+            val body = response.body ?: error("Empty plugin response")
+            if (body.contentLength() > MAX_PLUGIN_BYTES) error("Plugin package is too large")
+            body.byteStream().use { input ->
                 destination.outputStream().buffered().use { output ->
                     val buffer = ByteArray(32 * 1024)
                     var total = 0L
@@ -367,8 +471,6 @@ object SanyExtensionRepositories {
                     }
                 }
             }
-        } finally {
-            connection.disconnect()
         }
     }
 }
