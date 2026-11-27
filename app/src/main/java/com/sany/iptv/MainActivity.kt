@@ -3888,7 +3888,7 @@ class MainActivity : AppCompatActivity() {
             renderTvChannelCards(container, filtered)
             return
         }
-        filtered.take(displayedLimit).forEachIndexed { index, channel ->
+        (if (isTvDevice) filtered else filtered.take(displayedLimit)).forEachIndexed { index, channel ->
             val row = LinearLayout(this).apply {
                 isFocusable = true
                 isFocusableInTouchMode = false
@@ -4002,7 +4002,7 @@ class MainActivity : AppCompatActivity() {
             }
             container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
         }
-        if (filtered.size > displayedLimit) {
+        if (!isTvDevice && filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
                 displayedLimit += displayedLimitIncrement
                 renderChannelRows(container)
@@ -4012,7 +4012,7 @@ class MainActivity : AppCompatActivity() {
 
     // Render channel cards in a compact three-column grid on supported grid mode.
     private fun renderTvChannelCards(container: LinearLayout, filtered: List<Channel>) {
-        val visible = filtered.take(displayedLimit)
+        val visible = if (isTvDevice) filtered else filtered.take(displayedLimit)
         visible.chunked(3).forEachIndexed { rowIndex, rowItems ->
             val cardRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -4098,7 +4098,7 @@ class MainActivity : AppCompatActivity() {
                 bottomMargin = dp(if (isTvDevice) 7 else 12)
             })
         }
-        if (filtered.size > displayedLimit) {
+        if (!isTvDevice && filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
                 displayedLimit += displayedLimitIncrement
                 renderChannelRows(container)
@@ -4119,7 +4119,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun filteredChannels(): List<Channel> {
         // Live TV shows only streams positively verified by the Checker.
-        val liveCandidates = if (section == "Live TV" || section == "Live Sports") liveTvVisibleCandidates() else channels
+        val liveCandidates = if (isTvDevice && section == "Live TV") channels else if (section == "Live TV" || section == "Live Sports") liveTvVisibleCandidates() else channels
         return liveCandidates.filter { c ->
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
