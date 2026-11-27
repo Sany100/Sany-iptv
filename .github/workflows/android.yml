@@ -55,12 +55,13 @@ jobs:
           else
             echo "Firebase Analytics not configured; building without analytics."
           fi
-      - name: Build Android TV debug APK
-        run: gradle assembleTvDebug
+      - name: Build Android Phone and Android TV debug APKs
+        run: gradle assembleMobileDebug assembleTvDebug
       - uses: actions/upload-artifact@v4
         with:
           name: sany-iptv-debug-apks
           path: |
+            app/build/outputs/apk/mobile/debug/*.apk
             app/build/outputs/apk/tv/debug/*.apk
 
   # Production releases are deliberately manual-only and main-only.
