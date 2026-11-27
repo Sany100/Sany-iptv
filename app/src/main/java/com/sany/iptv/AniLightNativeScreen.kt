@@ -48,6 +48,7 @@ class AniLightNativeScreen(
     private val onSearchProvider: (providerName: String) -> Unit = {},
     private val onLoadProviderShelves: (onLoaded: (List<SanyProviderShelf>) -> Unit) -> Unit = { it(emptyList()) }
 ) {
+    private val useTvFocus = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
     @Volatile private var api = "https://api.anilight.live/api"
     @Volatile private var site = "https://anilight.live"
     @Volatile private var domainCheckedAt = 0L
@@ -325,6 +326,7 @@ class AniLightNativeScreen(
             background = SanyLiquidGlass.background(context, 18, light, accent)
             setPadding(dp(13), dp(9), dp(13), dp(9))
             isFocusable = true
+                applyTvFocusStyle(this)
             contentDescription = "Search Anime"
             setOnClickListener { openAnimeSearch() }
         })
@@ -398,6 +400,7 @@ class AniLightNativeScreen(
         heading.addView(label("SEE ALL  ›", 11, accent, true).apply {
             setPadding(dp(10), dp(8), dp(8), dp(8))
             isFocusable = true
+                applyTvFocusStyle(this)
             setOnClickListener { openProviderShelfPage(shelf) }
         })
         heading.addView(label("${shelf.items.size}", 10, muted, true))
@@ -427,6 +430,7 @@ class AniLightNativeScreen(
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
+                applyTvFocusStyle(this)
                 background = SanyLiquidGlass.background(context, 12, light, accent)
                 SanyLiquidGlass.elevate(this, context, 4f)
                 setPadding(dp(2), dp(3), dp(2), dp(6))
@@ -543,6 +547,7 @@ class AniLightNativeScreen(
             setBackgroundColor(surface)
             clipToOutline = false
             isFocusable = true
+                applyTvFocusStyle(this)
             setOnClickListener { openAnime(item) }
         }
         val image = ImageView(context).apply {
@@ -603,6 +608,7 @@ class AniLightNativeScreen(
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(8), dp(8), dp(8))
             isFocusable = true
+                applyTvFocusStyle(this)
             contentDescription = "See more $title"
             setOnClickListener { openShelfPage(title, cards, key) }
         }
@@ -631,6 +637,7 @@ class AniLightNativeScreen(
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
+                applyTvFocusStyle(this)
                 SanyLiquidGlass.elevate(this, context, 4f)
                 setOnClickListener { openAnime(item) }
             }
@@ -902,6 +909,7 @@ class AniLightNativeScreen(
             val tile = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 isFocusable = true
+                applyTvFocusStyle(this)
                 setPadding(dp(4), 0, dp(4), dp(10))
                 setOnClickListener { openAnime(item) }
             }
@@ -1077,6 +1085,7 @@ class AniLightNativeScreen(
                 background = SanyLiquidGlass.background(context, 20, light, accent)
                 clipToOutline = true
                 isFocusable = true
+                applyTvFocusStyle(this)
                 setOnClickListener { openAnime(featured) }
             }
             val heroImage = ImageView(context).apply {
@@ -1142,6 +1151,7 @@ class AniLightNativeScreen(
                 background = SanyLiquidGlass.background(context, 14, light, accent)
                 clipToOutline = true
                 isFocusable = true
+                applyTvFocusStyle(this)
                 setOnClickListener { openAnime(item) }
                 applyNowPlayingHighlight(this, item)
             }
@@ -1307,6 +1317,7 @@ class AniLightNativeScreen(
                 }
                 setPadding(dp(9), dp(9), dp(10), dp(9))
                 isFocusable = true
+                applyTvFocusStyle(this)
                 setOnClickListener { resolveEpisode(number) }
             }
             val thumbUrl = listOf("thumbnail", "thumbnailUrl", "image", "imageUrl", "img", "still", "screenshot")
@@ -1402,6 +1413,7 @@ class AniLightNativeScreen(
                 }
                 setPadding(dp(8), dp(8), dp(8), dp(8))
                 isFocusable = true
+                applyTvFocusStyle(this)
                 setOnClickListener { resolveEpisode(number) }
             }
             val line = row().apply { gravity = Gravity.CENTER_VERTICAL }
@@ -1822,6 +1834,7 @@ class AniLightNativeScreen(
                 background = SanyLiquidGlass.background(context, 12, light, accent)
                 clipToOutline = true
                 isFocusable = true
+                applyTvFocusStyle(this)
                 setOnClickListener { openAnime(item) }
             }
             applyNowPlayingHighlight(card, item)
@@ -2098,7 +2111,35 @@ class AniLightNativeScreen(
     private fun loading(message: String) { body.removeAllViews(); body.addView(label(message, 14, muted, false).apply { gravity = Gravity.CENTER; setPadding(dp(10), dp(70), dp(10), dp(70)) }) }
     private fun row() = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     private fun bottom(n: Int) = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(n) }
-    private fun button(value: String, action: () -> Unit) = TextView(context).apply { text = value; gravity = Gravity.CENTER; textSize = 11f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); isFocusable = true; setPadding(dp(12), dp(9), dp(12), dp(9)); background = rounded(accent, 10); setOnClickListener { action() } }
+    private fun applyTvFocusStyle(view: View) {
+        if (!useTvFocus) return
+        view.isFocusable = true
+        view.isFocusableInTouchMode = false
+        val focused = GradientDrawable().apply {
+            setColor(Color.argb(if (light) 52 else 72, 55, 145, 255))
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(3), accent)
+        }
+        val idle = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            cornerRadius = dp(12).toFloat()
+        }
+        view.foreground = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), focused)
+            addState(intArrayOf(), idle)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 21) view.stateListAnimator = null
+        if (android.os.Build.VERSION.SDK_INT >= 26) view.defaultFocusHighlightEnabled = false
+        view.setOnFocusChangeListener { focusedView, hasFocus ->
+            focusedView.elevation = 0f
+            if (hasFocus) focusedView.requestRectangleOnScreen(
+                android.graphics.Rect(0, 0, focusedView.width, focusedView.height), false
+            )
+        }
+    }
+
+    private fun button(value: String, action: () -> Unit) = TextView(context).apply { text = value; gravity = Gravity.CENTER; textSize = 11f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.WHITE); isFocusable = true
+                applyTvFocusStyle(this); setPadding(dp(12), dp(9), dp(12), dp(9)); background = rounded(accent, 10); setOnClickListener { action() } }
     private fun label(value: String, size: Int, color: Int, bold: Boolean) = TextView(context).apply { text = value; textSize = size.toFloat(); setTextColor(color); if (bold) typeface = Typeface.DEFAULT_BOLD }
     // Translucent Liquid Glass surfaces for Anime cards; keep badges/buttons solid.
     private fun rounded(color: Int, radius: Int) = GradientDrawable(
