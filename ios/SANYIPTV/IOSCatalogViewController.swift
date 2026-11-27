@@ -161,6 +161,7 @@ final class IOSCatalogViewController: UITableViewController, UISearchBarDelegate
         refresh.tintColor = IOSAppStyle.accent
         refresh.addTarget(self, action: #selector(refreshPlaylist), for: .valueChanged)
         tableView.refreshControl = refresh
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Categories", style: .plain, target: self, action: #selector(showGroups))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Refresh", style: .plain, target: self, action: #selector(refreshPlaylist))
         observer = NotificationCenter.default.addObserver(forName: .sanyPlaylistUpdated, object: nil, queue: .main) { [weak self] _ in
             self?.refresh.endRefreshing()
@@ -175,6 +176,22 @@ final class IOSCatalogViewController: UITableViewController, UISearchBarDelegate
     }
 
     @objc private func refreshPlaylist() { IOSPlaylistStore.shared.load(force: true) }
+    @objc private func showGroups() {
+        let available = Array(Set(IOSPlaylistStore.shared.items.filter { section.matches($0) }.map { $0.group })).sorted()
+        let alert = UIAlertController(title: section.rawValue + " categories", message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: selectedGroup == "All" ? "✓ All" : "All", style: .default) { _ in
+            self.selectedGroup = "All"
+            self.applyFilters()
+        })
+        for group in available {
+            alert.addAction(UIAlertAction(title: group == selectedGroup ? "✓ " + group : group, style: .default) { _ in
+                self.selectedGroup = group
+                self.applyFilters()
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
 
     private func applyFilters() {
         let all = IOSPlaylistStore.shared.items.filter { section.matches($0) }
