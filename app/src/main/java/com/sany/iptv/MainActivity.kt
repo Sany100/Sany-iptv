@@ -7376,6 +7376,16 @@ class MainActivity : AppCompatActivity() {
         val target = selector ?: return
         val quality = prefs.getString("video_quality", "auto") ?: "auto"
         val builder = target.buildUponParameters()
+        // Android TV Live TV: never select a rendition below 720p, and cap
+        // adaptive selection at 1080p. This is TV-package-only; phone behavior
+        // and Movies/Anime quality preferences remain unchanged.
+        if (isTvDevice && section == "Live TV") {
+            builder.setMinVideoSize(1280, 720)
+                .setMaxVideoSize(1920, 1080)
+                .setMaxVideoBitrate(Int.MAX_VALUE)
+            target.setParameters(builder)
+            return
+        }
         // VOD Auto mode delegates quality selection to Media3's adaptive track
         // selector. HLS/DASH renditions can move up/down with measured bandwidth.
         // A single-file MP4 remains at the quality supplied by its source.
