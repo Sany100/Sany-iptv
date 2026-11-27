@@ -920,7 +920,7 @@ class MainActivity : AppCompatActivity() {
     private fun buildShell(showSplash: Boolean = true) {
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         home = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
@@ -1233,18 +1233,18 @@ class MainActivity : AppCompatActivity() {
         if (isTvDevice) tvContentColumn?.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
         else home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
         bottomNav = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = if (isTvDevice) Gravity.START or Gravity.CENTER_VERTICAL else Gravity.CENTER
-            setPadding(dp(if (isTvDevice) 14 else 5), dp(if (isTvDevice) 5 else 2),
-                dp(if (isTvDevice) 14 else 5), dp(if (isTvDevice) 5 else 2))
-            // TV navigation sits in a straight row at the upper-left; phones keep the bottom dock.
+            orientation = if (isTvDevice) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            gravity = if (isTvDevice) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER
+            setPadding(dp(if (isTvDevice) 5 else 5), dp(if (isTvDevice) 12 else 2),
+                dp(if (isTvDevice) 5 else 5), dp(if (isTvDevice) 5 else 2))
+            // TV navigation is a compact vertical rail on the left; phones keep the bottom dock.
             background = glass(0)
             elevation = dp(18).toFloat()
             translationZ = dp(8).toFloat()
         }
         if (isTvDevice) {
-            home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(58)))
-            home.addView(tvContentColumn, LinearLayout.LayoutParams(-1, 0, 1f))
+            home.addView(bottomNav, LinearLayout.LayoutParams(dp(88), -1))
+            home.addView(tvContentColumn, LinearLayout.LayoutParams(0, -1, 1f))
         } else {
             home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(74)))
         }
@@ -4223,8 +4223,8 @@ class MainActivity : AppCompatActivity() {
                 isFocusable = true
                 isFocusableInTouchMode = false
                 applyTvFocusStyle(this)
-                orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-                gravity = if (isTvDevice) Gravity.CENTER_VERTICAL else Gravity.CENTER
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
                 // Make the selected destination unmistakable with a filled glass pill,
                 // bright outline and a small top indicator; inactive tabs stay transparent.
                 background = if (active) {
@@ -4315,15 +4315,15 @@ class MainActivity : AppCompatActivity() {
                 }, LinearLayout.LayoutParams(if (isTvDevice) dp(25) else -2, -2))
                 if (isTvDevice) {
                     val tvNavLabel = text(
-                        if (name == "Series") "Anime" else name, 10,
+                        if (name == "Series") "Anime" else name, 9,
                         if (active) Color.rgb(115, 190, 255) else muted, active
                     ).apply {
-                        gravity = Gravity.CENTER_VERTICAL
-                        maxLines = 1
+                        gravity = Gravity.CENTER
+                        maxLines = 2
                         ellipsize = android.text.TextUtils.TruncateAt.END
                     }
                     if (name == "Live TV") liveTvNavLabel = tvNavLabel
-                    item.addView(tvNavLabel, LinearLayout.LayoutParams(-2, -2))
+                    item.addView(tvNavLabel, LinearLayout.LayoutParams(-1, -2))
                 }
                 if (!isTvDevice) {
                     val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name,
@@ -4336,7 +4336,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             bottomNav.addView(item, if (isTvDevice)
-                LinearLayout.LayoutParams(-2, -1).apply { rightMargin = dp(8) }
+                LinearLayout.LayoutParams(-1, dp(70)).apply { bottomMargin = dp(8) }
             else LinearLayout.LayoutParams(0, -1, 1f))
         }
     }
