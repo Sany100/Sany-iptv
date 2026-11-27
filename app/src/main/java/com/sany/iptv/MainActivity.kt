@@ -98,7 +98,8 @@ class MainActivity : AppCompatActivity() {
         override fun fling(velocityX: Int) { super.fling((velocityX * 1.45f).toInt()) }
     }
     private val isTvDevice: Boolean
-        get() = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+        get() = packageName.endsWith(".tv") ||
+            packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
             (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) == Configuration.UI_MODE_TYPE_TELEVISION
     private val isLight: Boolean
         get() = when (prefs.getString("app_theme", "dark")) {
