@@ -222,7 +222,7 @@ final class IOSMultiMoviesProvider {
             let ch = text[index]
             if quoted {
                 if escaped { escaped = false }
-                else if ch == "\\\\" { escaped = true }
+                else if ch == "\\" { escaped = true }
                 else if ch == "\"" { quoted = false }
             } else {
                 if ch == "\"" { quoted = true }
@@ -246,7 +246,7 @@ final class IOSMoviesHomeViewController: UITableViewController, UISearchBarDeleg
     private var searching = false
 
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .grouped)
         title = "Movies"
         tabBarItem = UITabBarItem(title: "Movies", image: IOSIcon.image("film"), selectedImage: IOSIcon.image("film.fill"))
     }
