@@ -221,16 +221,28 @@ final class IOSAniLightProvider {
         guard let url = URL(string: api + "/lb/e/" + token) else {
             resolveTokens(tokens, index: index + 1, seen: seen, results: results, completion: completion); return
         }
-        request(url, method: "HEAD") { data, response, _ in
-            let finalURL = response?.url
+        let finish: (URLResponse?) -> Void = { resolvedResponse in
+            let finalURL = resolvedResponse?.url
+            let status = (resolvedResponse as? HTTPURLResponse)?.statusCode ?? 0
             var nextSeen = seen
             var nextResults = results
-            if let finalURL = finalURL, finalURL.scheme?.hasPrefix("http") == true, !nextSeen.contains(finalURL.absoluteString) {
+            let apiHost = URL(string: self.api)?.host
+            if (200...299).contains(status), let finalURL = finalURL,
+               finalURL.scheme?.hasPrefix("http") == true, finalURL.host != apiHost,
+               !nextSeen.contains(finalURL.absoluteString) {
                 let height = quality.flatMap { Int($0.lowercased().replacingOccurrences(of: "p", with: "")) }
                 nextSeen.insert(finalURL.absoluteString)
                 nextResults.append(IOSAnimeSource(title: "AniLight \(height.map { "\($0)p" } ?? "Source")", url: finalURL, quality: height))
             }
             self.resolveTokens(tokens, index: index + 1, seen: nextSeen, results: nextResults, completion: completion)
+        }
+        request(url, method: "HEAD") { _, response, _ in
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if status == 405 || status == 501 {
+                self.request(url, method: "GET", extraHeaders: ["Range": "bytes=0-0"]) { _, rangeResponse, _ in finish(rangeResponse) }
+            } else {
+                finish(response)
+            }
         }
     }
 }
