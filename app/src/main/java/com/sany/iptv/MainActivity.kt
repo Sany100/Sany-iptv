@@ -7961,6 +7961,14 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        // The TV APK must stop playback and return to the originating page
+        // on the first Back press, including when the TV APK is opened on a phone.
+        if (isTvDevice && playerScreen != null) {
+            closePlayer()
+            lastBackPressedAt = 0L
+            return
+        }
+
         // First Back from fullscreen (or a downward swipe) changes only the
         // presentation to FIT. The same player and playback position remain active.
         if (playerView != null && isPlayerFullscreen) {
