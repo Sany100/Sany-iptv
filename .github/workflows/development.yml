@@ -35,6 +35,8 @@ jobs:
           test -n "$KEYSTORE_BASE64" || (echo "Missing production signing keystore secret" && exit 1)
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sany-release.jks"
           echo "SANY_KEYSTORE_PATH=$RUNNER_TEMP/sany-release.jks" >> "$GITHUB_ENV"
+      - name: Pin CloudStream Android SDK to installed platform
+        run: sed -i 's/^compileSdk = "37"$/compileSdk = "36"/' cloudstream-upstream/gradle/libs.versions.toml
       - name: Build production-signed APK without publishing a release
         env:
           SANY_KEYSTORE_PASSWORD: ${{ secrets.SANY_RELEASE_STORE_PASSWORD }}
