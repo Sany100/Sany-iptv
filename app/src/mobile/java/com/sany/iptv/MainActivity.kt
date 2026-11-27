@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
     private class FastSportsHorizontalScrollView(context: Context) : HorizontalScrollView(context) {
         override fun fling(velocityX: Int) { super.fling((velocityX * 1.45f).toInt()) }
     }
-    // Phone build always uses the dedicated phone interface, even on a TV device.
+    // Phone flavor is always the smartphone interface.
     private val isTvDevice: Boolean get() = false
     private val isLight: Boolean
         get() = when (prefs.getString("app_theme", "dark")) {
@@ -172,7 +172,6 @@ class MainActivity : AppCompatActivity() {
     // Keep Movies catalogue and Live Sports provider catalogue views alive while
     // their details/player overlays are opened, preserving filters and scroll.
     private var moviesNativeView: View? = null
-    @Volatile private var movieProviderSyncStarted = false
     private var movieDetailsParentView: View? = null
     private var liveSportsCatalogueView: View? = null
     @Volatile private var liveSportsProviderSyncRunning = false
@@ -209,22 +208,9 @@ class MainActivity : AppCompatActivity() {
         val manager = getSystemService(android.app.ActivityManager::class.java)
         manager?.isLowRamDevice == true || (manager?.memoryClass ?: 256) <= 128
     }
-    private val isLowRamTvDevice: Boolean get() = isTvDevice && isLowMemoryDevice
-    private val initialDisplayedLimit: Int get() = when {
-        isLowRamTvDevice -> 6
-        isTvDevice -> 12
-        isLowMemoryDevice -> 24
-        else -> 60
-    }
-    private val displayedLimitIncrement: Int get() = when {
-        isLowRamTvDevice -> 12
-        isTvDevice -> 24
-        isLowMemoryDevice -> 48
-        else -> 120
-    }
+    private val initialDisplayedLimit: Int get() = if (isLowMemoryDevice) 24 else 60
+    private val displayedLimitIncrement: Int get() = if (isLowMemoryDevice) 48 else 120
     private var displayedLimit = 60
-    // Build TV channel rows in small batches to keep section navigation responsive.
-    private var channelRenderGeneration = 0
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
@@ -282,12 +268,7 @@ class MainActivity : AppCompatActivity() {
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
                     // Channel marks and poster tiles are small on screen; decode only
                     // enough pixels for their target bounds to avoid full-size bitmap RAM spikes.
-                    val targetPixels = when {
-                        isLowRamTvDevice -> dp(32)
-                        isTvDevice -> dp(48)
-                        image.scaleType == ImageView.ScaleType.CENTER_CROP -> dp(240)
-                        else -> dp(96)
-                    }
+                    val targetPixels = if (image.scaleType == ImageView.ScaleType.CENTER_CROP) dp(240) else dp(96)
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
                     var sampleSize = 1
@@ -412,7 +393,6 @@ class MainActivity : AppCompatActivity() {
             // Restore the current screen only for Android's in-process Activity recreation
             // (for example, rotation or process recreation with a saved instance state).
             section = savedInstanceState?.getString("ui_section") ?: "Live TV"
-            if (isTvDevice && (section == "Series" || section == "Checker")) section = "Live TV"
             liveTvSelectedGroup = savedInstanceState?.getString("live_tv_group") ?: "Select category"
             liveTvSearchQuery = savedInstanceState?.getString("live_tv_search") ?: ""
             selectedGroup = savedInstanceState?.getString("ui_group") ?: "All"
@@ -422,7 +402,6 @@ class MainActivity : AppCompatActivity() {
                 searchQuery = liveTvSearchQuery
             }
             playbackReturnSection = savedInstanceState?.getString("playback_return_section") ?: section
-            if (isTvDevice && (playbackReturnSection == "Series" || playbackReturnSection == "Checker")) playbackReturnSection = "Live TV"
             playbackReturnGroup = savedInstanceState?.getString("playback_return_group") ?: selectedGroup
             playbackReturnSearch = savedInstanceState?.getString("playback_return_search") ?: searchQuery
             playbackReturnScrollY = savedInstanceState?.getInt("playback_return_scroll_y", savedInstanceState?.getInt("list_scroll_y", 0) ?: 0) ?: 0
@@ -462,7 +441,6 @@ class MainActivity : AppCompatActivity() {
         showPreviousCrashReport()
         // Automatically sync and load every allowlisted Anime provider from the
         // SANY builds index. Each package is hash-verified and failures are isolated.
-        if (!isLowRamTvDevice) {
         thread(name = "SANY-Anime-Plugins-AutoSync") {
             try {
                 val report = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
@@ -516,11 +494,6 @@ class MainActivity : AppCompatActivity() {
         // Sports provider installation is independent from Anime/Movie downloads.
         // This also restores the provider automatically after a completely fresh reinstall.
         syncLiveSportsProviderInBackground()
-        } else {
-            // On 1 GB TVs, defer provider DEX loading and catalogue downloads until
-            // the user opens Anime, Movies or Live Sports. The features remain available.
-            android.util.Log.i("SANY-LOW-RAM", "Deferring Anime/Movie/Sports provider sync until their section is opened")
-        }
         registerForPushUpdates()
         checkForMandatoryUpdate()
         checkMaintenanceMode()
@@ -920,7 +893,7 @@ class MainActivity : AppCompatActivity() {
     private fun buildShell(showSplash: Boolean = true) {
         root = FrameLayout(this).apply { setBackgroundColor(bg) }
         home = LinearLayout(this).apply {
-            orientation = if (isTvDevice) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
         root.addView(home, FrameLayout.LayoutParams(-1, -1))
@@ -1095,10 +1068,6 @@ class MainActivity : AppCompatActivity() {
         restoringNavigation = false
         home.removeAllViews()
         // No reserved blank welcome slot: keep the selected page content directly below the player.
-        val tvContentColumn = if (isTvDevice) LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-        } else null
         val settingsHeader = section == "Settings"
         val settingsHeaderText = if (isLight) Color.rgb(13, 28, 54) else Color.WHITE
         val settingsHeaderMuted = if (isLight) Color.rgb(76, 96, 126) else Color.rgb(166, 183, 207)
@@ -1147,11 +1116,15 @@ class MainActivity : AppCompatActivity() {
         if (channels.isEmpty()) {
             connectionStatus.addView(text("NOT CONNECTED", 9, muted, true))
         } else {
-            if (!isTvDevice) {
-                val connectedDot = text("●", 9, Color.rgb(45, 210, 115), true).apply {
-                    gravity = Gravity.CENTER
-                }
-                connectionStatus.addView(connectedDot)
+            val connectedDot = text("●", 9, Color.rgb(45, 210, 115), true).apply {
+                gravity = Gravity.CENTER
+            }
+            connectionStatus.addView(connectedDot)
+            android.animation.ObjectAnimator.ofFloat(connectedDot, View.ALPHA, 1f, 0.18f).apply {
+                duration = 650L
+                repeatMode = android.animation.ValueAnimator.REVERSE
+                repeatCount = android.animation.ValueAnimator.INFINITE
+                start()
             }
             connectionStatus.addView(text(" CONNECTED", 9,
                 if (settingsHeader && isLight) Color.rgb(38, 119, 245) else accent, true))
@@ -1192,15 +1165,15 @@ class MainActivity : AppCompatActivity() {
         top.addView(titleRow)
         homeHeaderContainer = top
         // Full-width, edge-to-edge square header; remove the extra top gap.
-        val headerLayoutParams = LinearLayout.LayoutParams(
+        home.addView(top, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            topMargin = dp(if (isTvDevice) 4 else 10)
+            // Add a little breathing room above the full-width brand header,
+            // moving the circled header area down from the status bar.
+            topMargin = dp(if (isTvDevice) 10 else 10)
             leftMargin = 0
             rightMargin = 0
-        }
-        if (isTvDevice) tvContentColumn?.addView(top, headerLayoutParams)
-        else home.addView(top, headerLayoutParams)
+        })
         updateHomeHeaderVisibility()
         // Keep Android 6 rendering simple; newer devices retain the header transition.
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M || prefs.getBoolean("reduce_ui_motion", true)) {
@@ -1224,24 +1197,17 @@ class MainActivity : AppCompatActivity() {
                 if (edgeToEdgeSection) 0 else dp(18), 0)
             setBackgroundColor(if (edgeToEdgeSection && isLight) Color.WHITE else bg)
         }
-        if (isTvDevice) tvContentColumn?.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
-        else home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
+        home.addView(contentArea, LinearLayout.LayoutParams(-1, 0, 1f))
         bottomNav = LinearLayout(this).apply {
-            orientation = if (isTvDevice) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
-            gravity = if (isTvDevice) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER
-            setPadding(dp(if (isTvDevice) 5 else 5), dp(if (isTvDevice) 12 else 2),
-                dp(if (isTvDevice) 5 else 5), dp(if (isTvDevice) 5 else 2))
-            // TV navigation is a compact vertical rail on the left; phones keep the bottom dock.
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(5), dp(2), dp(5), dp(2))
+            // Full-width Liquid Glass navigation dock; translucent in both themes.
             background = glass(0)
             elevation = dp(18).toFloat()
             translationZ = dp(8).toFloat()
         }
-        if (isTvDevice) {
-            home.addView(bottomNav, LinearLayout.LayoutParams(dp(88), -1))
-            home.addView(tvContentColumn, LinearLayout.LayoutParams(0, -1, 1f))
-        } else {
-            home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(74)))
-        }
+        home.addView(bottomNav, LinearLayout.LayoutParams(-1, dp(if (isTvDevice) 62 else 74)))
         renderSection()
         renderBottomNav()
         if (isTvDevice) root.post { focusInitialTvControl() }
@@ -1256,7 +1222,7 @@ class MainActivity : AppCompatActivity() {
                 } else bottomNav.getChildAt(0)
             }
             else -> bottomNav.getChildAt(
-                (if (isTvDevice) listOf("Live TV", "Live Sports", "Movies", "Settings") else listOf("Live TV", "Live Sports", "Checker", "Movies", "Series", "Settings")).indexOf(section).coerceAtLeast(0)
+                listOf("Live TV", "Live Sports", "Movies", "Series", "Settings").indexOf(section).coerceAtLeast(0)
             )
         }
         target?.requestFocus()
@@ -1266,28 +1232,16 @@ class MainActivity : AppCompatActivity() {
         if (!isTvDevice) return
         view.isFocusable = true
         view.isFocusableInTouchMode = false
-        // A single state-list foreground gives every focused remote item a clear,
-        // high-contrast outline without allocating a new drawable on each focus event.
-        val focusedOverlay = GradientDrawable().apply {
-            // Make the currently selected remote item unmistakable from a TV viewing distance.
-            setColor(Color.argb(if (isLight) 78 else 105, 55, 145, 255))
-            cornerRadius = dp(12).toFloat()
-            setStroke(dp(4), accent)
-        }
-        val idleOverlay = GradientDrawable().apply {
-            setColor(Color.TRANSPARENT)
-            cornerRadius = dp(12).toFloat()
-        }
-        view.foreground = android.graphics.drawable.StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), focusedOverlay)
-            addState(intArrayOf(), idleOverlay)
-        }
-        if (Build.VERSION.SDK_INT >= 21) view.stateListAnimator = null
-        if (Build.VERSION.SDK_INT >= 26) view.defaultFocusHighlightEnabled = false
         view.setOnFocusChangeListener { focusedView, hasFocus ->
-            focusedView.elevation = 0f
-            // Keep the focused row visible while the remote moves through long lists.
-            // Smooth scrolling prevents abrupt jumps and follows rapid DPAD key repeats.
+            focusedView.foreground = if (hasFocus) GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                cornerRadius = dp(12).toFloat()
+                setStroke(dp(2), accent)
+            } else null
+            focusedView.animate().cancel()
+            focusedView.animate().scaleX(if (hasFocus) 1.035f else 1f)
+                .scaleY(if (hasFocus) 1.035f else 1f)
+                .setDuration(110).start()
             if (hasFocus) focusedView.requestRectangleOnScreen(
                 android.graphics.Rect(0, 0, focusedView.width, focusedView.height), true
             )
@@ -1296,70 +1250,17 @@ class MainActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (isTvDevice) {
-            // A TV remote Back key always stops the active stream immediately,
-            // regardless of which section/menu currently sits behind the player.
-            if ((keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) &&
-                playerScreen != null) {
-                closePlayer()
-                lastBackPressedAt = 0L
-                return true
-            }
-            if (playerScreen != null) {
-                when (keyCode) {
-                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-                    KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                        player?.let { active ->
-                            if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY || !active.isPlaying) {
-                                if (active.playbackState == Player.STATE_ENDED) active.seekToDefaultPosition()
-                                active.play()
-                            }
-                            active.playWhenReady = true
-                        }
-                        return true
-                    }
-                    KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                        player?.pause()
-                        player?.playWhenReady = false
-                        return true
-                    }
-                    KeyEvent.KEYCODE_MEDIA_STOP -> {
-                        closePlayer()
-                        return true
-                    }
-                    // OK/Enter on the fullscreen video toggles play/pause.
-                    // In menus, OK remains the normal focused-item click action.
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        if (isPlayerFullscreen) {
-                            player?.let { active ->
-                                if (active.isPlaying) {
-                                    saveAnimeResumePosition(active, currentChannel)
-                                    active.pause()
-                                    active.playWhenReady = false
-                                } else {
-                                    if (active.playbackState == Player.STATE_ENDED) active.seekToDefaultPosition()
-                                    active.playWhenReady = true
-                                    active.play()
-                                }
-                            }
-                            return true
-                        }
-                    }
-                }
-            }
             when (keyCode) {
-                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP -> {
+                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP,
+                KeyEvent.KEYCODE_DPAD_UP -> {
                     if (player != null) { playAdjacentChannel(1); return true }
                 }
-                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN,
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (player != null) { playAdjacentChannel(-1); return true }
                 }
-                // DPAD remains ordinary menu navigation while the player is inline.
-                // Only a fullscreen player consumes Up/Down as channel switching.
-                KeyEvent.KEYCODE_DPAD_UP -> {
-                    if (player != null && isPlayerFullscreen) { playAdjacentChannel(1); return true }
-                }
-                KeyEvent.KEYCODE_DPAD_DOWN -> {
-                    if (player != null && isPlayerFullscreen) { playAdjacentChannel(-1); return true }
+                KeyEvent.KEYCODE_ESCAPE -> {
+                    if (playerScreen != null) { closePlayer(); return true }
                 }
             }
         }
@@ -2072,9 +1973,8 @@ class MainActivity : AppCompatActivity() {
                                     item.posterUrl?.takeIf { it.isNotBlank() }?.let {
                                         loadCachedChannelLogo(image, placeholder, it)
                                     }
-                                    val eventStatus = liveSportsEventStatus(item.name, item.url)
                                     val titleOverlay = TextView(this).apply {
-                                        text = item.name.replace(Regex("^(🔴|🔜|✅)\\s*"), "")
+                                        text = item.name
                                         textSize = 11f
                                         maxLines = 2
                                         ellipsize = android.text.TextUtils.TruncateAt.END
@@ -2087,19 +1987,6 @@ class MainActivity : AppCompatActivity() {
                                         )
                                     }
                                     card.addView(titleOverlay, FrameLayout.LayoutParams(-1, dp(42), Gravity.BOTTOM))
-                                    val statusColor = when (eventStatus) {
-                                        "LIVE NOW" -> 0xFFD92332.toInt()
-                                        "UPCOMING" -> 0xFF0875F5.toInt()
-                                        "ENDED" -> 0xFF596579.toInt()
-                                        else -> 0xFF45566F.toInt()
-                                    }
-                                    card.addView(text(eventStatus, 9, Color.WHITE, true).apply {
-                                        setPadding(dp(7), dp(5), dp(7), dp(5))
-                                        background = rounded(statusColor, 14)
-                                        elevation = dp(4).toFloat()
-                                    }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
-                                        setMargins(0, dp(6), dp(6), 0)
-                                    })
                                     if (isNowPlaying) {
                                         card.addView(text("▶ PLAYING", 9, Color.WHITE, true).apply {
                                             setPadding(dp(7), dp(4), dp(7), dp(4))
@@ -2121,36 +2008,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    /**
-     * PlayZTV marks event titles with 🔴 (live), 🔜 (upcoming), and ✅ (ended).
-     * Read the serialized event times as a fallback for providers that omit the prefix.
-     */
-    private fun liveSportsEventStatus(title: String, data: String): String {
-        val cleanTitle = title.trim()
-        when {
-            cleanTitle.startsWith("🔴") -> return "LIVE NOW"
-            cleanTitle.startsWith("🔜") -> return "UPCOMING"
-            cleanTitle.startsWith("✅") -> return "ENDED"
-        }
-        return runCatching {
-            val info = org.json.JSONObject(data).optJSONObject("eventInfo")
-                ?: return@runCatching "SCHEDULED"
-            val parser = java.text.SimpleDateFormat("yyyy/MM/dd HH:mm:ss Z", java.util.Locale.US)
-            val now = System.currentTimeMillis()
-            fun eventTime(key: String): Long? = info.optString(key)
-                .takeIf { it.isNotBlank() && !it.equals("null", true) }
-                ?.let { parser.parse(it)?.time }
-            val start = eventTime("startTime")
-            val end = eventTime("endTime")
-            when {
-                end != null && now >= end -> "ENDED"
-                start != null && now >= start && (end == null || now < end) -> "LIVE NOW"
-                start != null && now < start -> "UPCOMING"
-                else -> "SCHEDULED"
-            }
-        }.getOrDefault("SCHEDULED")
     }
 
     private fun showLiveSportsSearch(providerName: String, host: LinearLayout) {
@@ -2200,14 +2057,8 @@ class MainActivity : AppCompatActivity() {
         thread(name = "SANY-LiveSports-Resolve") {
             val result = runCatching {
                 kotlinx.coroutines.runBlocking {
-                    kotlinx.coroutines.withTimeout(30_000L) {
-                        // Follow CloudStream's normal Live-event flow: load the event
-                        // response first, then resolve its stream data. This validates
-                        // serialized event payloads before asking the extractor for links.
-                        val loadedEvent = SanyCloudStreamPluginRuntime.load(providerName, data)
-                            ?: error("এই Live Sports event-এর details পাওয়া যায়নি")
-                        val playbackData = loadedEvent.url.takeIf { it.isNotBlank() } ?: data
-                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, playbackData)
+                    kotlinx.coroutines.withTimeout(25_000L) {
+                        SanyCloudStreamPluginRuntime.resolvePlayback(providerName, title, data)
                     }
                 }
             }
@@ -2574,31 +2425,6 @@ class MainActivity : AppCompatActivity() {
         if (showSeries) {
             renderDevelopmentSection()
             return
-        }
-        if (isLowRamTvDevice && !movieProviderSyncStarted) {
-            movieProviderSyncStarted = true
-            thread(name = "SANY-Movie-Provider-LazySync") {
-                val result = runCatching {
-                    SanyMovieExtensionManager.removeVegaMovies(applicationContext)
-                    SanyMovieExtensionManager.syncBuiltInMultiMovies(applicationContext)
-                }
-                val loaded = result.getOrNull()
-                if (loaded?.success == true) {
-                    runCatching {
-                        SanyMovieExtensionManager.loadInstalled(applicationContext, setOf("multimovies"))
-                    }.onFailure { android.util.Log.e("SANY-MOVIE", "Lazy provider restore failed", it) }
-                } else {
-                    movieProviderSyncStarted = false
-                    android.util.Log.e("SANY-MOVIE", "Lazy MultiMovies sync failed: ${loaded?.error ?: result.exceptionOrNull()?.message}")
-                }
-                if (loaded?.success == true) runOnUiThread {
-                    if (!isFinishing && !isDestroyed && section == "Movies") {
-                        contentArea.removeAllViews()
-                        moviesNativeView = null
-                        renderNativeMovies(false)
-                    }
-                }
-            }
         }
         moviesNativeView?.let { existing ->
             (existing.parent as? ViewGroup)?.removeView(existing)
@@ -3664,7 +3490,7 @@ class MainActivity : AppCompatActivity() {
                     renderHome()
                 }
             }
-            if (!isTvDevice) toolbar.addView(checkerShortcut, LinearLayout.LayoutParams(-2, dp(36)).apply {
+            toolbar.addView(checkerShortcut, LinearLayout.LayoutParams(-2, dp(36)).apply {
                 rightMargin = dp(8)
             })
             toolbar.addView(View(this), LinearLayout.LayoutParams(0, dp(36), 1f))
@@ -3918,7 +3744,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderChannelRows(container: LinearLayout) {
         container.removeAllViews()
-        val renderToken = ++channelRenderGeneration
         val filtered = filteredChannels()
         countLabel.text = if (section == "Live TV" && streamChecks.isNotEmpty() && !checkerRunning) {
             "${filtered.size} WORKING CHANNELS"
@@ -3934,14 +3759,8 @@ class MainActivity : AppCompatActivity() {
             renderTvChannelCards(container, filtered)
             return
         }
-        val channelsToRender = if (isTvDevice) filtered else filtered.take(displayedLimit)
-        var renderIndex = 0
-        fun renderNextChannelBatch() {
-            if (renderToken != channelRenderGeneration || (isTvDevice && section != "Live TV")) return
-            val batchEnd = minOf(renderIndex + if (isTvDevice) 24 else channelsToRender.size, channelsToRender.size)
-            for (index in renderIndex until batchEnd) {
-                val channel = channelsToRender[index]
-                val row = LinearLayout(this).apply {
+        filtered.take(displayedLimit).forEachIndexed { index, channel ->
+            val row = LinearLayout(this).apply {
                 isFocusable = true
                 isFocusableInTouchMode = false
                 orientation = LinearLayout.HORIZONTAL
@@ -4003,8 +3822,16 @@ class MainActivity : AppCompatActivity() {
             val liveDot = text("●", 9, Color.rgb(0, 235, 90), true).apply {
                 contentDescription = "SANY IPTV blinking live indicator"
                 alpha = 1f
+                if (!isLowMemoryDevice) {
+                    startAnimation(android.view.animation.AlphaAnimation(0.22f, 1f).apply {
+                        duration = 900L
+                        repeatMode = android.view.animation.Animation.REVERSE
+                        repeatCount = android.view.animation.Animation.INFINITE
+                        startOffset = (index % 6) * 110L
+                    })
+                }
             }
-            if (!isTvDevice) watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
+            watermarkLine.addView(liveDot, LinearLayout.LayoutParams(-2, -2))
             watermarkLine.addView(text("SANY IPTV", 8, accent, true).apply {
                 letterSpacing = 0.12f
                 setPadding(dp(4), 0, 0, 0)
@@ -4044,19 +3871,9 @@ class MainActivity : AppCompatActivity() {
             if (section == "Live TV" || section == "Live Sports" || section == "Movies") {
                 row.setOnClickListener { play(channel) }
             }
-                container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
-            }
-            renderIndex = batchEnd
-            if (isTvDevice && renderIndex < channelsToRender.size) {
-                container.postDelayed({
-                    if (renderToken == channelRenderGeneration && container.parent != null && section == "Live TV") {
-                        renderNextChannelBatch()
-                    }
-                }, 16L)
-            }
+            container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
         }
-        renderNextChannelBatch()
-        if (!isTvDevice && filtered.size > displayedLimit) {
+        if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
                 displayedLimit += displayedLimitIncrement
                 renderChannelRows(container)
@@ -4066,7 +3883,7 @@ class MainActivity : AppCompatActivity() {
 
     // Render channel cards in a compact three-column grid on supported grid mode.
     private fun renderTvChannelCards(container: LinearLayout, filtered: List<Channel>) {
-        val visible = if (isTvDevice) filtered else filtered.take(displayedLimit)
+        val visible = filtered.take(displayedLimit)
         visible.chunked(3).forEachIndexed { rowIndex, rowItems ->
             val cardRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -4152,7 +3969,7 @@ class MainActivity : AppCompatActivity() {
                 bottomMargin = dp(if (isTvDevice) 7 else 12)
             })
         }
-        if (!isTvDevice && filtered.size > displayedLimit) {
+        if (filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
                 displayedLimit += displayedLimitIncrement
                 renderChannelRows(container)
@@ -4173,7 +3990,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun filteredChannels(): List<Channel> {
         // Live TV shows only streams positively verified by the Checker.
-        val liveCandidates = if (isTvDevice && section == "Live TV") channels.filter { streamChecks[it.url]?.first == "Working" } else if (section == "Live TV" || section == "Live Sports") liveTvVisibleCandidates() else channels
+        val liveCandidates = if (section == "Live TV" || section == "Live Sports") liveTvVisibleCandidates() else channels
         return liveCandidates.filter { c ->
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
@@ -4266,12 +4083,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderBottomNav() {
         bottomNav.removeAllViews()
-        val navigationItems = if (isTvDevice) {
-            listOf("Live TV" to "📺", "Live Sports" to "🏆", "Movies" to "🎬", "Settings" to "⚙")
-        } else {
-            listOf("Live TV" to "📺", "Live Sports" to "🏆", "Checker" to "✓", "Movies" to "🎬", "Series" to "▥", "Settings" to "⚙")
-        }
-        navigationItems.forEach { (name, symbol) ->
+        listOf("Live TV" to "📺", "Live Sports" to "🏆", "Movies" to "🎬", "Series" to "▥", "Settings" to "⚙").forEach { (name, symbol) ->
             val active = section == name
             val item = LinearLayout(this).apply {
                 isFocusable = true
@@ -4295,8 +4107,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
                 }
-                setPadding(dp(if (isTvDevice) 7 else 3), dp(if (isTvDevice) 5 else 4),
-                    dp(if (isTvDevice) 5 else 3), dp(if (isTvDevice) 5 else 3))
+                setPadding(dp(3), dp(4), dp(3), dp(3))
                 translationY = 0f
                 setOnClickListener {
                     if (section == name) return@setOnClickListener
@@ -4327,7 +4138,7 @@ class MainActivity : AppCompatActivity() {
                     renderSection()
                     renderBottomNav()
                     if (isTvDevice) bottomNav.getChildAt(
-                        (if (isTvDevice) listOf("Live TV", "Live Sports", "Movies", "Settings") else listOf("Live TV", "Live Sports", "Checker", "Movies", "Series", "Settings")).indexOf(section)
+                        listOf("Live TV", "Live Sports", "Movies", "Series", "Settings").indexOf(section)
                     )?.requestFocus()
                 }
             }
@@ -4363,35 +4174,17 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     item.addView(android.view.View(this), LinearLayout.LayoutParams(dp(5), dp(5)))
                 }
-                item.addView(text(symbol, if (isTvDevice) 17 else if (name == "Live TV" || name == "Movies") 16 else 20,
-                    if (active) Color.rgb(95, 180, 255) else muted, true).apply {
+                item.addView(text(symbol, if (name == "Live TV" || name == "Movies") 16 else 20, if (active) Color.rgb(95, 180, 255) else muted, true).apply {
                     gravity = Gravity.CENTER
-                }, LinearLayout.LayoutParams(if (isTvDevice) dp(25) else -2, -2))
-                if (isTvDevice) {
-                    val tvNavLabel = text(
-                        if (name == "Series") "Anime" else name, 9,
-                        if (active) Color.rgb(115, 190, 255) else muted, active
-                    ).apply {
-                        gravity = Gravity.CENTER
-                        maxLines = 2
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                    }
-                    if (name == "Live TV") liveTvNavLabel = tvNavLabel
-                    item.addView(tvNavLabel, LinearLayout.LayoutParams(-1, -2))
+                })
+                val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name, 12, if (active) Color.rgb(115, 190, 255) else muted, active).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, 0, 0, 0)
                 }
-                if (!isTvDevice) {
-                    val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name,
-                        12, if (active) Color.rgb(115, 190, 255) else muted, active).apply {
-                        gravity = Gravity.CENTER
-                        setPadding(0, 0, 0, 0)
-                    }
-                    if (name == "Live TV") liveTvNavLabel = navLabel
-                    item.addView(navLabel)
-                }
+                if (name == "Live TV") liveTvNavLabel = navLabel
+                item.addView(navLabel)
             }
-            bottomNav.addView(item, if (isTvDevice)
-                LinearLayout.LayoutParams(-1, dp(70)).apply { bottomMargin = dp(8) }
-            else LinearLayout.LayoutParams(0, -1, 1f))
+            bottomNav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
         }
     }
 
@@ -5428,14 +5221,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun settingsCard(parent: LinearLayout, title: String, subtitle: String, action: () -> Unit) {
         val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(15), dp(14), dp(15), dp(14))
-            background = glass(12)
-            // Settings cards must be reachable with a TV remote's DPAD.
-            // Keep the phone touch interaction unchanged.
-            isFocusable = packageName.endsWith(".tv")
-            isClickable = true
-            setOnClickListener { action() }
+            orientation = LinearLayout.VERTICAL; setPadding(dp(15), dp(14), dp(15), dp(14))
+            background = glass(12); setOnClickListener { action() }
         }
         card.addView(text(title, 15, white, true))
         card.addView(text(subtitle, 12, muted).apply { setPadding(0, dp(5), 0, 0) })
@@ -7430,16 +7217,6 @@ class MainActivity : AppCompatActivity() {
         val target = selector ?: return
         val quality = prefs.getString("video_quality", "auto") ?: "auto"
         val builder = target.buildUponParameters()
-        // Android TV Live TV: never select a rendition below 720p, and cap
-        // adaptive selection at 1080p. This is TV-package-only; phone behavior
-        // and Movies/Anime quality preferences remain unchanged.
-        if (isTvDevice && section == "Live TV") {
-            builder.setMinVideoSize(1280, 720)
-                .setMaxVideoSize(1920, 1080)
-                .setMaxVideoBitrate(Int.MAX_VALUE)
-            target.setParameters(builder)
-            return
-        }
         // VOD Auto mode delegates quality selection to Media3's adaptive track
         // selector. HLS/DASH renditions can move up/down with measured bandwidth.
         // A single-file MP4 remains at the quality supplied by its source.
@@ -7656,11 +7433,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closePlayer(keepOrientation: Boolean = false) {
-        val tvVisibleSection = if (isTvDevice && !keepOrientation) section else null
-        val tvVisibleGroup = if (isTvDevice && !keepOrientation) selectedGroup else null
-        val tvVisibleSearch = if (isTvDevice && !keepOrientation) searchQuery else null
-        val tvVisibleScrollY = if (isTvDevice && !keepOrientation && ::listContainer.isInitialized)
-            (listContainer.parent as? ScrollView)?.scrollY else null
         // Save Anime Series progress before the player is stopped or released.
         saveAnimeResumePosition(player, currentChannel)
         // When changing channels, do not briefly unlock orientation: Android may
@@ -7705,9 +7477,9 @@ class MainActivity : AppCompatActivity() {
         if (!keepOrientation) {
             isPlayerFullscreen = false
             // Restore the exact list context after the player overlay is removed.
-            section = tvVisibleSection ?: playbackReturnSection
-            selectedGroup = tvVisibleGroup ?: playbackReturnGroup
-            searchQuery = tvVisibleSearch ?: playbackReturnSearch
+            section = playbackReturnSection
+            selectedGroup = playbackReturnGroup
+            searchQuery = playbackReturnSearch
             if (section == "Live TV") {
                 liveTvSelectedGroup = selectedGroup
                 liveTvSearchQuery = searchQuery
@@ -7716,7 +7488,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (::listContainer.isInitialized) {
                 (listContainer.parent as? ScrollView)?.post {
-                    (listContainer.parent as? ScrollView)?.scrollTo(0, tvVisibleScrollY ?: playbackReturnScrollY)
+                    (listContainer.parent as? ScrollView)?.scrollTo(0, playbackReturnScrollY)
                 }
             }
         }
@@ -8015,14 +7787,6 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // The TV APK must stop playback and return to the originating page
-        // on the first Back press, including when the TV APK is opened on a phone.
-        if (isTvDevice && playerScreen != null) {
-            closePlayer()
-            lastBackPressedAt = 0L
-            return
-        }
-
         // First Back from fullscreen (or a downward swipe) changes only the
         // presentation to FIT. The same player and playback position remain active.
         if (playerView != null && isPlayerFullscreen) {
@@ -8244,7 +8008,7 @@ class MainActivity : AppCompatActivity() {
         background = glass(30)
     }
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value; textSize = (size * if (isTvDevice) 1.0f else 1f); setTextColor(color)
+        text = value; textSize = (size * if (isTvDevice) 1.15f else 1f); setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
     private fun premiumBackdrop() = GradientDrawable(
@@ -8263,8 +8027,7 @@ class MainActivity : AppCompatActivity() {
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
     private fun dp(v: Int): Int {
-        // Keep TV controls and category cards compact for typical television viewing.
-        val tvScale = if (isTvDevice) 1.0f else 1f
+        val tvScale = if (isTvDevice) 1.15f else 1f
         return (v * resources.displayMetrics.density * tvScale).toInt()
     }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
