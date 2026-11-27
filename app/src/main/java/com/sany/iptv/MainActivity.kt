@@ -156,7 +156,7 @@ class MainActivity : AppCompatActivity() {
     private var animeCenterPlayButton: TextView? = null
     private var animePlayerTitleOverlay: TextView? = null
     // Keep the first TV render small; 1 GB devices create fewer views and logo tasks.
-    private val tvPageSize: Int get() = if (isLowRamTvDevice) 8 else 16
+    private val tvPageSize: Int get() = if (isLowRamTvDevice) 6 else 12
     private var displayedLimit = 60
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
@@ -213,7 +213,7 @@ class MainActivity : AppCompatActivity() {
                 if (cachedFile.exists() && cachedFile.length() > 0L) {
                     // Decode logos near their on-screen size instead of allocating full-resolution
                     // bitmaps for every visible channel (reduces TV memory pressure / OOM risk).
-                    val targetPixels = dp(if (isLowRamTvDevice) 40 else if (isTvDevice) 52 else 64).coerceAtLeast(40)
+                    val targetPixels = dp(if (isLowRamTvDevice) 32 else if (isTvDevice) 48 else 64).coerceAtLeast(32)
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeFile(cachedFile.absolutePath, bounds)
                     var sample = 1
@@ -1045,16 +1045,29 @@ class MainActivity : AppCompatActivity() {
         if (!isTvDevice) return
         view.isFocusable = true
         view.isFocusableInTouchMode = false
+        // A single state-list foreground gives every focused remote item a clear,
+        // high-contrast outline without allocating a new drawable on each focus event.
+        val focusedOverlay = GradientDrawable().apply {
+            setColor(Color.argb(if (isLight) 52 else 72, 55, 145, 255))
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(3), accent)
+        }
+        val idleOverlay = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            cornerRadius = dp(12).toFloat()
+        }
+        view.foreground = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), focusedOverlay)
+            addState(intArrayOf(), idleOverlay)
+        }
+        if (Build.VERSION.SDK_INT >= 21) view.stateListAnimator = null
+        if (Build.VERSION.SDK_INT >= 26) view.defaultFocusHighlightEnabled = false
         view.setOnFocusChangeListener { focusedView, hasFocus ->
-            // Keep TV focus feedback crisp without per-item scale animations.
-            focusedView.foreground = if (hasFocus) GradientDrawable().apply {
-                setColor(Color.argb(34, 55, 145, 255))
-                cornerRadius = dp(12).toFloat()
-                setStroke(dp(3), accent)
-            } else null
             focusedView.elevation = 0f
+            // Let the parent scroll container reveal focus immediately; avoid
+            // animated auto-scroll which can feel delayed on 1 GB TV boxes.
             if (hasFocus) focusedView.requestRectangleOnScreen(
-                android.graphics.Rect(0, 0, focusedView.width, focusedView.height), true
+                android.graphics.Rect(0, 0, focusedView.width, focusedView.height), false
             )
         }
     }
@@ -1112,13 +1125,19 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             when (keyCode) {
-                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP,
-                KeyEvent.KEYCODE_DPAD_UP -> {
+                KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP -> {
                     if (player != null) { playAdjacentChannel(1); return true }
                 }
-                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN,
-                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN -> {
                     if (player != null) { playAdjacentChannel(-1); return true }
+                }
+                // DPAD remains ordinary menu navigation while the player is inline.
+                // Only a fullscreen player consumes Up/Down as channel switching.
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    if (player != null && isPlayerFullscreen) { playAdjacentChannel(1); return true }
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    if (player != null && isPlayerFullscreen) { playAdjacentChannel(-1); return true }
                 }
             }
         }
