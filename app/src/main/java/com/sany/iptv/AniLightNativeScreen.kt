@@ -68,9 +68,14 @@ class AniLightNativeScreen(
     }
     private val posterRequests = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var posterCacheLastCleanupAt = 0L
-    // Limit concurrent poster downloads more aggressively on low-RAM phones.
+    // One poster worker on low-RAM TVs avoids decode/network bursts while keeping
+    // the full Anime catalogue available when the user opens the section.
+    private val isLowMemoryDevice: Boolean by lazy {
+        val manager = context.getSystemService(android.app.ActivityManager::class.java)
+        manager?.isLowRamDevice == true || (manager?.memoryClass ?: 256) <= 128
+    }
     private val posterExecutor = Executors.newFixedThreadPool(
-        if (Runtime.getRuntime().maxMemory() <= 256L * 1024L * 1024L) 2 else 4
+        if (isLowMemoryDevice) 1 else if (Runtime.getRuntime().maxMemory() <= 256L * 1024L * 1024L) 2 else 4
     )
     private val bg = if (light) Color.WHITE else Color.BLACK
     private val fg = if (light) 0xFF141B26.toInt() else Color.WHITE
