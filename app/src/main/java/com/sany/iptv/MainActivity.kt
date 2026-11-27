@@ -4191,14 +4191,18 @@ class MainActivity : AppCompatActivity() {
                     if (active) Color.rgb(95, 180, 255) else muted, true).apply {
                     gravity = Gravity.CENTER
                 }, LinearLayout.LayoutParams(if (isTvDevice) dp(25) else -2, -2))
-                if (isTvDevice) item.addView(text(
-                    if (name == "Series") "Anime" else name, 10,
-                    if (active) Color.rgb(115, 190, 255) else muted, active
-                ).apply {
-                    gravity = Gravity.CENTER_VERTICAL
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                }, LinearLayout.LayoutParams(0, -2, 1f))
+                if (isTvDevice) {
+                    val tvNavLabel = text(
+                        if (name == "Series") "Anime" else name, 10,
+                        if (active) Color.rgb(115, 190, 255) else muted, active
+                    ).apply {
+                        gravity = Gravity.CENTER_VERTICAL
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    }
+                    if (name == "Live TV") liveTvNavLabel = tvNavLabel
+                    item.addView(tvNavLabel, LinearLayout.LayoutParams(0, -2, 1f))
+                }
                 if (!isTvDevice) {
                     val navLabel = text(if (name == "Live TV") liveTvProgressLabel() else if (name == "Series") "Anime Series" else name,
                         12, if (active) Color.rgb(115, 190, 255) else muted, active).apply {
