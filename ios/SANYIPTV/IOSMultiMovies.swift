@@ -160,18 +160,18 @@ final class IOSMultiMoviesProvider {
                 let name = self.firstGroup(#"data-id=[\"']([^\"']+)[\"']"#, in: chip) ?? "Server"
                 candidates.append((name, url))
             }
-            self.resolveCandidates(candidates, index: 0, results: [], completion: completion)
+            self.resolveCandidates(candidates, cacheKey: key, index: 0, results: [], completion: completion)
         }
     }
 
-    private func resolveCandidates(_ candidates: [(String, URL)], index: Int, results: [IOSMovieSource], completion: @escaping ([IOSMovieSource]) -> Void) {
+    private func resolveCandidates(_ candidates: [(String, URL)], cacheKey: String, index: Int, results: [IOSMovieSource], completion: @escaping ([IOSMovieSource]) -> Void) {
         guard index < candidates.count else {
-            sourceCache[candidates.first?.1.absoluteString ?? ""] = (Date(), results)
+            sourceCache[cacheKey] = (Date(), results)
             DispatchQueue.main.async { completion(results) }; return
         }
         let (name, url) = candidates[index]
         if isMedia(url) {
-            resolveCandidates(candidates, index: index + 1, results: results + [IOSMovieSource(name: name, url: url, playable: true)], completion: completion)
+            resolveCandidates(candidates, cacheKey: cacheKey, index: index + 1, results: results + [IOSMovieSource(name: name, url: url, playable: true)], completion: completion)
             return
         }
         html(url, referer: base) { [weak self] body in
@@ -188,7 +188,7 @@ final class IOSMultiMoviesProvider {
                 }
             }
             let next = results + [IOSMovieSource(name: name, url: mediaURL ?? url, playable: mediaURL != nil)]
-            self.resolveCandidates(candidates, index: index + 1, results: next, completion: completion)
+            self.resolveCandidates(candidates, cacheKey: cacheKey, index: index + 1, results: next, completion: completion)
         }
     }
 
