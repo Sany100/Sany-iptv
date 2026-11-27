@@ -210,7 +210,7 @@ final class IOSAniLightProvider {
             var nextSeen = seen
             var nextResults = results
             if let finalURL = finalURL, finalURL.scheme?.hasPrefix("http") == true, !nextSeen.contains(finalURL.absoluteString) {
-                let height = quality?.lowercased().replacingOccurrences(of: "p", with: "").flatMap(Int.init)
+                let height = quality.flatMap { Int($0.lowercased().replacingOccurrences(of: "p", with: "")) }
                 nextSeen.insert(finalURL.absoluteString)
                 nextResults.append(IOSAnimeSource(title: "AniLight \(height.map { "\($0)p" } ?? "Source")", url: finalURL, quality: height))
             }
