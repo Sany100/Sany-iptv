@@ -140,7 +140,7 @@ final class IOSCatalogViewController: UITableViewController, UISearchBarDelegate
         self.section = section
         super.init(style: .grouped)
         title = section.rawValue
-        tabBarItem = UITabBarItem(title: section.rawValue, image: IOSIcon.image(section.symbols), selectedImage: UIImage(systemName: section.symbols))
+        tabBarItem = UITabBarItem(title: section.rawValue, image: IOSIcon.image(section.symbols), selectedImage: IOSIcon.image(section.symbols))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -283,7 +283,7 @@ final class IOSSettingsViewController: UITableViewController {
     private let rows = ["Appearance", "Refresh playlist", "Playlist source", "About SANY IPTV"]
 
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .grouped)
         title = "Settings"
         tabBarItem = UITabBarItem(title: "Settings", image: IOSIcon.image("gearshape"), selectedImage: IOSIcon.image("gearshape.fill"))
     }
