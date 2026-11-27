@@ -1061,6 +1061,56 @@ class MainActivity : AppCompatActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (isTvDevice) {
+            // A TV remote Back key always stops the active stream immediately,
+            // regardless of which section/menu currently sits behind the player.
+            if ((keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE) &&
+                playerScreen != null) {
+                closePlayer()
+                lastBackPressedAt = 0L
+                return true
+            }
+            if (playerScreen != null) {
+                when (keyCode) {
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                    KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                        player?.let { active ->
+                            if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY || !active.isPlaying) {
+                                if (active.playbackState == Player.STATE_ENDED) active.seekToDefaultPosition()
+                                active.play()
+                            }
+                            active.playWhenReady = true
+                        }
+                        return true
+                    }
+                    KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                        player?.pause()
+                        player?.playWhenReady = false
+                        return true
+                    }
+                    KeyEvent.KEYCODE_MEDIA_STOP -> {
+                        closePlayer()
+                        return true
+                    }
+                    // OK/Enter on the fullscreen video toggles play/pause.
+                    // In menus, OK remains the normal focused-item click action.
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                        if (isPlayerFullscreen) {
+                            player?.let { active ->
+                                if (active.isPlaying) {
+                                    saveAnimeResumePosition(active, currentChannel)
+                                    active.pause()
+                                    active.playWhenReady = false
+                                } else {
+                                    if (active.playbackState == Player.STATE_ENDED) active.seekToDefaultPosition()
+                                    active.playWhenReady = true
+                                    active.play()
+                                }
+                            }
+                            return true
+                        }
+                    }
+                }
+            }
             when (keyCode) {
                 KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_CHANNEL_UP,
                 KeyEvent.KEYCODE_DPAD_UP -> {
@@ -1069,9 +1119,6 @@ class MainActivity : AppCompatActivity() {
                 KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_CHANNEL_DOWN,
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (player != null) { playAdjacentChannel(-1); return true }
-                }
-                KeyEvent.KEYCODE_ESCAPE -> {
-                    if (playerScreen != null) { closePlayer(); return true }
                 }
             }
         }
@@ -5045,7 +5092,16 @@ class MainActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Video navigation has priority over page navigation.
+        // On Android TV, one Back press closes playback from every section
+        // (Live TV, Movies, Anime, Checker or Settings) and restores the menu.
+        // Starting a stream already enters fullscreen; Back must not minimize it.
+        if (isTvDevice && playerView != null) {
+            closePlayer()
+            lastBackPressedAt = 0L
+            return
+        }
+
+        // Keep the existing touch-device Back behavior unchanged.
         if (playerView != null && isPlayerFullscreen) {
             setPlayerFullscreen(false)
             lastBackPressedAt = 0L
