@@ -411,6 +411,7 @@ class MainActivity : AppCompatActivity() {
             // Restore the current screen only for Android's in-process Activity recreation
             // (for example, rotation or process recreation with a saved instance state).
             section = savedInstanceState?.getString("ui_section") ?: "Live TV"
+            if (isTvDevice && (section == "Series" || section == "Checker")) section = "Live TV"
             liveTvSelectedGroup = savedInstanceState?.getString("live_tv_group") ?: "Select category"
             liveTvSearchQuery = savedInstanceState?.getString("live_tv_search") ?: ""
             selectedGroup = savedInstanceState?.getString("ui_group") ?: "All"
@@ -420,6 +421,7 @@ class MainActivity : AppCompatActivity() {
                 searchQuery = liveTvSearchQuery
             }
             playbackReturnSection = savedInstanceState?.getString("playback_return_section") ?: section
+            if (isTvDevice && (playbackReturnSection == "Series" || playbackReturnSection == "Checker")) playbackReturnSection = "Live TV"
             playbackReturnGroup = savedInstanceState?.getString("playback_return_group") ?: selectedGroup
             playbackReturnSearch = savedInstanceState?.getString("playback_return_search") ?: searchQuery
             playbackReturnScrollY = savedInstanceState?.getInt("playback_return_scroll_y", savedInstanceState?.getInt("list_scroll_y", 0) ?: 0) ?: 0
