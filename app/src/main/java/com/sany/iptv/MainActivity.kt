@@ -4119,7 +4119,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun filteredChannels(): List<Channel> {
         // Live TV shows only streams positively verified by the Checker.
-        val liveCandidates = if (isTvDevice && section == "Live TV") channels else if (section == "Live TV" || section == "Live Sports") liveTvVisibleCandidates() else channels
+        val liveCandidates = if (isTvDevice && section == "Live TV") channels.filter { streamChecks[it.url]?.first == "Working" } else if (section == "Live TV" || section == "Live Sports") liveTvVisibleCandidates() else channels
         return liveCandidates.filter { c ->
             val typeMatch = when (section) {
                 "Movies" -> isMovie(c) || (selectedGroup != "All" && matchesMovieCategory(c, selectedGroup))
