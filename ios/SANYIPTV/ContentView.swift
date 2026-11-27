@@ -22,8 +22,7 @@ final class ChannelListViewController: UITableViewController, UISearchBarDelegat
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "SANY IPTV"
-        view.backgroundColor = UIColor(red: 0.015, green: 0.035, blue: 0.09, alpha: 1)
-        tableView.backgroundColor = view.backgroundColor
+        applyAppearance()
         tableView.separatorColor = UIColor.white.withAlphaComponent(0.10)
         tableView.rowHeight = 68
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Channel")
@@ -45,6 +44,20 @@ final class ChannelListViewController: UITableViewController, UISearchBarDelegat
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Categories", style: .plain, target: self, action: #selector(showGroups))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Refresh", style: .plain, target: self, action: #selector(loadPlaylist))
         loadPlaylist()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        applyAppearance()
+    }
+
+    private func applyAppearance() {
+        view.backgroundColor = IOSAppStyle.background
+        tableView.backgroundColor = IOSAppStyle.background
+        navigationController?.navigationBar.barTintColor = IOSAppStyle.card
+        navigationController?.navigationBar.titleTextAttributes = [.foregroundColor: IOSAppStyle.accent, .font: UIFont.boldSystemFont(ofSize: 20)]
+        navigationController?.navigationBar.tintColor = IOSAppStyle.accent
+        tableView.reloadData()
     }
 
     @objc private func loadPlaylist() {
@@ -137,11 +150,11 @@ final class ChannelListViewController: UITableViewController, UISearchBarDelegat
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let channel = filtered[indexPath.row]
         let cell = tableView.dequeueReusableCell(withIdentifier: "Channel", for: indexPath)
-        cell.backgroundColor = UIColor.white.withAlphaComponent(0.045)
+        cell.backgroundColor = IOSAppStyle.card
         cell.textLabel?.text = channel.name + "\n" + channel.group
         cell.textLabel?.numberOfLines = 2
         cell.textLabel?.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        cell.textLabel?.textColor = .white
+        cell.textLabel?.textColor = IOSAppStyle.primaryText
         cell.detailTextLabel?.textColor = .lightGray
         cell.accessoryType = favorites.contains(channel.url) ? .detailButton : .disclosureIndicator
         cell.tintColor = .cyan
