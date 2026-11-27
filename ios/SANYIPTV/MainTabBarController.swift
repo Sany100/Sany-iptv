@@ -6,7 +6,7 @@ final class SANYMainTabBarController: UITabBarController {
         view.backgroundColor = IOSAppStyle.background
 
         let liveTV = UINavigationController(rootViewController: ChannelListViewController())
-        liveTV.tabBarItem = UITabBarItem(title: "Live TV", image: UIImage(systemName: "tv"), selectedImage: UIImage(systemName: "tv.fill"))
+        liveTV.tabBarItem = UITabBarItem(title: "Live TV", image: IOSIcon.image("tv"), selectedImage: IOSIcon.image("tv.fill"))
 
         let sports = UINavigationController(rootViewController: IOSCatalogViewController(section: .sports))
         let movies = UINavigationController(rootViewController: IOSCatalogViewController(section: .movies))
