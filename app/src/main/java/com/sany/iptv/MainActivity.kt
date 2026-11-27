@@ -173,6 +173,7 @@ class MainActivity : AppCompatActivity() {
     // Keep Movies catalogue and Live Sports provider catalogue views alive while
     // their details/player overlays are opened, preserving filters and scroll.
     private var moviesNativeView: View? = null
+    @Volatile private var movieProviderSyncStarted = false
     private var movieDetailsParentView: View? = null
     private var liveSportsCatalogueView: View? = null
     @Volatile private var liveSportsProviderSyncRunning = false
@@ -458,6 +459,7 @@ class MainActivity : AppCompatActivity() {
         showPreviousCrashReport()
         // Automatically sync and load every allowlisted Anime provider from the
         // SANY builds index. Each package is hash-verified and failures are isolated.
+        if (!isLowRamTvDevice) {
         thread(name = "SANY-Anime-Plugins-AutoSync") {
             try {
                 val report = SanyExtensionRepositories.syncOfficialAnimePlugins(applicationContext)
@@ -511,6 +513,11 @@ class MainActivity : AppCompatActivity() {
         // Sports provider installation is independent from Anime/Movie downloads.
         // This also restores the provider automatically after a completely fresh reinstall.
         syncLiveSportsProviderInBackground()
+        } else {
+            // On 1 GB TVs, defer provider DEX loading and catalogue downloads until
+            // the user opens Anime, Movies or Live Sports. The features remain available.
+            android.util.Log.i("SANY-LOW-RAM", "Deferring Anime/Movie/Sports provider sync until their section is opened")
+        }
         registerForPushUpdates()
         checkForMandatoryUpdate()
         checkMaintenanceMode()
@@ -2517,6 +2524,31 @@ class MainActivity : AppCompatActivity() {
         if (showSeries) {
             renderDevelopmentSection()
             return
+        }
+        if (isLowRamTvDevice && !movieProviderSyncStarted) {
+            movieProviderSyncStarted = true
+            thread(name = "SANY-Movie-Provider-LazySync") {
+                val result = runCatching {
+                    SanyMovieExtensionManager.removeVegaMovies(applicationContext)
+                    SanyMovieExtensionManager.syncBuiltInMultiMovies(applicationContext)
+                }
+                val loaded = result.getOrNull()
+                if (loaded?.success == true) {
+                    runCatching {
+                        SanyMovieExtensionManager.loadInstalled(applicationContext, setOf("multimovies"))
+                    }.onFailure { android.util.Log.e("SANY-MOVIE", "Lazy provider restore failed", it) }
+                } else {
+                    movieProviderSyncStarted = false
+                    android.util.Log.e("SANY-MOVIE", "Lazy MultiMovies sync failed: ${loaded?.error ?: result.exceptionOrNull()?.message}")
+                }
+                if (loaded?.success == true) runOnUiThread {
+                    if (!isFinishing && !isDestroyed && section == "Movies") {
+                        contentArea.removeAllViews()
+                        moviesNativeView = null
+                        renderNativeMovies(false)
+                    }
+                }
+            }
         }
         moviesNativeView?.let { existing ->
             (existing.parent as? ViewGroup)?.removeView(existing)
