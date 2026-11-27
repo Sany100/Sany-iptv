@@ -225,6 +225,8 @@ class MainActivity : AppCompatActivity() {
         else -> 120
     }
     private var displayedLimit = 60
+    // Build TV channel rows in small batches to keep section navigation responsive.
+    private var channelRenderGeneration = 0
     private var playerHeader: LinearLayout? = null
     private var isPlayerFullscreen = false
     private var playerFullscreenButton: TextView? = null
@@ -3939,8 +3941,15 @@ class MainActivity : AppCompatActivity() {
             renderTvChannelCards(container, filtered)
             return
         }
-        (if (isTvDevice) filtered else filtered.take(displayedLimit)).forEachIndexed { index, channel ->
-            val row = LinearLayout(this).apply {
+        val channelsToRender = if (isTvDevice) filtered else filtered.take(displayedLimit)
+        val renderToken = ++channelRenderGeneration
+        var renderIndex = 0
+        fun renderNextChannelBatch() {
+            if (renderToken != channelRenderGeneration || (isTvDevice && section != "Live TV")) return
+            val batchEnd = minOf(renderIndex + if (isTvDevice) 24 else channelsToRender.size, channelsToRender.size)
+            for (index in renderIndex until batchEnd) {
+                val channel = channelsToRender[index]
+                val row = LinearLayout(this).apply {
                 isFocusable = true
                 isFocusableInTouchMode = false
                 orientation = LinearLayout.HORIZONTAL
@@ -4051,8 +4060,18 @@ class MainActivity : AppCompatActivity() {
             if (section == "Live TV" || section == "Live Sports" || section == "Movies") {
                 row.setOnClickListener { play(channel) }
             }
-            container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
+                container.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
+            }
+            renderIndex = batchEnd
+            if (isTvDevice && renderIndex < channelsToRender.size) {
+                container.postDelayed({
+                    if (renderToken == channelRenderGeneration && container.parent != null && section == "Live TV") {
+                        renderNextChannelBatch()
+                    }
+                }, 16L)
+            }
         }
+        renderNextChannelBatch()
         if (!isTvDevice && filtered.size > displayedLimit) {
             container.addView(actionButton("LOAD MORE  (${filtered.size - displayedLimit} LEFT)") {
                 displayedLimit += displayedLimitIncrement
