@@ -119,12 +119,10 @@ final class IOSAniLightProvider {
 
     func search(_ query: String, completion: @escaping ([IOSAnimeItem]) -> Void) {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { completion([]); return }
-        getJSON("/search?q=\(encoded)&hideAdult=true") { root in
-            // Search returns an array, handled by searchArray below when the endpoint is successful.
-            completion(self.media(root?["media"]))
+        guard let url = URL(string: api + "/search?q=\(encoded)&hideAdult=true") else {
+            DispatchQueue.main.async { completion([]) }
+            return
         }
-        // The search endpoint's top-level payload is an array; fetch it without object coercion.
-        guard let url = URL(string: api + "/search?q=\(encoded)&hideAdult=true") else { return }
         request(url) { data, response, _ in
             let rows = (try? JSONSerialization.jsonObject(with: data ?? Data())) as? [[String: Any]] ?? []
             let items = self.media(rows.filter { $0["isAdult"] as? Bool != true })
@@ -187,8 +185,11 @@ final class IOSAniLightProvider {
         request(url, extraHeaders: ["x-source-session": token]) { data, response, _ in
             guard let data = data, let http = response as? HTTPURLResponse,
                   (200...299).contains(http.statusCode),
-                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let rows = root["sources"] as? [[String: Any]] else { completion([]); return }
+                  let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let rows = root["sources"] as? [[String: Any]] else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             let tokens = rows.flatMap { row -> [(String, String?)] in
                 let raw = row["url"]
                 let values = (raw as? [String]) ?? ((raw as? String).map { [$0] } ?? [])
@@ -199,12 +200,12 @@ final class IOSAniLightProvider {
     }
 
     private func resolveTokens(_ tokens: [(String, String?)], index: Int, seen: Set<String>, results: [IOSAnimeSource], completion: @escaping ([IOSAnimeSource]) -> Void) {
-        if index >= tokens.count { completion(results); return }
+        if index >= tokens.count { DispatchQueue.main.async { completion(results) }; return }
         let (token, quality) = tokens[index]
         guard let url = URL(string: api + "/lb/e/" + token) else {
             resolveTokens(tokens, index: index + 1, seen: seen, results: results, completion: completion); return
         }
-        request(url) { data, response, _ in
+        request(url, method: "HEAD") { data, response, _ in
             let finalURL = response?.url
             var nextSeen = seen
             var nextResults = results
