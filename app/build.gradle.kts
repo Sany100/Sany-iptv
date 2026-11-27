@@ -19,7 +19,6 @@ tasks.configureEach {
     }
 }
 
-
 // Bundle the pinned Live Sports provider inside every APK so first launch can
 // install it locally without waiting for a provider download.
 val playZtvAssetsDir = layout.buildDirectory.dir("generated/liveSportsAssets")
@@ -59,14 +58,26 @@ android {
             }
         }
     }
+
     sourceSets.getByName("main").java.srcDir("../cloudstream-original/AniLight/src/main/kotlin")
     sourceSets.getByName("main").assets.srcDir(playZtvAssetsDir.get().asFile)
 
     defaultConfig {
-        minSdk = 23
+        minSdk = 29
         targetSdk = 35
-        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("452").get().toInt()
-        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.2.452").get()
+        versionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("452000").get().toInt()
+        versionName = providers.gradleProperty("APP_VERSION_NAME").orElse("1.2.452-TV").get()
+        manifestPlaceholders["appLabel"] = "SANY IPTV Android TV"
+    }
+
+    flavorDimensions += "device"
+    productFlavors {
+        create("tv") {
+            dimension = "device"
+            applicationIdSuffix = ".tv"
+            minSdk = 29
+            manifestPlaceholders["appLabel"] = "SANY IPTV Android TV"
+        }
     }
 
     buildTypes {
