@@ -125,3 +125,5 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# Build validation workflow for the full-feature TV integration.
