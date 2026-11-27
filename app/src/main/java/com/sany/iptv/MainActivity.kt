@@ -8182,7 +8182,7 @@ class MainActivity : AppCompatActivity() {
         background = glass(30)
     }
     private fun text(value: String, size: Int, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = value; textSize = (size * if (isTvDevice) 1.15f else 1f); setTextColor(color)
+        text = value; textSize = (size * if (isTvDevice) 1.0f else 1f); setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
     private fun premiumBackdrop() = GradientDrawable(
@@ -8201,7 +8201,8 @@ class MainActivity : AppCompatActivity() {
     private fun rounded(color: Int, radius: Int, strokeColor: Int = 0, strokeWidth: Int = 0, ignored: Int = 0) =
         GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat(); if (strokeWidth > 0) setStroke(dp(strokeWidth), strokeColor) }
     private fun dp(v: Int): Int {
-        val tvScale = if (isTvDevice) 1.15f else 1f
+        // Keep TV controls and category cards compact for typical television viewing.
+        val tvScale = if (isTvDevice) 1.0f else 1f
         return (v * resources.displayMetrics.density * tvScale).toInt()
     }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
