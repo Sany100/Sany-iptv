@@ -90,7 +90,7 @@ final class IOSPlaylistStore {
 
     private static func attribute(_ name: String, in line: String) -> String? {
         let escaped = NSRegularExpression.escapedPattern(for: name)
-        guard let regex = try? NSRegularExpression(pattern: "(?i)\\b\\(escaped)=\\\"([^\\\"]*)\\\""),
+        guard let regex = try? NSRegularExpression(pattern: "(?i)\\b" + escaped + "=\"([^\"]*)\""),
               let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
               let range = Range(match.range(at: 1), in: line) else { return nil }
         return String(line[range])
