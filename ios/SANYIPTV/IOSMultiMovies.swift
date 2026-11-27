@@ -150,7 +150,7 @@ final class IOSMultiMoviesProvider {
                let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
                let servers = root["initialServers"] as? [[String: Any]] {
                 for (index, server) in servers.enumerated() {
-                    let name = server["name"] as? String ?? "Server \\(index + 1)"
+                    let name = server["name"] as? String ?? "Server \(index + 1)"
                     if let raw = server["url"] as? String, let url = self.absolute(raw) { candidates.append((name, url)) }
                 }
             }
