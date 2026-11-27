@@ -10,7 +10,7 @@ final class SANYMainTabBarController: UITabBarController {
 
         let sports = UINavigationController(rootViewController: IOSCatalogViewController(section: .sports))
         let movies = UINavigationController(rootViewController: IOSCatalogViewController(section: .movies))
-        let anime = UINavigationController(rootViewController: IOSCatalogViewController(section: .anime))
+        let anime = UINavigationController(rootViewController: IOSAnimeHomeViewController())
         let settings = UINavigationController(rootViewController: IOSSettingsViewController())
 
         viewControllers = [liveTV, sports, movies, anime, settings]
